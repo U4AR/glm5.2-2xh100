@@ -158,7 +158,7 @@ retry FP8.**
   service is `enabled` + verified `active`; it **mkfs only when unformatted** (won't wipe
   scratch on reboot) then mounts + chowns to `bel`. So the drives auto-mount on boot.
 - Disk is no longer the binding constraint. Use `/cache/nvme0` for any int4 weights.
-- sudo password for this box: `bel@123` (passwordless sudo is NOT configured).
+- sudo password for this box: `<sudo-password>` (passwordless sudo is NOT configured).
 
 ### 11.3 The INT4 reality on THIS box (AMD EPYC, no AMX) + THIS kt-kernel build
 Verified empirically from the installed package:

@@ -200,12 +200,12 @@ Then: bind → boot → `bench/decode_bench.sh 5 256` → compare median vs **10
 ## 7. Roofline reproduction recipe (non-destructive, on live server)
 
 ```bash
-echo 'bel@123' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'
+echo '<sudo-password>' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'
 # drive a long decode, measure 10ms DRAM bins during steady state:
 curl -s http://localhost:8000/generate -H 'Content-Type: application/json' \
   -d '{"text":"[gMASK]<sop><|user|>\nWrite a long technical essay.<|assistant|>\n",
        "sampling_params":{"temperature":0.7,"max_new_tokens":1100}}' >/dev/null &
-echo 'bel@123' | sudo -S bash -c 'sleep 4; perf stat -e ls_any_fills_from_sys.dram_io_all \
+echo '<sudo-password>' | sudo -S bash -c 'sleep 4; perf stat -e ls_any_fills_from_sys.dram_io_all \
   -a -I 10 sleep 6 2>&1 | grep dram_io | \
   awk "{gb=\$2*64/1e9/0.01; b=int(gb/20)*20; print b}" | sort -n | uniq -c'
 ```
@@ -241,7 +241,7 @@ VM bandwidth ceiling probe (OMP triad, while server idle): compile the triad in
 - **CPU experts pinned to tp_rank==0** (`kt_ep_wrapper.py` L2784/L2873); GPU experts are
   TP-replicated (`num_local_experts = global_num_experts`, L375) — true EP is a code change, not
   a flag (separate lever, see memory `glm52-decode-bottleneck-v2`).
-- perf: `echo 'bel@123' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'`.
+- perf: `echo '<sudo-password>' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'`.
 
 ---
 

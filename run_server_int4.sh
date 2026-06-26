@@ -24,6 +24,12 @@ MODEL=${MODEL:-/cache/nvme0/models/GLM-5.2-W4AFP8}
 KT_METHOD=${KT_METHOD:-FP8}
 KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-/data/models/GLM-5.2-FP8}
 
+# OpenAI-compatible /v1/chat/completions needs a chat template. The W4AFP8 dir
+# ships no tokenizer.chat_template, so point sglang at the repo-local GLM jinja
+# (renders the reasoning-effort system prompt + tool-call format the glm45/glm47
+# parsers expect). Override CHAT_TEMPLATE= to disable.
+CHAT_TEMPLATE=${CHAT_TEMPLATE:-/data/models/RunGLM/chat_template.jinja}
+
 source "$VENV/bin/activate"
 
 # --- runtime env -----------------------------------------------------------
@@ -79,7 +85,19 @@ if [ "$SPEC_DECODE" = "1" ]; then
   SPEC_FLAG="--speculative-algorithm NEXTN --speculative-num-steps $SPEC_STEPS --speculative-eagle-topk $SPEC_TOPK --speculative-num-draft-tokens $SPEC_DRAFT_TOKENS"
 fi
 
-echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}"
+# --- NSA attention sub-backends (override for spec-verify experiments) ------
+# target_verify is extend-like -> uses the PREFILL backend. Default (fp8 KV) is
+# flashmla_auto; swap to flashmla_kv/fa3/etc to test the spec-verify garbage.
+NSA_PREFILL_BACKEND=${NSA_PREFILL_BACKEND:-}
+NSA_DECODE_BACKEND=${NSA_DECODE_BACKEND:-}
+NSA_FLAG=""
+[ -n "$NSA_PREFILL_BACKEND" ] && NSA_FLAG="$NSA_FLAG --nsa-prefill-backend $NSA_PREFILL_BACKEND"
+[ -n "$NSA_DECODE_BACKEND" ] && NSA_FLAG="$NSA_FLAG --nsa-decode-backend $NSA_DECODE_BACKEND"
+
+CHAT_TEMPLATE_FLAG=""
+[ -n "$CHAT_TEMPLATE" ] && CHAT_TEMPLATE_FLAG="--chat-template $CHAT_TEMPLATE"
+
+echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
 
 python -m sglang.launch_server \
   --model-path "$MODEL" \
@@ -105,6 +123,8 @@ python -m sglang.launch_server \
   $SPEC_FLAG \
   $NAN_FLAG \
   --attention-backend nsa \
+  $NSA_FLAG \
+  $CHAT_TEMPLATE_FLAG \
   --fp8-gemm-backend cutlass \
   --disable-shared-experts-fusion \
   --tool-call-parser glm47 \

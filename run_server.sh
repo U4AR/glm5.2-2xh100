@@ -7,6 +7,11 @@ set -euo pipefail
 VENV=/data/models/RunGLM/.venv
 MODEL=/data/models/GLM-5.2-FP8
 
+# OpenAI-compatible /v1/chat/completions needs a chat template. The FP8 dir ships
+# chat_template.jinja but not as tokenizer.chat_template, so point sglang at the
+# repo-local copy. Override CHAT_TEMPLATE= to disable.
+CHAT_TEMPLATE=${CHAT_TEMPLATE:-/data/models/RunGLM/chat_template.jinja}
+
 source "$VENV/bin/activate"   # also exports LD_LIBRARY_PATH=$VENV/lib (hwloc/numa)
 
 # --- runtime env -----------------------------------------------------------
@@ -84,6 +89,9 @@ if [ "$SPEC_DECODE" = "1" ]; then
   SPEC_FLAG="--speculative-algorithm NEXTN --speculative-num-steps $SPEC_STEPS --speculative-eagle-topk $SPEC_TOPK --speculative-num-draft-tokens $SPEC_DRAFT_TOKENS"
 fi
 
+CHAT_TEMPLATE_FLAG=""
+[ -n "$CHAT_TEMPLATE" ] && CHAT_TEMPLATE_FLAG="--chat-template $CHAT_TEMPLATE"
+
 echo "GLM-5.2-FP8  TP2  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo "NEXTN(steps=$SPEC_STEPS,topk=$SPEC_TOPK,draft=$SPEC_DRAFT_TOKENS)" || echo off)"
 
 python -m sglang.launch_server \
@@ -109,6 +117,7 @@ python -m sglang.launch_server \
   $CG_FLAG \
   $SPEC_FLAG \
   --attention-backend nsa \
+  $CHAT_TEMPLATE_FLAG \
   --fp8-gemm-backend cutlass \
   --disable-shared-experts-fusion \
   --tool-call-parser glm47 \

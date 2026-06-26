@@ -62,7 +62,7 @@ The fast config = graphs on + `mem-fraction 0.94` + `SGLANG_ENABLE_JIT_DEEPGEMM=
   watchers instead, and a long-interval poll.
 - **`pgrep -f "sglang..."` self-matches your own shell command.** Use a specific pattern like
   `pgrep -f "launch_server --model-path"`, or check `ps`.
-- **`perf` needs** `echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid` (sudo password: `bel@123`,
+- **`perf` needs** `echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid` (sudo password: `<sudo-password>`,
   user's single-user box). AMD bandwidth counters: `ls_any_fills_from_sys.dram_io_near/far` (×64B).
 - **kt-kernel rebuild** (only if editing C++): the build needs source-built hwloc/numa in `.venv`:
   ```bash

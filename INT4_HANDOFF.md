@@ -51,7 +51,7 @@ tok/s) on this 2×H100 box via kt CPU+GPU offload.
 - kt-kernel **0.6.2.post3** (compiled .so — cannot edit C++), sglang `0.0.0.dev0`.
 - Disks: `/data` persistent but only ~70 GB free. `/cache/nvme0`,`/cache/nvme1`
   are **EPHEMERAL** (wiped on reboot), 3.4 TB each. Big artifacts live there.
-- sudo password `bel@123` (single-user box). Harness **BLOCKS foreground `sleep`** —
+- sudo password `<sudo-password>` (single-user box). Harness **BLOCKS foreground `sleep`** —
   never put a bare `sleep` in a Bash call; use it only inside a `for` loop.
 - `pgrep -f` self-matches your shell; use specific patterns like `launch_server --model-path`.
 

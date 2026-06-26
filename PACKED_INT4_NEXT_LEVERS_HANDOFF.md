@@ -268,7 +268,7 @@ kernel already shrank the CPU window, so MTP starts from a better place than the
 - **Two's-complement int4** for W4AFP8. Offset-binary `nibble-8` → fluent garbage.
 - **No `avx_vnni`** on this Zen4 (only `avx512_vnni`). Anything using `_mm256_dpbusd_avx_epi32`
   SIGILLs. Use EVEX `_mm256_dpbusd_epi32`.
-- **perf:** `echo 'bel@123' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'`.
+- **perf:** `echo '<sudo-password>' | sudo -S sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'`.
 - **Harness blocks foreground `sleep`**; launch servers with `setsid ... &` and poll a logfile.
 - Weights are EPHEMERAL on /cache/nvme0 (W4AFP8) + /cache/nvme1 (GPTQ); re-download via
   `int4_scripts/download_w4afp8.py`, repack via `int4_scripts/gptq_full_repack.py`.
