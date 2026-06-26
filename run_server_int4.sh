@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Launch GLM-5.2-W4AFP8 (INT4 experts + FP8 non-experts) on 2x H100 NVL (TP2)
+# + KT-Kernel CPU-GPU heterogeneous MoE, with INT4 (RAWINT4) CPU+GPU experts.
+#
+# Route: kt RAWINT4. The W4AFP8 on-disk int4 payload is byte-identical to kt's
+# native compressed-tensors layout (verified: lo-nibble-first signed int4,
+# 2-packed along K, bf16 group-128 scale, symmetric). Only tensor names differ
+# (.weight/.weight_scale_inv vs .weight_packed/.weight_scale), handled by a
+# patch to kt CompressedSafeTensorLoader (no disk repack). The fp8 activation
+# input_scale is unused by RAWINT4. Non-expert weights are block-FP8 -> sglang
+# Fp8LinearMethod (W4AFp8Config routes LinearBase->fp8, experts->kt).
+#
+# This box: 2x H100 NVL (96GB), AMD EPYC 9V84 (80c, 2 NUMA, AVX512 no-AMX), 629GB.
+set -euo pipefail
+
+VENV=/data/models/RunGLM/.venv
+# sglang reads non-expert (block-FP8/BF16) weights from MODEL; kt reads the INT4
+# routed experts from KT_WEIGHT_PATH (separate dir for the GPTQ-repacked experts).
+# WINNING RECIPE (2026-06-25, ~10.1-10.6 tok/s decode > 8.7 FP8 baseline):
+#   int4 GPU experts (MODEL=W4AFP8 -> W4AFp8MoEMethod cutlass) + FP8 CPU experts
+#   (fast AVX512) + GPU_EXPERTS=104 (88GB/card). Needs the w4afp8.py -1-remap fix.
+#   GPTQ_INT4 CPU (nvme1) boots faster (~3min vs ~50min) but is AVX2-slow (~6.4).
+MODEL=${MODEL:-/cache/nvme0/models/GLM-5.2-W4AFP8}
+KT_METHOD=${KT_METHOD:-FP8}
+KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-/data/models/GLM-5.2-FP8}
+
+source "$VENV/bin/activate"
+
+# --- runtime env -----------------------------------------------------------
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export TOKENIZERS_PARALLELISM=false
+export HF_HOME=/data/models/RunGLM/.hf
+mkdir -p "$HF_HOME"
+# RAWINT4 backend on this no-AMX EPYC: default selection picks AMXInt4_KGroup_MOE
+# (avx512_bf16-compiled). If it faults with an illegal instruction, force AVX2:
+#   export KT_RAWINT4_BACKEND=avx2
+[ -n "${KT_RAWINT4_BACKEND:-}" ] && export KT_RAWINT4_BACKEND
+
+# --- tunables --------------------------------------------------------------
+# INT4 experts are ~half the bytes of FP8 -> less VRAM/card AND less CPU RAM,
+# so GPU_EXPERTS can go HIGHER than the FP8 run's 48. Start conservative; tune up.
+# 96 is the safe default (82GB/card, fits 8192-token KV, ~9.8 tok/s). For the
+# max squeeze use GPU_EXPERTS=104 MAX_TOTAL_TOKENS=4096 (88GB/card, ~10.5). 112 OOMs.
+GPU_EXPERTS=${GPU_EXPERTS:-96}
+MEM_FRACTION=${MEM_FRACTION:-0.94}
+CPUINFER=${CPUINFER:-72}
+MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-8192}
+MAX_RUNNING=${MAX_RUNNING:-2}
+CHUNKED_PREFILL=${CHUNKED_PREFILL:-2048}
+DISABLE_CUDA_GRAPH=${DISABLE_CUDA_GRAPH:-0}
+CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-1}
+
+CG_FLAG=""
+if [ "$DISABLE_CUDA_GRAPH" = "1" ]; then
+  CG_FLAG="--disable-cuda-graph"
+  export SGLANG_ENABLE_JIT_DEEPGEMM=${SGLANG_ENABLE_JIT_DEEPGEMM:-0}
+else
+  export SGLANG_ENABLE_JIT_DEEPGEMM=1
+  CG_FLAG="--cuda-graph-max-bs $CUDA_GRAPH_MAX_BS --disable-custom-all-reduce"
+fi
+
+DYN_UPDATE=${DYN_UPDATE:-0}
+DYN_FLAG=""; [ "$DYN_UPDATE" = "1" ] && DYN_FLAG="--kt-enable-dynamic-expert-update"
+
+# Debug: NaN detection (localizes garbage to a layer/op) + force all experts to
+# CPU (GPU_EXPERTS=0) to bisect CPU-int4 vs GPU-int4 kernel.
+NAN_DETECT=${NAN_DETECT:-0}
+NAN_FLAG=""; [ "$NAN_DETECT" = "1" ] && NAN_FLAG="--enable-nan-detection"
+
+# --- MTP / NEXTN (OFF for first int4 boot; turn on after baseline) ---------
+SPEC_DECODE=${SPEC_DECODE:-0}
+SPEC_STEPS=${SPEC_STEPS:-1}
+SPEC_TOPK=${SPEC_TOPK:-1}
+SPEC_DRAFT_TOKENS=${SPEC_DRAFT_TOKENS:-2}
+SPEC_FLAG=""
+if [ "$SPEC_DECODE" = "1" ]; then
+  export SGLANG_ENABLE_SPEC_V2=${SGLANG_ENABLE_SPEC_V2:-True}
+  SPEC_FLAG="--speculative-algorithm NEXTN --speculative-num-steps $SPEC_STEPS --speculative-eagle-topk $SPEC_TOPK --speculative-num-draft-tokens $SPEC_DRAFT_TOKENS"
+fi
+
+echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}"
+
+python -m sglang.launch_server \
+  --model-path "$MODEL" \
+  --kt-weight-path "$KT_WEIGHT_PATH" \
+  --kt-cpuinfer "$CPUINFER" \
+  --kt-threadpool-count 2 \
+  --kt-numa-nodes 0 1 \
+  --kt-num-gpu-experts "$GPU_EXPERTS" \
+  --kt-method "$KT_METHOD" \
+  --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-1024}" \
+  $DYN_FLAG \
+  --kt-expert-placement-strategy uniform \
+  --tp-size "${TP_SIZE:-2}" \
+  --trust-remote-code \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --mem-fraction-static "$MEM_FRACTION" \
+  --kv-cache-dtype fp8_e4m3 \
+  --max-total-tokens "$MAX_TOTAL_TOKENS" \
+  --max-running-requests "$MAX_RUNNING" \
+  --chunked-prefill-size "$CHUNKED_PREFILL" \
+  $CG_FLAG \
+  $SPEC_FLAG \
+  $NAN_FLAG \
+  --attention-backend nsa \
+  --fp8-gemm-backend cutlass \
+  --disable-shared-experts-fusion \
+  --tool-call-parser glm47 \
+  --reasoning-parser glm45 \
+  --served-model-name GLM5.2
