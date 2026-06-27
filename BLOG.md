@@ -1,4 +1,4 @@
-# Serving a 754B model on two GPUs: how we got GLM-5.2 from 3.4 to 13.4 tok/s
+# Serving a 754B model on two GPUs: how we got GLM-5.2 from 3.4 to 14.6 tok/s
 
 *An engineering log of running GLM‑5.2 (754B MoE) on a 2×H100 box with a CPU that
 has no AMX — and the custom 4‑bit kernel that ended up beating everything else.*
@@ -24,9 +24,10 @@ AVX‑512 kernels. Per decode step, the per‑layer latency is roughly
 `max(CPU‑expert time, GPU‑expert + attention time)` — the two run concurrently and
 get merged.
 
-This is the story of four wins that took decode throughput from a barely‑usable
-3.4 tok/s to **13.4 tok/s** — a **~3.9×** improvement — with no change to the model
-weights' quality beyond quantization.
+This is the story of five wins that took decode throughput from a barely‑usable
+3.4 tok/s to **14.6 tok/s** — a **~4.3×** improvement — with no change to the model
+weights' quality beyond quantization. The fifth one arrived disguised as a
+*correctness* bug, which is the most fun kind.
 
 ---
 
@@ -178,6 +179,71 @@ experts now fit in ~220 GB of RAM instead of needing the full 629 GB + swap.
 
 ---
 
+## Win #5 — Turning off sparse attention: 13.4 → 14.6 tok/s (and a hard correctness fix)
+
+This one started as a bug report, not a speed hunt. The benchmarks all used short
+prompts (a few hundred tokens), and they looked great at 13.4 tok/s. Then the first
+real coding‑agent session — a long system prompt plus tool definitions, a few
+thousand tokens of context — came back as **gibberish the moment the sequence crossed
+~2048 tokens**. The cliff was razor‑sharp: 2041 tokens in, perfectly coherent; 2061
+tokens in, word salad.
+
+### The cause: a half‑implemented sparse‑attention path
+
+GLM‑5.2 uses **DeepSeek‑style Native Sparse Attention (NSA)**: instead of attending to
+the whole KV history, each query runs a small **indexer** that picks the top
+`index_topk` (= 2048) most relevant past tokens and attends only to those. It's a real
+win at very long context on a stack that implements it fully.
+
+Ours didn't. This SGLang build runs every layer through the sparse path but lacks the
+per‑layer `index_topk_pattern` support the kernels expect, and the top‑k kernels
+**hard‑assert `topk == 2048`**. Below 2048 tokens there's nothing to select, so the
+path is effectively a no‑op and output is fine. The instant the sequence exceeds 2048,
+the indexer engages — and on this build it selects garbage, so attention reads the
+wrong KV and the model derails. A latent bug that *only* a real long‑context workload
+trips, which is exactly why every short benchmark missed it.
+
+### The fix: drop sparse, run dense MLA
+
+The clean fix wasn't to repair the indexer — it was to **turn NSA off entirely** and
+run **full dense MLA attention**. SGLang gates `is_deepseek_nsa()` on
+`index_topk is not None`, so a one‑line model‑config override does it:
+
+```bash
+--json-model-override-args '{"index_topk": null}'    # + --attention-backend flashmla
+```
+
+With `index_topk` nulled, NSA is bypassed, attention falls back to the dense `flashmla`
+backend, and the model is coherent again — verified out to **12k+ tokens**. Dense is
+also the *most accurate* path (it attends to everything, approximating nothing), so
+there's no quality trade‑off; on this box the extra attention FLOPs at long context are
+free anyway, because we're bound by the CPU‑expert MoE window, not attention.
+
+### The surprise: it was also *faster*
+
+Dense attention does strictly more attention work than sparse — so we expected, at
+best, no decode regression. Instead decode **rose from ~13.4 to ~14.6 tok/s**, and it
+held that rate even at 12k+ positions.
+
+The reason is that NSA isn't free even below its cutoff: the **indexer itself runs
+every decode step** — an extra dual‑stream DeepGEMM index/top‑k pass per layer, fired
+on the critical path of a batch‑size‑1 decode that's already launch‑sensitive (see Win
+#2). Bypassing NSA deletes that per‑step overhead. At our context lengths the dense
+attention it's replaced with is cheap, so the indexer was pure tax.
+
+The tell that this was a genuine kernel win, not measurement noise: we made the change
+while *also* dropping `GPU_EXPERTS` from 104 to 96 — moving 8 experts/layer *back* onto
+the slow CPU path to free VRAM for the 131k‑token KV cache and the GPU bulk‑prefill
+path. That change should have *lowered* throughput. Decode went **up** anyway, which
+means removing the NSA indexer more than paid for eight extra CPU‑resident experts.
+
+> **Lesson:** a "sparsity optimization" that's only half‑wired on your stack can be
+> both *wrong* and *slower* than the dense baseline it was meant to beat. When a fancy
+> path is misbehaving, measuring the plain dense fallback is worth doing before you
+> sink time into fixing the fancy one — sometimes the fallback wins outright.
+
+---
+
 ## Where it landed
 
 | Stage | Config | Decode (tok/s) |
@@ -185,10 +251,12 @@ experts now fit in ~220 GB of RAM instead of needing the full 629 GB + swap.
 | FP8, NVMe swap, eager | first time it ran | ~3.4 |
 | FP8 + CUDA graphs | the launch‑bound fix | ~8.7 |
 | INT4 GPU experts (W4AFP8) + FP8 CPU | more experts on GPU | ~10.6 |
-| **Packed INT4 GPU + packed INT4 CPU** | **custom AVX‑512 VNNI kernel** | **13.4** |
+| Packed INT4 GPU + packed INT4 CPU | custom AVX‑512 VNNI kernel | 13.4 |
+| **+ dense MLA (NSA off)** | **drop the per‑step sparse indexer** | **14.6** |
 
-A **~3.9×** end‑to‑end speedup, and the model now fits in roughly **260 GB of RAM**
-plus 2×H100 instead of needing every byte of a 629 GB box.
+A **~4.3×** end‑to‑end speedup, and the model now fits in roughly **260 GB of RAM**
+plus 2×H100 instead of needing every byte of a 629 GB box — coherent out to 12k+
+tokens, not just short prompts.
 
 ## Things that didn't pan out (and why)
 

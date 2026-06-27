@@ -1,9 +1,10 @@
-# RunGLM — GLM‑5.2 (754B) on 2×H100 at 13.4 tok/s
+# RunGLM — GLM‑5.2 (754B) on 2×H100 at 14.6 tok/s
 
 Serve **GLM‑5.2**, a 754B‑parameter MoE model, on a single dual‑H100 box using
 **SGLang + KTransformers (kt‑kernel)** heterogeneous CPU+GPU Mixture‑of‑Experts.
-A custom packed‑INT4 AVX‑512 CPU kernel + INT4 GPU experts reach **13.4–13.9 tok/s**
-single‑stream decode while fitting the CPU‑side experts in **~250 GB of RAM**.
+A custom packed‑INT4 AVX‑512 CPU kernel + INT4 GPU experts, with dense MLA attention,
+reach **~14.6 tok/s** single‑stream decode (coherent out to 12k+ tokens) while
+fitting the CPU‑side experts in **~250 GB of RAM**.
 
 The server is **OpenAI‑compatible** (`/v1/chat/completions`, streaming, reasoning
 separation) and ships with a zero‑dependency browser chat UI.
@@ -17,7 +18,7 @@ separation) and ships with a zero‑dependency browser chat UI.
 
 | Precision | CPU experts | GPU experts/layer | RAM needed | Decode |
 |---|---|---:|---:|---:|
-| **INT4 (recommended)** | packed RAWINT4 (AVX‑512 VNNI) | 104 | **~250 GB** | **13.4–13.9 tok/s** |
+| **INT4 (recommended)** | packed RAWINT4 (AVX‑512 VNNI) | 96–104 | **~250 GB** | **~14.6 tok/s** (dense MLA) |
 | FP8 ("8‑bit") | block‑FP8 | 48 | ~629 GB (or NVMe swap) | ~8.7 tok/s |
 
 Both serve the same model quality; the INT4 path is faster **and** needs roughly
@@ -44,7 +45,7 @@ half the bytes (see BLOG.md).
 
 | File | Purpose |
 |---|---|
-| `run_server_int4.sh` | Launch the **INT4** server (the 13.4 tok/s path) |
+| `run_server_int4.sh` | Launch the **INT4** server (the ~14.6 tok/s path) |
 | `run_server.sh` | Launch the **FP8** server (the 8‑bit path) |
 | `chat_ui.py` / `start_ui.sh` | Zero‑dep browser chat UI → OpenAI endpoint |
 | `chat_template.jinja` | GLM‑5.2 chat template (wired into both launchers) |
@@ -85,7 +86,7 @@ python int4_scripts/download_w4afp8.py        # -> /cache/nvme0/models/GLM-5.2-W
 FP8 path uses the FP8 checkpoint at `/data/models/GLM-5.2-FP8` (also the source of
 `chat_template.jinja`).
 
-### 2a. Run the INT4 server (recommended — 13.4 tok/s, ~250 GB RAM)
+### 2a. Run the INT4 server (recommended — ~14.6 tok/s, ~250 GB RAM)
 
 ```bash
 MODEL=/cache/nvme0/models/GLM-5.2-W4AFP8 \
@@ -247,4 +248,4 @@ GPU expert halves concurrently and merges them, so per‑layer latency is
 `max(CPU, GPU+attention)`. CUDA graphs eliminate per‑step launch overhead. Keeping
 the CPU weights **packed at 4 bits** (instead of pre‑expanding to int8) halves the
 memory traffic in the bandwidth‑bound CPU window — that is the change that took decode
-from ~10.9 to 13.4 tok/s. Full details and the dead‑ends in **[BLOG.md](BLOG.md)**.
+from ~10.9 to ~14.6 tok/s. Full details and the dead‑ends in **[BLOG.md](BLOG.md)**.
