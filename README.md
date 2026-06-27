@@ -108,6 +108,58 @@ Boot takes ~2–3 min (loads INT4 experts from NVMe + CUDA‑graph capture). Wai
 GPU_EXPERTS=48 bash run_server.sh
 ```
 
+### 2c. Long‑context mode (for coding agents / long chats)
+
+The quickstart above uses a tiny 4096‑token window. For a coding‑agent backend or
+long conversations, run with a real context window:
+
+```bash
+MODEL=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+KT_METHOD=RAWINT4 \
+KT_WEIGHT_PATH=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+KT_RAWINT4_BACKEND=avx512_packed \
+GPU_EXPERTS=96 \
+CONTEXT_LENGTH=131072 \
+MAX_TOTAL_TOKENS=131072 \
+MEM_FRACTION=0.93 \
+CPUINFER=72 \
+MAX_RUNNING=2 \
+bash run_server_int4.sh
+```
+
+Verified: coherent to 12k+ tokens, decode steady at **~14.6 tok/s** even at 12k+
+positions, ~88 GB/card, `available_gpu_mem≈8 GB` at 128k. Decode speed is unchanged
+vs the short‑context config (we are CPU‑MoE bound, so attention length is free).
+
+Two correctness fixes are baked into `run_server_int4.sh` and are **on by default**
+for this path — both were latent bugs that only a real long‑context / agent workload
+triggers:
+
+- **`DISABLE_NSA=1` (default) — fixes gibberish past ~2048 tokens.** GLM‑5.2 uses
+  DeepSeek Sparse Attention (a lightning indexer picks the top `index_topk=2048`
+  tokens). This sglang build runs *every* layer through that sparse path (it lacks
+  the newer per‑layer `index_topk_pattern` Full/Sparse support), and the sparse
+  kernels produce garbage once the sequence exceeds 2048 (hard cliff: 2041 ok, 2061
+  gibberish) — and the topk kernels hard‑assert `topk==2048`, so the window can't be
+  widened. The fix overrides `index_topk=null` (→ `is_deepseek_nsa()` false →
+  **full dense MLA attention**, backend `flashmla`). Dense is the most accurate path
+  (sparse only approximates it) and costs ~nothing here since attention isn't the
+  bottleneck. Set `DISABLE_NSA=0` to restore native (buggy >2048) NSA.
+- **`KT_GPU_PREFILL_THRESHOLD=0` (default) — fixes a server crash on large prompts.**
+  Prompts longer than the old default (1024) took kt‑kernel's GPU full‑prefill path,
+  whose W4AFP8 `create_weights` asserts on a `weight_loader` it isn't given →
+  `AssertionError` → SIGQUIT (both TP workers) → server down. A coding agent's first
+  request (system prompt + tool defs) trivially exceeds 1024 tokens, so it crashed on
+  connect. `0` disables that path; all prefill uses the proven partial CPU+GPU path.
+  Trade‑off: bulk **cold** prefill runs on the CPU experts (~74 tok/s); SGLang's
+  radix cache makes every follow‑up turn's prefill instant (a 12k prefix re‑prefills
+  in ~0.6 s), and decode is always full speed.
+
+> Tip: point your OpenAI‑compatible coding agent (e.g. `pi`, Continue, aider) at
+> `http://<host>:8000/v1` with model `GLM5.2`. Use **streaming** and a sane
+> `max_tokens`; avoid non‑streaming requests with huge `max_tokens` (they hold the
+> connection for the whole generation).
+
 ### 3. Chat UI (optional)
 
 ```bash

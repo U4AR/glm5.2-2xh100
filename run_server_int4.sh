@@ -52,6 +52,10 @@ GPU_EXPERTS=${GPU_EXPERTS:-96}
 MEM_FRACTION=${MEM_FRACTION:-0.94}
 CPUINFER=${CPUINFER:-72}
 MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-8192}
+# Explicit max sequence length (positions). Model supports 1M, but leave unset
+# and sglang derives a huge default; pin it so a coding agent's long context is
+# admitted predictably and the KV pool is sized to match MAX_TOTAL_TOKENS.
+CONTEXT_LENGTH=${CONTEXT_LENGTH:-}
 MAX_RUNNING=${MAX_RUNNING:-2}
 CHUNKED_PREFILL=${CHUNKED_PREFILL:-2048}
 DISABLE_CUDA_GRAPH=${DISABLE_CUDA_GRAPH:-0}
@@ -97,6 +101,32 @@ NSA_FLAG=""
 CHAT_TEMPLATE_FLAG=""
 [ -n "$CHAT_TEMPLATE" ] && CHAT_TEMPLATE_FLAG="--chat-template $CHAT_TEMPLATE"
 
+CONTEXT_LENGTH_FLAG=""
+[ -n "$CONTEXT_LENGTH" ] && CONTEXT_LENGTH_FLAG="--context-length $CONTEXT_LENGTH"
+
+# --- NSA (Native Sparse Attention) long-context fix --------------------------
+# GLM-5.2 uses DeepSeek Sparse Attention: a lightning indexer selects the top
+# `index_topk` (=2048) tokens per query once the sequence exceeds 2048. This
+# sglang build runs EVERY layer through that sparse path (no per-layer Full/Sparse
+# `index_topk_pattern` support, which newer sglang has), and the sparse path
+# produces GARBAGE beyond 2048 tokens (hard cliff: 2041 ok, 2061 gibberish). The
+# topk kernels also hard-assert topk==2048, so widening the dense window is not
+# possible. The documented + optimal fix for our box: disable NSA entirely and run
+# full DENSE MLA attention. is_deepseek_nsa() is gated on `index_topk is not None`
+# (model_config.py), so overriding index_topk=null turns NSA off cleanly -> plain
+# MLA. Dense attention is the most ACCURATE (sparse only approximates it) and
+# costs us ~nothing: we are CPU-MoE bound (~13 tok/s, GPUs ~50% idle), so the
+# extra attention FLOPs are hidden. DISABLE_NSA=1 (default) also forces a dense
+# MLA attention backend. Set DISABLE_NSA=0 to restore native NSA (buggy >2048).
+DISABLE_NSA=${DISABLE_NSA:-1}
+MODEL_OVERRIDE_FLAG=""
+if [ "$DISABLE_NSA" = "1" ]; then
+  MODEL_OVERRIDE_FLAG='--json-model-override-args {"index_topk":null}'
+  ATTENTION_BACKEND=${ATTENTION_BACKEND:-flashmla}
+else
+  ATTENTION_BACKEND=${ATTENTION_BACKEND:-nsa}
+fi
+
 echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
 
 python -m sglang.launch_server \
@@ -107,7 +137,7 @@ python -m sglang.launch_server \
   --kt-numa-nodes 0 1 \
   --kt-num-gpu-experts "$GPU_EXPERTS" \
   --kt-method "$KT_METHOD" \
-  --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-1024}" \
+  --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-0}" \
   $DYN_FLAG \
   --kt-expert-placement-strategy uniform \
   --tp-size "${TP_SIZE:-2}" \
@@ -115,14 +145,16 @@ python -m sglang.launch_server \
   --host 0.0.0.0 \
   --port 8000 \
   --mem-fraction-static "$MEM_FRACTION" \
-  --kv-cache-dtype fp8_e4m3 \
+  --kv-cache-dtype "${KV_CACHE_DTYPE:-fp8_e4m3}" \
   --max-total-tokens "$MAX_TOTAL_TOKENS" \
+  $CONTEXT_LENGTH_FLAG \
+  $MODEL_OVERRIDE_FLAG \
   --max-running-requests "$MAX_RUNNING" \
   --chunked-prefill-size "$CHUNKED_PREFILL" \
   $CG_FLAG \
   $SPEC_FLAG \
   $NAN_FLAG \
-  --attention-backend nsa \
+  --attention-backend "$ATTENTION_BACKEND" \
   $NSA_FLAG \
   $CHAT_TEMPLATE_FLAG \
   --fp8-gemm-backend cutlass \
