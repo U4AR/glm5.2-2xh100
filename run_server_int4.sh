@@ -58,6 +58,16 @@ MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-8192}
 CONTEXT_LENGTH=${CONTEXT_LENGTH:-}
 MAX_RUNNING=${MAX_RUNNING:-2}
 CHUNKED_PREFILL=${CHUNKED_PREFILL:-2048}
+# GPU bulk prefill: a prefill chunk with >= this many tokens streams ALL 256
+# experts to GPU (cutlass W4A8) for the chunk instead of computing the CPU
+# experts on the AVX-512 path. Measured ~1.9x faster TTFT on big prompts (2660
+# tok: ~20s vs ~37s CPU), decode unaffected (~14 tok/s). Default 2048 = the chunk
+# size, so only full chunks take the GPU path (>2x the ~860-token break-even).
+# Requires the rebuilt kt-kernel (packed RAWINT4 write_weights_to_buffer, which
+# the upstream backend left as a "not yet implemented" stub) and ~5 GB of free
+# VRAM for the transient 256-expert scratch layer (fits at GPU_EXPERTS=96/128k,
+# avail≈8 GB). Set KT_GPU_PREFILL_THRESHOLD=0 to disable (pure CPU prefill).
+KT_GPU_PREFILL_THRESHOLD=${KT_GPU_PREFILL_THRESHOLD:-2048}
 DISABLE_CUDA_GRAPH=${DISABLE_CUDA_GRAPH:-0}
 CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-1}
 
@@ -137,7 +147,7 @@ python -m sglang.launch_server \
   --kt-numa-nodes 0 1 \
   --kt-num-gpu-experts "$GPU_EXPERTS" \
   --kt-method "$KT_METHOD" \
-  --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-0}" \
+  --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-2048}" \
   $DYN_FLAG \
   --kt-expert-placement-strategy uniform \
   --tp-size "${TP_SIZE:-2}" \

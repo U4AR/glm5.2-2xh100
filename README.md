@@ -145,15 +145,25 @@ triggers:
   **full dense MLA attention**, backend `flashmla`). Dense is the most accurate path
   (sparse only approximates it) and costs ~nothing here since attention isn't the
   bottleneck. Set `DISABLE_NSA=0` to restore native (buggy >2048) NSA.
-- **`KT_GPU_PREFILL_THRESHOLD=0` (default) — fixes a server crash on large prompts.**
-  Prompts longer than the old default (1024) took kt‑kernel's GPU full‑prefill path,
-  whose W4AFP8 `create_weights` asserts on a `weight_loader` it isn't given →
-  `AssertionError` → SIGQUIT (both TP workers) → server down. A coding agent's first
-  request (system prompt + tool defs) trivially exceeds 1024 tokens, so it crashed on
-  connect. `0` disables that path; all prefill uses the proven partial CPU+GPU path.
-  Trade‑off: bulk **cold** prefill runs on the CPU experts (~74 tok/s); SGLang's
-  radix cache makes every follow‑up turn's prefill instant (a 12k prefix re‑prefills
-  in ~0.6 s), and decode is always full speed.
+- **`KT_GPU_PREFILL_THRESHOLD=2048` (default) — fast GPU bulk prefill.** A prefill
+  chunk with ≥ this many tokens streams **all 256 experts** to the GPUs and runs the
+  chunk through the cutlass W4A8 kernel, instead of computing the CPU experts on the
+  AVX‑512 path. Measured **~1.9× faster TTFT** on large prompts (2660 tokens: ~20 s
+  vs ~37 s on the CPU path), with **decode unaffected** (~14 tok/s) and output
+  bit‑coherent. It needs ~5 GB of free VRAM for a transient 256‑expert scratch layer
+  (fits at `GPU_EXPERTS=96` / 128k, `available_gpu_mem ≈ 8 GB`). Set
+  `KT_GPU_PREFILL_THRESHOLD=0` to fall back to pure CPU prefill (~74 tok/s; SGLang's
+  radix cache still makes follow‑up turns instant, a 12k prefix re‑prefills in ~0.6 s).
+
+  > Two prerequisites were fixed to enable this path (both checked in): (1) W4AFP8
+  > `create_weights` used to `assert` on a `weight_loader` kt‑kernel doesn't pass →
+  > `AssertionError`/SIGQUIT on any prompt over the threshold (this is the crash a
+  > coding agent hit on its first request); (2) the packed RAWINT4 CPU backend's
+  > `write_weights_to_buffer` (the routine that streams an expert's packed int4 +
+  > bf16 scales into the GPU staging buffer) was an upstream `"not yet implemented"`
+  > stub — implemented here as a direct copy of the on‑disk‑identical packed layout.
+  > **Rebuild the kernel** (`./install.sh build` with `CPUINFER_USE_CUDA=1`) to pick
+  > these up.
 
 > Tip: point your OpenAI‑compatible coding agent (e.g. `pi`, Continue, aider) at
 > `http://<host>:8000/v1` with model `GLM5.2`. Use **streaming** and a sane
