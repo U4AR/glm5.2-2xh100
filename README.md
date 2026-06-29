@@ -45,6 +45,7 @@ half the bytes (see BLOG.md).
 
 | File | Purpose |
 |---|---|
+| `run_fast.sh` | **High‑speed top‑K expert substitution** (~22 tok/s, top‑2 default) |
 | `run_server_int4.sh` | Launch the **INT4** server (the ~14.6 tok/s path) |
 | `run_server.sh` | Launch the **FP8** server (the 8‑bit path) |
 | `chat_ui.py` / `start_ui.sh` | Zero‑dep browser chat UI → OpenAI endpoint |
@@ -52,6 +53,7 @@ half the bytes (see BLOG.md).
 | `int4_scripts/` | Weight download / GPTQ repack / offline kernel tests |
 | `bench/decode_bench.sh` | Decode throughput benchmark |
 | `BLOG.md` | The full write‑up of the optimization journey |
+| `BLOG_TOP2_EXPERTS.md` | The top‑2 expert‑substitution study (~1.5× faster decode) |
 | `*_HANDOFF.md`, `PERF_CUDA_GRAPHS.md` | Deep‑dive engineering notes |
 
 The custom kt‑kernel build (with the packed‑INT4 CPU kernel) and three SGLang
@@ -102,6 +104,32 @@ bash run_server_int4.sh
 
 Boot takes ~2–3 min (loads INT4 experts from NVMe + CUDA‑graph capture). Wait for
 `The server is fired up and ready to roll!`, then the OpenAI API is live on `:8000`.
+
+### 2a‑fast. High‑speed mode — top‑2 expert substitution (~22 tok/s, default)
+
+For **~1.5× faster decode** (22 tok/s vs 14.7) with one command, use `run_fast.sh`.
+It keeps each token's genuinely most‑important experts and **substitutes the
+low‑weight tail with the best GPU‑resident experts**, so fewer experts hit the slow
+CPU path. The default keeps the **top‑2**:
+
+```bash
+./run_fast.sh            # KEEP=2 (top‑2)  → ~22 tok/s, ~1.5×   [default]
+KEEP=4 ./run_fast.sh     # safer quality   → ~18.5 tok/s, ~1.25× (no degeneration found)
+KEEP=0 ./run_fast.sh     # max speed       → ~29 tok/s, ~2×   (quality drift — not recommended)
+MODE=off ./run_fast.sh   # plain baseline  → 14.7 tok/s
+```
+
+It wraps `run_server_int4.sh` with the winning INT4 recipe and writes the reroute
+sentinel `/tmp/kt_topk_mode`. **Quality note:** `KEEP=2` is coherent on most tasks
+but can occasionally fall into a repetition loop on open‑ended generation; use
+`KEEP=4` if you need baseline‑equivalent quality. The full study, including how the
+degeneration was caught, is in **[BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md)**.
+
+| `KEEP` | decode | speedup | quality |
+|---:|---:|---:|---|
+| 4 | ~18.5 tok/s | 1.25× | clean |
+| **2** (default) | **~22 tok/s** | **1.49×** | mostly clean, rare loops |
+| 0 | ~29 tok/s | 1.98× | degenerates — avoid |
 
 ### 2b. Run the FP8 server (8‑bit alternative — ~8.7 tok/s, needs ~629 GB / swap)
 

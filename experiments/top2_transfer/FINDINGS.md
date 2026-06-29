@@ -1,3 +1,21 @@
+> ## ⚠️ SUPERSEDED — see [BLOG_TOP2_EXPERTS.md](../../BLOG_TOP2_EXPERTS.md)
+>
+> This file's headline conclusion ("expert placement is decode-speed-neutral") was
+> **wrong**. The `_kt_reroute_to_gpu` hook documented below lives in `glm4_moe.py`,
+> but GLM-5.2 (`GlmMoeDsaForCausalLM`) runs its MoE through **`deepseek_v2.py`** —
+> so this hook was **dead code that never executed**, and the "neutral" result was
+> baseline-vs-baseline.
+>
+> A working reroute (in `deepseek_v2.py`, `_kt_topk_experiment`) shows placement
+> **does** matter: keeping the true top-K experts and **substituting** the tail with
+> the best GPU-resident experts gives **1.25× (KEEP=4) to 1.5× (KEEP=2)** faster
+> decode, coherently. Use [`run_fast.sh`](../../run_fast.sh). Dropping the tail
+> (rather than substituting) is garbage; substituting all 8 (KEEP=0) hits ~2× but
+> degenerates. Full story + the methodology that caught the degeneration:
+> **[BLOG_TOP2_EXPERTS.md](../../BLOG_TOP2_EXPERTS.md)**. Original notes below for history.
+
+---
+
 # Experiment: "move the top-2 experts to GPU, route the other 6 from GPU"
 
 **Branch:** `experiment/top2-expert-transfer`  •  **Date:** 2026-06-29  •  **Model:** GLM-5.2 W4AFP8
