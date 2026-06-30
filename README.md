@@ -91,10 +91,10 @@ above). So setup is: install KTransformers into a venv, then overlay this repo's
 
 For a **bit-exact** rebuild, the validated component versions are: Python **3.12.9**,
 torch **2.9.1+cu128**, transformers **5.12.1**, CUDA **12.8**, `kt-kernel` **0.6.2.post3**,
-KTransformers fork **U4AR/ktransformers @ `f66c5ea`** with the SGLang submodule pinned to
-**kvcache-ai/sglang @ `51032b712`**. The full freeze is in
-[`requirements-lock.txt`](requirements-lock.txt). (The "Phala" you may have seen is the
-*weights* — `PhalaCloud/GLM-5.2-W4AFP8` — not the SGLang code.)
+KTransformers branch **`U4AR/ktransformers` `glm5.2-2xh100-stable` (commit `8d83454`)**
+with the SGLang submodule pinned to **kvcache-ai/sglang @ `51032b712`**. The full freeze
+is in [`requirements-lock.txt`](requirements-lock.txt). (The "Phala" you may have seen is
+the *weights* — `PhalaCloud/GLM-5.2-W4AFP8` — not the SGLang code.)
 
 ```bash
 # 1. Clone this repo (anywhere). Its tracked patches come down with it.
@@ -103,16 +103,16 @@ cd RunGLM
 export REPO=$(pwd)            # used in the examples below
 
 # 2. Get the KTransformers sources (SGLang-kt + kt-kernel). It is NOT committed
-#    here (gitignored). For a BIT-EXACT reproduction of this box you must use the
-#    pinned fork + commit below — kvcache-ai/ktransformers `main` has moved on and
-#    this exact commit lives only on the U4AR fork. `--recursive` pulls the SGLang
-#    submodule already pinned to kvcache-ai/sglang @ 51032b712.
-git clone --recursive https://github.com/U4AR/ktransformers.git ktransformers
-cd ktransformers
-git checkout f66c5eaa92cc70bf69c2dd67a0bf2438c85d7fd2   # = failed-be/top2-cudagraph-20260630
-git submodule update --init --recursive                 # re-pin sglang to 51032b712
-cd "$REPO"
-#    (NOT bit-exact, just "latest upstream": clone kvcache-ai/ktransformers main.)
+#    here (gitignored). The GLM-5.2 packed-INT4 kernel + W4AFP8 loader are fork-only
+#    work (not on kvcache-ai/ktransformers main), so use the dedicated stable branch
+#    below. `--recursive` pulls the SGLang submodule pinned to kvcache-ai/sglang
+#    @ 51032b712.
+git clone --recursive -b glm5.2-2xh100-stable \
+  https://github.com/U4AR/ktransformers.git ktransformers
+cd ktransformers && git submodule update --init --recursive && cd "$REPO"
+#    glm5.2-2xh100-stable = commit 8d83454, the shipped packed-INT4 + GPU-prefill
+#    state (13.5+ tok/s). Do NOT use failed-be/* branches — those are abandoned
+#    streaming experiments.
 
 # 3. Create the Python 3.12 venv the launchers expect at ./.venv
 python3.12 -m venv .venv
