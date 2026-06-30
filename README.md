@@ -83,38 +83,57 @@ These steps build the Python environment once. All paths below are **relative to
 repo**, so clone it anywhere — every launcher resolves `.venv`, `chat_template.jinja`,
 etc. from its own location.
 
+**This does not use stock `sglang` from PyPI.** It uses **KTransformers** — the
+`kvcache-ai/ktransformers` project, which bundles its *own* SGLang fork (the
+`kvcache-ai/sglang` submodule, installed as the package **`sglang-kt`**) plus the
+`kt-kernel` heterogeneous CPU+GPU MoE engine. On top of that, this repo carries a
+handful of source patches (the INT4/NSA/MTP fixes listed above). So setup is: install
+KTransformers into a venv, then overlay this repo's patches.
+
 ```bash
-# 1. Clone (anywhere). The tracked SGLang/kt-kernel patches come down with it.
+# 1. Clone this repo (anywhere). Its tracked patches come down with it.
 git clone <this-repo-url> RunGLM
 cd RunGLM
 export REPO=$(pwd)            # used in the examples below
 
-# 2. Create the Python 3.12 venv that the launchers expect at ./.venv
+# 2. Get the KTransformers fork (the SGLang-kt + kt-kernel sources). It is NOT
+#    committed here (gitignored) — clone it into ./ktransformers WITH submodules
+#    (the bundled SGLang fork is a git submodule).
+git clone --recursive https://github.com/kvcache-ai/ktransformers.git ktransformers
+#    (this repo was validated against the U4AR/ktransformers fork; use that remote
+#     if you need the exact streaming/MTP work-in-progress branches.)
+
+# 3. Create the Python 3.12 venv the launchers expect at ./.venv
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 
-# 3. Install SGLang (with kt-kernel support) + PyTorch (cu128 build) + deps.
-#    This was validated on torch 2.9.1+cu128 / transformers 5.12.1 / kt-kernel 0.6.2.
-pip install "sglang[all]" huggingface_hub hf_transfer
-
-# 4. Build kt-kernel for YOUR CPU (compiles the AVX-512 / packed-INT4 MoE kernels).
-#    The source fork is vendored under ./ktransformers (or clone it separately).
-cd ktransformers/kt-kernel
-CPUINFER_USE_CUDA=1 ./install.sh build        # auto-detects AVX-512 VNNI/BF16/VBMI
-cd "$REPO"
+# 4. One-click install: submodules -> SGLang fork (sglang-kt) -> kt-kernel,
+#    compiled for YOUR CPU (auto-detects AVX-512 VNNI/BF16/VBMI). Needs CUDA 12.8+
+#    toolkit + a working nvcc. Validated on torch 2.9.1+cu128 / transformers 5.12.1
+#    / kt-kernel 0.6.2.post3.
+CPUINFER_USE_CUDA=1 ./ktransformers/install.sh        # `all` is the default
+#    (kt-kernel only:  ./ktransformers/install.sh kt-kernel ;
+#     for a different/older target CPU build with --manual — see install.sh -h)
 
 # 5. kt-kernel links hwloc + libnuma. If they are not on your system linker path,
 #    install them (e.g. `apt install libhwloc-dev libnuma-dev`) or build them into
 #    the venv prefix, and make sure $REPO/.venv/bin/activate appends their dir to
 #    LD_LIBRARY_PATH — the launchers rely on `source .venv/bin/activate` exporting it.
 
-# 6. Restore the tracked patches in case step 3 overwrote them with stock files.
+# 6. Overlay THIS repo's patches on top of the freshly installed sglang-kt /
+#    kt-kernel (they live in-tree under .venv/... and were just overwritten).
 git checkout -- .venv
 
 # 7. Sanity check.
 kt doctor
 ```
+
+> Step 6 matters: `install.sh` writes a clean `sglang-kt` + `kt-kernel` into `.venv`;
+> `git checkout -- .venv` then restores the INT4-GPU remap, NSA, and MTP-under-CUDA-graph
+> fixes this repo tracks on top of them. The compiled `kt_kernel_ext*.so` tracked here
+> was built for an AMD Zen4 (AVX-512 VNNI, no AMX) CPU — if yours differs, keep the one
+> step 4 just built for your machine instead of restoring the tracked `.so`.
 
 > The launchers hard-code `VENV=.../.venv` relative to the repo and `source` it on
 > startup, so once `./.venv` exists you don't activate it by hand. **Always** go
