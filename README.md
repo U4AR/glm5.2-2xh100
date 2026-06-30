@@ -14,7 +14,10 @@ separation) and ships with a zero‑dependency browser chat UI.
 
 ---
 
-## Results (this box)
+## Results
+
+Measured on a 2×H100‑NVL / AMD EPYC (Zen4) box; expect similar on comparable hardware
+(see [Hardware requirements](#hardware-requirements)):
 
 | Precision | CPU experts | GPU experts/layer | RAM needed | Decode |
 |---|---|---:|---:|---:|
@@ -35,9 +38,12 @@ half the bytes (see BLOG.md).
 - **CPU:** x86‑64 with **AVX‑512 VNNI** (this was tuned on an AMD EPYC 9V84 / Zen4,
   80 cores, 2 NUMA nodes). The packed‑INT4 kernel uses the AVX‑512 EVEX VNNI form;
   it does **not** require Intel AMX or 256‑bit `avx_vnni`.
-- **RAM:** **~250 GB** for the INT4 config at `GPU_EXPERTS=104`. The FP8 config needs
-  ~629 GB or NVMe swap.
-- **Disk:** ~380 GB of fast scratch for the INT4 expert weights.
+- **RAM:** **~250 GB** for the INT4 config at `GPU_EXPERTS=104` (this is the binding
+  constraint — anything ≥250 GB works; more lets you push more experts to CPU). The FP8
+  config needs ~629 GB or NVMe swap.
+- **Disk:** ~380 GB of fast scratch (NVMe) for the INT4 expert weights.
+- **Software:** Linux, NVIDIA driver ≥ 575 / CUDA 12.8+, Python 3.12. The Python
+  environment (SGLang fork + kt‑kernel + the patches below) is built in [Setup](#setup).
 
 ---
 
@@ -56,44 +62,89 @@ half the bytes (see BLOG.md).
 | `BLOG_TOP2_EXPERTS.md` | The top‑2 expert‑substitution study (~1.5× faster decode) |
 | `*_HANDOFF.md`, `PERF_CUDA_GRAPHS.md` | Deep‑dive engineering notes |
 
-The custom kt‑kernel build (with the packed‑INT4 CPU kernel) and three SGLang
-patches are checked in under `.venv/` so the validated environment is reproducible:
+The Python environment is **not** committed (it's ~tens of GB), but the source‑level
+patches that make this build work **are** tracked in‑tree under
+`.venv/lib/python3.12/site-packages/` so [Setup](#setup) can restore them onto a fresh
+venv:
 
-- `kt_kernel_ext*.so` — custom build, symbol `AVX512RawInt4Packed_MOE`.
+- `kt_kernel/kt_kernel_ext*.so` — the custom kt‑kernel build, symbol
+  `AVX512RawInt4Packed_MOE` (rebuild on your own CPU; see Setup).
 - `sglang/.../quantization/w4afp8.py` — the `topk_ids == -1` remap fix for INT4 GPU
   experts under `ep_size=1` (without it the GPU MoE NaNs → garbage).
-- `sglang/.../models/deepseek_v2.py`, `.../attention/nsa_backend.py` — supporting fixes.
+- `sglang/.../models/deepseek_v2.py`, `.../attention/nsa_backend.py`,
+  `.../moe/kt_ep_wrapper.py`, `.../model_executor/cuda_graph_runner.py`,
+  `.../attention/triton_backend.py` — supporting / MTP‑under‑CUDA‑graph fixes.
+
+---
+
+## Setup
+
+These steps build the Python environment once. All paths below are **relative to the
+repo**, so clone it anywhere — every launcher resolves `.venv`, `chat_template.jinja`,
+etc. from its own location.
+
+```bash
+# 1. Clone (anywhere). The tracked SGLang/kt-kernel patches come down with it.
+git clone <this-repo-url> RunGLM
+cd RunGLM
+export REPO=$(pwd)            # used in the examples below
+
+# 2. Create the Python 3.12 venv that the launchers expect at ./.venv
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+
+# 3. Install SGLang (with kt-kernel support) + PyTorch (cu128 build) + deps.
+#    This was validated on torch 2.9.1+cu128 / transformers 5.12.1 / kt-kernel 0.6.2.
+pip install "sglang[all]" huggingface_hub hf_transfer
+
+# 4. Build kt-kernel for YOUR CPU (compiles the AVX-512 / packed-INT4 MoE kernels).
+#    The source fork is vendored under ./ktransformers (or clone it separately).
+cd ktransformers/kt-kernel
+CPUINFER_USE_CUDA=1 ./install.sh build        # auto-detects AVX-512 VNNI/BF16/VBMI
+cd "$REPO"
+
+# 5. kt-kernel links hwloc + libnuma. If they are not on your system linker path,
+#    install them (e.g. `apt install libhwloc-dev libnuma-dev`) or build them into
+#    the venv prefix, and make sure $REPO/.venv/bin/activate appends their dir to
+#    LD_LIBRARY_PATH — the launchers rely on `source .venv/bin/activate` exporting it.
+
+# 6. Restore the tracked patches in case step 3 overwrote them with stock files.
+git checkout -- .venv
+
+# 7. Sanity check.
+kt doctor
+```
+
+> The launchers hard-code `VENV=.../.venv` relative to the repo and `source` it on
+> startup, so once `./.venv` exists you don't activate it by hand. **Always** go
+> through the launchers (or `source .venv/bin/activate`) — kt‑kernel needs
+> `LD_LIBRARY_PATH` to find hwloc/libnuma.
 
 ---
 
 ## Quickstart
 
-### 0. Activate the environment
-
-```bash
-cd /data/models/RunGLM
-source .venv/bin/activate     # also exports LD_LIBRARY_PATH for kt-kernel (hwloc/numa)
-```
-
-> Always `source` the venv — kt‑kernel links hwloc/libnuma from the venv prefix.
-
 ### 1. Get the weights
 
-INT4 path uses Phala's W4AFP8 export (4‑bit experts + FP8 non‑experts), ~373 GB:
+INT4 path uses Phala's W4AFP8 export (4‑bit experts + FP8 non‑experts), ~373 GB.
+Point `WEIGHTS` at fast scratch (NVMe) with ~380 GB free:
 
 ```bash
-python int4_scripts/download_w4afp8.py        # -> /cache/nvme0/models/GLM-5.2-W4AFP8
+export WEIGHTS=/path/to/nvme/GLM-5.2-W4AFP8     # default: ./weights/GLM-5.2-W4AFP8
+HF_HUB_ENABLE_HF_TRANSFER=1 python int4_scripts/download_w4afp8.py
 ```
 
-FP8 path uses the FP8 checkpoint at `/data/models/GLM-5.2-FP8` (also the source of
-`chat_template.jinja`).
+The FP8 path instead uses the original GLM‑5.2 FP8 checkpoint; download it to a dir of
+your choice and set `FP8_WEIGHTS` to it (it's also a source of `chat_template.jinja`,
+already vendored in this repo).
 
 ### 2a. Run the INT4 server (recommended — ~14.6 tok/s, ~250 GB RAM)
 
 ```bash
-MODEL=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+MODEL=$WEIGHTS \
 KT_METHOD=RAWINT4 \
-KT_WEIGHT_PATH=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+KT_WEIGHT_PATH=$WEIGHTS \
 KT_RAWINT4_BACKEND=avx512_packed \
 GPU_EXPERTS=104 \
 MAX_TOTAL_TOKENS=4096 \
@@ -134,7 +185,7 @@ degeneration was caught, is in **[BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md)**.
 ### 2b. Run the FP8 server (8‑bit alternative — ~8.7 tok/s, needs ~629 GB / swap)
 
 ```bash
-GPU_EXPERTS=48 bash run_server.sh
+MODEL=$FP8_WEIGHTS KT_WEIGHT_PATH=$FP8_WEIGHTS GPU_EXPERTS=48 bash run_server.sh
 ```
 
 ### 2c. Long‑context mode (for coding agents / long chats)
@@ -143,9 +194,9 @@ The quickstart above uses a tiny 4096‑token window. For a coding‑agent backe
 long conversations, run with a real context window:
 
 ```bash
-MODEL=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+MODEL=$WEIGHTS \
 KT_METHOD=RAWINT4 \
-KT_WEIGHT_PATH=/cache/nvme0/models/GLM-5.2-W4AFP8 \
+KT_WEIGHT_PATH=$WEIGHTS \
 KT_RAWINT4_BACKEND=avx512_packed \
 GPU_EXPERTS=96 \
 CONTEXT_LENGTH=131072 \

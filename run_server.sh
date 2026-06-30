@@ -4,13 +4,16 @@
 # This box: 2x H100 NVL (96GB), AMD EPYC 9V84 (80 cores, 2 NUMA nodes), 629GB RAM.
 set -euo pipefail
 
-VENV=/data/models/RunGLM/.venv
-MODEL=/data/models/GLM-5.2-FP8
+# Resolve repo-relative paths from this script's location (clone anywhere).
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV="$REPO/.venv"
+# Point MODEL at the GLM-5.2 FP8 checkpoint; override via the MODEL env var.
+MODEL=${MODEL:-$REPO/weights/GLM-5.2-FP8}
 
 # OpenAI-compatible /v1/chat/completions needs a chat template. The FP8 dir ships
 # chat_template.jinja but not as tokenizer.chat_template, so point sglang at the
 # repo-local copy. Override CHAT_TEMPLATE= to disable.
-CHAT_TEMPLATE=${CHAT_TEMPLATE:-/data/models/RunGLM/chat_template.jinja}
+CHAT_TEMPLATE=${CHAT_TEMPLATE:-$REPO/chat_template.jinja}
 
 source "$VENV/bin/activate"   # also exports LD_LIBRARY_PATH=$VENV/lib (hwloc/numa)
 
@@ -22,7 +25,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True   # older name, harmless
 # deep_gemm.get_num_sms() -> needs DeepGEMM imported. So graphs ON => DeepGEMM ON.
 export TOKENIZERS_PARALLELISM=false
 # keep HF from touching the near-full root disk
-export HF_HOME=/data/models/RunGLM/.hf
+export HF_HOME=${HF_HOME:-$REPO/.hf}
 mkdir -p "$HF_HOME"
 
 # --- tunables (the two knobs to adjust on OOM) -----------------------------

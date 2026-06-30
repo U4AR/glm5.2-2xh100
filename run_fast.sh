@@ -65,9 +65,9 @@ else
 fi
 
 # --- the winning INT4 recipe (see README) ----------------------------------
-export MODEL=${MODEL:-/cache/nvme0/models/GLM-5.2-W4AFP8}
+export MODEL=${MODEL:-$(pwd)/weights/GLM-5.2-W4AFP8}
 export KT_METHOD=${KT_METHOD:-RAWINT4}
-export KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-/cache/nvme0/models/GLM-5.2-W4AFP8}
+export KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
 export KT_RAWINT4_BACKEND=${KT_RAWINT4_BACKEND:-avx512_packed}
 export GPU_EXPERTS=${GPU_EXPERTS:-104}
 export MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-4096}

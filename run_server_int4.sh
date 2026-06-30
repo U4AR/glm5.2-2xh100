@@ -13,22 +13,25 @@
 # This box: 2x H100 NVL (96GB), AMD EPYC 9V84 (80c, 2 NUMA, AVX512 no-AMX), 629GB.
 set -euo pipefail
 
-VENV=/data/models/RunGLM/.venv
+# Resolve repo-relative paths from this script's location (clone anywhere).
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV="$REPO/.venv"
 # sglang reads non-expert (block-FP8/BF16) weights from MODEL; kt reads the INT4
 # routed experts from KT_WEIGHT_PATH (separate dir for the GPTQ-repacked experts).
 # WINNING RECIPE (2026-06-25, ~10.1-10.6 tok/s decode > 8.7 FP8 baseline):
 #   int4 GPU experts (MODEL=W4AFP8 -> W4AFp8MoEMethod cutlass) + FP8 CPU experts
 #   (fast AVX512) + GPU_EXPERTS=104 (88GB/card). Needs the w4afp8.py -1-remap fix.
 #   GPTQ_INT4 CPU (nvme1) boots faster (~3min vs ~50min) but is AVX2-slow (~6.4).
-MODEL=${MODEL:-/cache/nvme0/models/GLM-5.2-W4AFP8}
+# Point MODEL/KT_WEIGHT_PATH at your downloaded weights (default: ./weights/...).
+MODEL=${MODEL:-$REPO/weights/GLM-5.2-W4AFP8}
 KT_METHOD=${KT_METHOD:-FP8}
-KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-/data/models/GLM-5.2-FP8}
+KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
 
 # OpenAI-compatible /v1/chat/completions needs a chat template. The W4AFP8 dir
 # ships no tokenizer.chat_template, so point sglang at the repo-local GLM jinja
 # (renders the reasoning-effort system prompt + tool-call format the glm45/glm47
 # parsers expect). Override CHAT_TEMPLATE= to disable.
-CHAT_TEMPLATE=${CHAT_TEMPLATE:-/data/models/RunGLM/chat_template.jinja}
+CHAT_TEMPLATE=${CHAT_TEMPLATE:-$REPO/chat_template.jinja}
 
 source "$VENV/bin/activate"
 
@@ -36,7 +39,7 @@ source "$VENV/bin/activate"
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
-export HF_HOME=/data/models/RunGLM/.hf
+export HF_HOME=${HF_HOME:-$REPO/.hf}
 mkdir -p "$HF_HOME"
 # RAWINT4 backend on this no-AMX EPYC: default selection picks AMXInt4_KGroup_MOE
 # (avx512_bf16-compiled). If it faults with an illegal instruction, force AVX2:
