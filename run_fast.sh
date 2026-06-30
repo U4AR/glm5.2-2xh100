@@ -18,27 +18,33 @@
 # The mechanism is a tiny logical reroute (sglang deepseek_v2.py DeepseekV2MoE);
 # it is gated by the sentinel file /tmp/kt_topk_mode so no rebuild is needed.
 #
-# Usage:
-#   ./run_fast.sh                 # KEEP=2 (top-2), the high-speed default
-#   KEEP=4 ./run_fast.sh          # safer quality, 1.25x
-#   KEEP=0 ./run_fast.sh          # max speed, also enables the CPU-skip (lower quality)
-#   MODE=off ./run_fast.sh        # disable substitution -> plain baseline
-#   MTP=1 ./run_fast.sh           # + NEXTN/MTP speculative decode (depth-3) on top
+# DEFAULT (2026-06-30): top-2 substitution + NEXTN/MTP depth-3 = ~34 tok/s.
+#   ./run_fast.sh                 # KEEP=2 + MTP depth-3  -> 34.1 tok/s  (DEFAULT)
+#   MTP=0 ./run_fast.sh           # KEEP=2, no MTP        -> 22.0 tok/s
+#   KEEP=4 ./run_fast.sh          # safer quality + MTP   -> ~ (1.25x base + MTP)
+#   KEEP=0 ./run_fast.sh          # max speed + MTP       -> ~40 tok/s, quality drift
+#   MODE=off ./run_fast.sh        # plain routing + MTP   -> 17.5 tok/s
+#   MODE=off MTP=0 ./run_fast.sh  # plain baseline        -> 14.7 tok/s (reference)
 #
-# MTP (2026-06-30): MTP now works UNDER CUDA GRAPHS at any KEEP (the kt verify-
-# batch buffer bug is fixed in cuda_graph_runner.py). Stacks with top-2:
-#   KEEP=2          no-MTP   22.0
-#   KEEP=2 MTP=1    depth-1  29.8   accept 1.7
-#   KEEP=2 MTP=1    depth-3  34.1   accept 2.5   <- peak; MTP=1 default
-#   KEEP=2 MTP=1    depth-5  28.9   accept 2.6   (verify cost > accept gain)
-#   normal MTP=1    depth-3  ~      also coherent (14.7 base). depth-3 is the sweet spot.
+# Decode tok/s, 2x H100 NVL, TP2, GPU_EXPERTS=104 (all coherent under CUDA graphs
+# except KEEP=0 which drifts). MTP works UNDER CUDA GRAPHS at any KEEP now — the kt
+# verify-batch buffer bug is fixed in cuda_graph_runner.py (see BLOG_MTP_CUDAGRAPH.md).
+#
+#   config                     tok/s   gain vs its no-MTP base   accept
+#   plain baseline (no MTP)     14.7    reference                 1.0
+#   plain + MTP depth-3         17.5    +19%                      ~2.0
+#   KEEP=2 (top-2, no MTP)      22.0    1.49x over baseline       1.0
+#   KEEP=2 + MTP depth-1        29.8    +36% over KEEP=2          1.7
+#   KEEP=2 + MTP depth-3        34.1    +55% over KEEP=2  <-DEF   2.5
+#   KEEP=2 + MTP depth-5        28.9    (verify cost > gain)      2.6
+#   KEEP=0 + MTP depth-3       ~40      fastest, quality drift    ~2.0
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
 
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
 MODE=${MODE:-sub}               # sub = substitute the tail; off = baseline
-MTP=${MTP:-0}                   # 1 = enable NEXTN/MTP speculative decode (depth-3)
+MTP=${MTP:-1}                   # 1 = NEXTN/MTP speculative decode (depth-3); DEFAULT ON
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then

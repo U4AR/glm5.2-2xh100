@@ -15,10 +15,28 @@ cd /data/models/RunGLM
 git fetch fast && git reset --hard fast/main          # 1. restore shipped state (41cb0a2)
 rm -f /tmp/kt_topk_mode /tmp/kt_skip_cpu              #    clear stale sentinels
 HF_HUB_ENABLE_HF_TRANSFER=1 python int4_scripts/download_w4afp8.py   # 2. weights (~373GB, ~3min)
-./run_fast.sh                                         # 3. launch top-2 (KEEP=2)
+./run_fast.sh                                         # 3. launch top-2 + MTP depth-3 (DEFAULT)
 # wait ~4-5 min for boot, then verify:
-python3 bench/perf_probe/decbench.py 200 5            # ~21-22 tok/s
+python3 bench/perf_probe/decbench.py 200 5            # ~34 tok/s
 ```
+
+**Default is now top-2 (KEEP=2) + NEXTN/MTP depth-3 = ~34 tok/s, coherent.** MTP
+works under CUDA graphs at any KEEP since the 2026-06-30 fix (see
+[BLOG_MTP_CUDAGRAPH.md](BLOG_MTP_CUDAGRAPH.md)). Operating points
+(decode tok/s, all coherent under graphs except KEEP=0):
+
+| command | what | tok/s |
+|---|---|---|
+| `./run_fast.sh` | KEEP=2 + MTP depth-3 (**default**) | **34.1** |
+| `MTP=0 ./run_fast.sh` | KEEP=2, no MTP | 22.0 |
+| `MODE=off ./run_fast.sh` | plain routing + MTP depth-3 | 17.5 |
+| `MODE=off MTP=0 ./run_fast.sh` | plain baseline (reference) | 14.7 |
+| `KEEP=0 ./run_fast.sh` | max speed + MTP, quality drift | ~40 |
+| `SPEC_STEPS=1 SPEC_DRAFT_TOKENS=2 ./run_fast.sh` | MTP depth-1 | 29.8 |
+
+MTP gains: +19% on plain routing (14.7→17.5), **+55% on top-2 (22→34.1)** — top-2
+gains more because fewer CPU experts ⇒ cheaper verify. depth-3 is the peak; depth-5
+regresses (28.9) as verify cost outruns the accept gain on this CPU-bound box.
 
 ---
 
