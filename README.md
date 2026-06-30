@@ -1,32 +1,71 @@
-# RunGLM — GLM‑5.2 (754B) on 2×H100 at 14.6 tok/s
+# RunGLM — GLM‑5.2 (754B) on 2×H100 at up to ~40 tok/s
 
 Serve **GLM‑5.2**, a 754B‑parameter MoE model, on a single dual‑H100 box using
 **SGLang + KTransformers (kt‑kernel)** heterogeneous CPU+GPU Mixture‑of‑Experts.
-A custom packed‑INT4 AVX‑512 CPU kernel + INT4 GPU experts, with dense MLA attention,
-reach **~14.6 tok/s** single‑stream decode (coherent out to 12k+ tokens) while
-fitting the CPU‑side experts in **~250 GB of RAM**.
+A custom packed‑INT4 AVX‑512 CPU kernel + INT4 GPU experts, **top‑2 expert
+substitution**, and **NEXTN/MTP speculative decode** push single‑stream decode to
+**~40 tok/s** while fitting the CPU‑side experts in **~250 GB of RAM**.
 
 The server is **OpenAI‑compatible** (`/v1/chat/completions`, streaming, reasoning
 separation) and ships with a zero‑dependency browser chat UI.
 
+## TL;DR — run the fast server
+
+```bash
+./run_fast.sh          # DEFAULT: top‑2 substitution + MTP depth‑3  → ~34 tok/s bench
+                       # (~38–43 tok/s typical interactive, peaks ~50)
+./start_ui.sh          # browser chat UI on :8080  → open the forwarded port
+```
+
+`run_fast.sh` is the recommended way to run this. It defaults to the fastest coherent
+config — the **top‑2 + MTP** mode that this repo's currently‑deployed server runs.
+Everything else below (the plain INT4 path, the FP8 path) is slower and is kept for
+comparison / lower‑VRAM boxes.
+
 > The full engineering story — what was tried, what worked, and why — is in
-> **[BLOG.md](BLOG.md)**.
+> **[BLOG.md](BLOG.md)**, with focused write‑ups in
+> [BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md) (the top‑2 trick) and
+> [BLOG_MTP_CUDAGRAPH.md](BLOG_MTP_CUDAGRAPH.md) (MTP under CUDA graphs).
 
 ---
 
-## Results
+## Results — speed vs. the top‑N knob
 
-Measured on a 2×H100‑NVL / AMD EPYC (Zen4) box; expect similar on comparable hardware
-(see [Hardware requirements](#hardware-requirements)):
+The single biggest speed lever is **`KEEP`** (a.k.a. top‑N): how many of each token's
+genuinely most‑important experts to keep on the slow CPU path. The rest of the 8 routed
+experts are **substituted with the best GPU‑resident experts**, so fewer experts hit
+the CPU. Lower `KEEP` = faster, with a quality trade‑off at the extreme. **MTP**
+(NEXTN speculative decode, depth‑3) stacks on top for a further ~1.5×.
 
-| Precision | CPU experts | GPU experts/layer | RAM needed | Decode |
+Measured on 2×H100‑NVL / AMD EPYC Zen4, `GPU_EXPERTS=104`, 5‑run median decode:
+
+| Command | `KEEP` (top‑N) | MTP | Decode | vs. baseline | Quality |
+|---|:--:|:--:|---:|:--:|---|
+| `./run_fast.sh` **(default)** | **2** | depth‑3 | **~34 tok/s** | **2.3×** | mostly clean; rare loops |
+| `KEEP=4 ./run_fast.sh` | 4 | depth‑3 | ~29 tok/s (est.) | 2.0× | clean (baseline‑equivalent) |
+| `KEEP=0 ./run_fast.sh` | 0 | depth‑3 | ~40 tok/s | 2.7× | drifts — not recommended |
+| `MTP=0 ./run_fast.sh` | 2 | off | ~22 tok/s | 1.5× | mostly clean |
+| `KEEP=4 MTP=0 ./run_fast.sh` | 4 | off | ~18.5 tok/s | 1.25× | clean |
+| `MODE=off ./run_fast.sh` | — | depth‑3 | ~17.5 tok/s | 1.2× | clean (no substitution) |
+| `MODE=off MTP=0 ./run_fast.sh` | — | off | ~14.7 tok/s | 1.0× | clean (plain INT4 baseline) |
+
+Interactive throughput on the live server (`GPU_EXPERTS=96`, 128k context, warm) runs
+**~38–43 tok/s** with peaks to ~50 (MTP accept‑length ~2.7–3.9). Bench the exact
+config on your box with `bench/decode_bench.sh`.
+
+> **Quality note:** `KEEP=2` (the default) is coherent on the vast majority of prompts
+> but can occasionally fall into a repetition loop on open‑ended generation. If you need
+> guaranteed baseline‑equivalent quality, use `KEEP=4`. `KEEP=0` is the speed ceiling
+> but degenerates — don't use it for real output. Details in
+> [BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md).
+
+Underlying precision options (both serve the same model quality; INT4 is faster **and**
+needs ~half the RAM since the CPU‑expert path is memory‑bandwidth bound):
+
+| Precision | CPU experts | GPU experts/layer | RAM needed | Plain decode |
 |---|---|---:|---:|---:|
-| **INT4 (recommended)** | packed RAWINT4 (AVX‑512 VNNI) | 96–104 | **~250 GB** | **~14.6 tok/s** (dense MLA) |
+| **INT4 (default)** | packed RAWINT4 (AVX‑512 VNNI) | 96–104 | **~250 GB** | ~14.7 tok/s (before top‑2/MTP) |
 | FP8 ("8‑bit") | block‑FP8 | 48 | ~629 GB (or NVMe swap) | ~8.7 tok/s |
-
-Both serve the same model quality; the INT4 path is faster **and** needs roughly
-half the RAM, because the CPU‑expert path is memory‑bandwidth bound and INT4 moves
-half the bytes (see BLOG.md).
 
 ---
 
@@ -51,8 +90,8 @@ half the bytes (see BLOG.md).
 
 | File | Purpose |
 |---|---|
-| `run_fast.sh` | **High‑speed top‑K expert substitution** (~22 tok/s, top‑2 default) |
-| `run_server_int4.sh` | Launch the **INT4** server (the ~14.6 tok/s path) |
+| `run_fast.sh` | **The recommended launcher** — top‑2 substitution + MTP depth‑3 (~34–43 tok/s) |
+| `run_server_int4.sh` | Underlying **INT4** launcher (plain baseline ~14.7 tok/s; `run_fast.sh` wraps it) |
 | `run_server.sh` | Launch the **FP8** server (the 8‑bit path) |
 | `chat_ui.py` / `start_ui.sh` | Zero‑dep browser chat UI → OpenAI endpoint |
 | `chat_template.jinja` | GLM‑5.2 chat template (wired into both launchers) |
@@ -182,59 +221,58 @@ The FP8 path instead uses the original GLM‑5.2 FP8 checkpoint; download it to 
 your choice and set `FP8_WEIGHTS` to it (it's also a source of `chat_template.jinja`,
 already vendored in this repo).
 
-### 2a. Run the INT4 server (recommended — ~14.6 tok/s, ~250 GB RAM)
+### 2. Run the fast server (recommended — top‑2 + MTP, ~34–43 tok/s)
 
 ```bash
-MODEL=$WEIGHTS \
-KT_METHOD=RAWINT4 \
-KT_WEIGHT_PATH=$WEIGHTS \
-KT_RAWINT4_BACKEND=avx512_packed \
-GPU_EXPERTS=104 \
-MAX_TOTAL_TOKENS=4096 \
+./run_fast.sh                       # DEFAULT: KEEP=2 + MTP depth‑3
+```
+
+Boot takes ~2–4 min (loads INT4 experts from NVMe + CUDA‑graph capture + MTP draft
+warmup). Wait for `The server is fired up and ready to roll!`, then the OpenAI API is
+live on `:8000`. `run_fast.sh` wraps `run_server_int4.sh` with the winning INT4 recipe,
+writes the top‑K reroute sentinel `/tmp/kt_topk_mode`, and enables NEXTN/MTP.
+
+**Change the top‑N knob** (and stack MTP on/off) — see the **Results** speed table
+above for the numbers:
+
+```bash
+./run_fast.sh                 # KEEP=2 + MTP   → ~34 tok/s   [default, recommended]
+KEEP=4 ./run_fast.sh          # safer quality  → ~29 tok/s   (baseline‑equivalent)
+KEEP=0 ./run_fast.sh          # max speed      → ~40 tok/s   (quality drifts — avoid)
+MTP=0 ./run_fast.sh           # top‑2, no MTP  → ~22 tok/s
+MODE=off ./run_fast.sh        # plain INT4 + MTP → ~17.5 tok/s
+MODE=off MTP=0 ./run_fast.sh  # plain INT4 baseline → ~14.7 tok/s
+```
+
+You can switch `KEEP` live without a restart by rewriting the sentinel, e.g.
+`printf sub4 > /tmp/kt_topk_mode` (the worker re‑reads it per request).
+
+### 2b. Production config — long context + chat UI (what the live server runs)
+
+The default boots a small 4096‑token window for benchmarking. The deployed server (the
+one behind the chat UI) runs a real 128k context for coding agents and long chats, at
+`GPU_EXPERTS=96` so the bigger KV pool fits:
+
+```bash
+GPU_EXPERTS=96 \
+CONTEXT_LENGTH=131072 \
+MAX_TOTAL_TOKENS=131072 \
 MEM_FRACTION=0.94 \
-CPUINFER=72 \
-bash run_server_int4.sh
+./run_fast.sh                       # top‑2 + MTP, 128k context  → ~38–43 tok/s interactive
+
+./start_ui.sh                       # chat UI on :8080 (proxies → :8000)
 ```
 
-Boot takes ~2–3 min (loads INT4 experts from NVMe + CUDA‑graph capture). Wait for
-`The server is fired up and ready to roll!`, then the OpenAI API is live on `:8000`.
-
-### 2a‑fast. High‑speed mode — top‑2 expert substitution (~22 tok/s, default)
-
-For **~1.5× faster decode** (22 tok/s vs 14.7) with one command, use `run_fast.sh`.
-It keeps each token's genuinely most‑important experts and **substitutes the
-low‑weight tail with the best GPU‑resident experts**, so fewer experts hit the slow
-CPU path. The default keeps the **top‑2**:
-
-```bash
-./run_fast.sh            # KEEP=2 (top‑2)  → ~22 tok/s, ~1.5×   [default]
-KEEP=4 ./run_fast.sh     # safer quality   → ~18.5 tok/s, ~1.25× (no degeneration found)
-KEEP=0 ./run_fast.sh     # max speed       → ~29 tok/s, ~2×   (quality drift — not recommended)
-MODE=off ./run_fast.sh   # plain baseline  → 14.7 tok/s
-```
-
-It wraps `run_server_int4.sh` with the winning INT4 recipe and writes the reroute
-sentinel `/tmp/kt_topk_mode`. **Quality note:** `KEEP=2` is coherent on most tasks
-but can occasionally fall into a repetition loop on open‑ended generation; use
-`KEEP=4` if you need baseline‑equivalent quality. The full study, including how the
-degeneration was caught, is in **[BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md)**.
-
-| `KEEP` | decode | speedup | quality |
-|---:|---:|---:|---|
-| 4 | ~18.5 tok/s | 1.25× | clean |
-| **2** (default) | **~22 tok/s** | **1.49×** | mostly clean, rare loops |
-| 0 | ~29 tok/s | 1.98× | degenerates — avoid |
-
-### 2b. Run the FP8 server (8‑bit alternative — ~8.7 tok/s, needs ~629 GB / swap)
-
-```bash
-MODEL=$FP8_WEIGHTS KT_WEIGHT_PATH=$FP8_WEIGHTS GPU_EXPERTS=48 bash run_server.sh
-```
+This is the exact configuration of the currently‑running server: top‑2 + MTP depth‑3,
+`GPU_EXPERTS=96`, 128k context, dense MLA attention (`DISABLE_NSA=1`), GPU bulk prefill
+(`KT_GPU_PREFILL_THRESHOLD=2048`). See **2c. Long‑context mode** below for what the two
+long‑context fixes do.
 
 ### 2c. Long‑context mode (for coding agents / long chats)
 
-The quickstart above uses a tiny 4096‑token window. For a coding‑agent backend or
-long conversations, run with a real context window:
+The production config in **2b** already runs 128k context *with* top‑2 + MTP. If you
+instead want the **plain baseline** at long context (no substitution, no MTP — e.g. to
+A/B quality), drive `run_server_int4.sh` directly:
 
 ```bash
 MODEL=$WEIGHTS \
@@ -250,9 +288,10 @@ MAX_RUNNING=2 \
 bash run_server_int4.sh
 ```
 
-Verified: coherent to 12k+ tokens, decode steady at **~14.6 tok/s** even at 12k+
-positions, ~88 GB/card, `available_gpu_mem≈8 GB` at 128k. Decode speed is unchanged
-vs the short‑context config (we are CPU‑MoE bound, so attention length is free).
+Verified: coherent to 12k+ tokens, decode steady at **~14.6 tok/s** (plain baseline)
+even at 12k+ positions, ~88 GB/card, `available_gpu_mem≈8 GB` at 128k. Decode speed is
+unchanged vs the short‑context config (we are CPU‑MoE bound, so attention length is
+free); top‑2 + MTP from **2b** then lifts it to ~38–43 tok/s.
 
 Two correctness fixes are baked into `run_server_int4.sh` and are **on by default**
 for this path — both were latent bugs that only a real long‑context / agent workload
@@ -292,6 +331,12 @@ triggers:
 > `http://<host>:8000/v1` with model `GLM5.2`. Use **streaming** and a sane
 > `max_tokens`; avoid non‑streaming requests with huge `max_tokens` (they hold the
 > connection for the whole generation).
+
+### 2d. Run the FP8 server (8‑bit alternative — ~8.7 tok/s, needs ~629 GB / swap)
+
+```bash
+MODEL=$FP8_WEIGHTS KT_WEIGHT_PATH=$FP8_WEIGHTS GPU_EXPERTS=48 bash run_server.sh
+```
 
 ### 3. Chat UI (optional)
 
@@ -369,5 +414,12 @@ custom packed AVX‑512‑VNNI kernel in kt‑kernel). Each decode step runs the
 GPU expert halves concurrently and merges them, so per‑layer latency is
 `max(CPU, GPU+attention)`. CUDA graphs eliminate per‑step launch overhead. Keeping
 the CPU weights **packed at 4 bits** (instead of pre‑expanding to int8) halves the
-memory traffic in the bandwidth‑bound CPU window — that is the change that took decode
-from ~10.9 to ~14.6 tok/s. Full details and the dead‑ends in **[BLOG.md](BLOG.md)**.
+memory traffic in the bandwidth‑bound CPU window — that took the plain baseline from
+~10.9 to ~14.7 tok/s. Two more layers then stack on top to reach the headline ~34–43
+tok/s: **top‑2 expert substitution** keeps each token's 2 most‑important experts on the
+CPU and reroutes the low‑weight tail to GPU‑resident experts (fewer CPU experts ⇒
+shorter critical path, ~1.5×), and **NEXTN/MTP speculative decode** (depth‑3, running on
+the otherwise‑idle GPU while the CPU experts are the bottleneck) verifies ~2.7–3.9
+tokens per step for another ~1.5×. Both run under CUDA graphs. Full details and the
+dead‑ends in **[BLOG.md](BLOG.md)**, [BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md), and
+[BLOG_MTP_CUDAGRAPH.md](BLOG_MTP_CUDAGRAPH.md).
