@@ -70,6 +70,7 @@ CHUNKED_PREFILL=${CHUNKED_PREFILL:-2048}
 KT_GPU_PREFILL_THRESHOLD=${KT_GPU_PREFILL_THRESHOLD:-2048}
 DISABLE_CUDA_GRAPH=${DISABLE_CUDA_GRAPH:-0}
 CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-1}
+SLEEP_ON_IDLE=${SLEEP_ON_IDLE:-1}
 
 CG_FLAG=""
 if [ "$DISABLE_CUDA_GRAPH" = "1" ]; then
@@ -82,6 +83,8 @@ fi
 
 DYN_UPDATE=${DYN_UPDATE:-0}
 DYN_FLAG=""; [ "$DYN_UPDATE" = "1" ] && DYN_FLAG="--kt-enable-dynamic-expert-update"
+
+IDLE_FLAG=""; [ "$SLEEP_ON_IDLE" = "1" ] && IDLE_FLAG="--sleep-on-idle"
 
 # Debug: NaN detection (localizes garbage to a layer/op) + force all experts to
 # CPU (GPU_EXPERTS=0) to bisect CPU-int4 vs GPU-int4 kernel.
@@ -151,7 +154,7 @@ fi
 PAGE_SIZE_FLAG=""
 [ -n "${PAGE_SIZE:-}" ] && PAGE_SIZE_FLAG="--page-size $PAGE_SIZE"
 
-echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
+echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  sleep_on_idle=$SLEEP_ON_IDLE  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
 
 python -m sglang.launch_server \
   --model-path "$MODEL" \
@@ -175,6 +178,7 @@ python -m sglang.launch_server \
   $MODEL_OVERRIDE_FLAG \
   --max-running-requests "$MAX_RUNNING" \
   --chunked-prefill-size "$CHUNKED_PREFILL" \
+  $IDLE_FLAG \
   $PAGE_SIZE_FLAG \
   $CG_FLAG \
   $SPEC_FLAG \

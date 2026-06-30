@@ -63,7 +63,7 @@ PAGE = r"""<!doctype html>
       <button id="send">Send</button>
     </div>
     <div class="ctrls">
-      <label>max_tokens <input type="number" id="maxtok" value="512" min="1" max="8000"></label>
+      <label>max_tokens <input type="number" id="maxtok" placeholder="adaptive" min="1" max="8000"></label>
       <label>temperature <input type="number" id="temp" value="0.6" min="0" max="2" step="0.1"></label>
       <label><input type="checkbox" id="reset"> new chat each send</label>
       <span id="stat" class="stat"></span>
@@ -116,19 +116,23 @@ async function send(){
 
   const t0=performance.now();
   let content='', reasoning='', usage=null;
+  const reqBody = {
+    model: MODEL,
+    messages: history,
+    stream: true,
+    stream_options: {include_usage: true},
+    temperature: +document.getElementById('temp').value
+  };
+  const maxTokRaw = document.getElementById('maxtok').value.trim();
+  if(maxTokRaw){
+    reqBody.max_tokens = Math.max(1, Math.min(8000, +maxTokRaw));
+  }
 
   try{
     const resp = await fetch('/v1/chat/completions', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model: MODEL,
-        messages: history,
-        stream: true,
-        stream_options: {include_usage: true},
-        temperature: +document.getElementById('temp').value,
-        max_tokens: +document.getElementById('maxtok').value
-      })
+      body: JSON.stringify(reqBody)
     });
 
     if(!resp.ok){
@@ -255,10 +259,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             while True:
-                chunk = up.read(512)
-                if not chunk:
+                line = up.readline()
+                if not line:
                     break
-                self.wfile.write(chunk)
+                self.wfile.write(line)
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass
