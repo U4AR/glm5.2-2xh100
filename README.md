@@ -83,12 +83,18 @@ These steps build the Python environment once. All paths below are **relative to
 repo**, so clone it anywhere — every launcher resolves `.venv`, `chat_template.jinja`,
 etc. from its own location.
 
-**This does not use stock `sglang` from PyPI.** It uses **KTransformers** — the
-`kvcache-ai/ktransformers` project, which bundles its *own* SGLang fork (the
-`kvcache-ai/sglang` submodule, installed as the package **`sglang-kt`**) plus the
-`kt-kernel` heterogeneous CPU+GPU MoE engine. On top of that, this repo carries a
-handful of source patches (the INT4/NSA/MTP fixes listed above). So setup is: install
-KTransformers into a venv, then overlay this repo's patches.
+**This does not use stock `sglang` from PyPI.** It uses **KTransformers**, which
+bundles its *own* SGLang fork (the `kvcache-ai/sglang` submodule, installed as the
+package **`sglang-kt`**) plus the `kt-kernel` heterogeneous CPU+GPU MoE engine. On top
+of that, this repo carries a handful of source patches (the INT4/NSA/MTP fixes listed
+above). So setup is: install KTransformers into a venv, then overlay this repo's patches.
+
+For a **bit-exact** rebuild, the validated component versions are: Python **3.12.9**,
+torch **2.9.1+cu128**, transformers **5.12.1**, CUDA **12.8**, `kt-kernel` **0.6.2.post3**,
+KTransformers fork **U4AR/ktransformers @ `f66c5ea`** with the SGLang submodule pinned to
+**kvcache-ai/sglang @ `51032b712`**. The full freeze is in
+[`requirements-lock.txt`](requirements-lock.txt). (The "Phala" you may have seen is the
+*weights* — `PhalaCloud/GLM-5.2-W4AFP8` — not the SGLang code.)
 
 ```bash
 # 1. Clone this repo (anywhere). Its tracked patches come down with it.
@@ -96,12 +102,17 @@ git clone <this-repo-url> RunGLM
 cd RunGLM
 export REPO=$(pwd)            # used in the examples below
 
-# 2. Get the KTransformers fork (the SGLang-kt + kt-kernel sources). It is NOT
-#    committed here (gitignored) — clone it into ./ktransformers WITH submodules
-#    (the bundled SGLang fork is a git submodule).
-git clone --recursive https://github.com/kvcache-ai/ktransformers.git ktransformers
-#    (this repo was validated against the U4AR/ktransformers fork; use that remote
-#     if you need the exact streaming/MTP work-in-progress branches.)
+# 2. Get the KTransformers sources (SGLang-kt + kt-kernel). It is NOT committed
+#    here (gitignored). For a BIT-EXACT reproduction of this box you must use the
+#    pinned fork + commit below — kvcache-ai/ktransformers `main` has moved on and
+#    this exact commit lives only on the U4AR fork. `--recursive` pulls the SGLang
+#    submodule already pinned to kvcache-ai/sglang @ 51032b712.
+git clone --recursive https://github.com/U4AR/ktransformers.git ktransformers
+cd ktransformers
+git checkout f66c5eaa92cc70bf69c2dd67a0bf2438c85d7fd2   # = failed-be/top2-cudagraph-20260630
+git submodule update --init --recursive                 # re-pin sglang to 51032b712
+cd "$REPO"
+#    (NOT bit-exact, just "latest upstream": clone kvcache-ai/ktransformers main.)
 
 # 3. Create the Python 3.12 venv the launchers expect at ./.venv
 python3.12 -m venv .venv
@@ -129,11 +140,16 @@ CPUINFER_USE_CUDA=1 ./ktransformers/install.sh        # `all` is the default
 #    (kt-kernel only:  ./ktransformers/install.sh kt-kernel ;
 #     for a different/older target CPU build with --manual — see install.sh -h)
 
-# 6. Overlay THIS repo's patches on top of the freshly installed sglang-kt /
+# 6. Pin the rest of the wheels to the exact versions validated here (torch
+#    2.9.1+cu128, transformers 5.12.1, triton 3.5.1, flashinfer 0.6.3, ...). The two
+#    local packages (sglang-kt, kt-kernel) are already installed by step 5.
+pip install -r requirements-lock.txt
+
+# 7. Overlay THIS repo's patches on top of the freshly installed sglang-kt /
 #    kt-kernel (they live in-tree under .venv/... and were just overwritten).
 git checkout -- .venv
 
-# 7. Sanity check.
+# 8. Sanity check.
 kt doctor
 ```
 
