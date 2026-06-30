@@ -1,10 +1,11 @@
-# RunGLM — GLM‑5.2 (754B) on 2×H100 at up to ~40 tok/s
+# RunGLM — GLM‑5.2 (754B) on 2×H100 at ~40 tok/s
 
 Serve **GLM‑5.2**, a 754B‑parameter MoE model, on a single dual‑H100 box using
 **SGLang + KTransformers (kt‑kernel)** heterogeneous CPU+GPU Mixture‑of‑Experts.
 A custom packed‑INT4 AVX‑512 CPU kernel + INT4 GPU experts, **top‑2 expert
-substitution**, and **NEXTN/MTP speculative decode** push single‑stream decode to
-**~40 tok/s** while fitting the CPU‑side experts in **~250 GB of RAM**.
+substitution**, and **NEXTN/MTP speculative decode** push single‑stream decode to a
+**measured ~40.5 tok/s** (2.75× the 14.7 tok/s plain baseline) while fitting the
+CPU‑side experts in **~250 GB of RAM**.
 
 The server is **OpenAI‑compatible** (`/v1/chat/completions`, streaming, reasoning
 separation) and ships with a zero‑dependency browser chat UI.
@@ -12,8 +13,7 @@ separation) and ships with a zero‑dependency browser chat UI.
 ## TL;DR — run the fast server
 
 ```bash
-./run_fast.sh          # DEFAULT: top‑2 substitution + MTP depth‑3  → ~34 tok/s bench
-                       # (~38–43 tok/s typical interactive, peaks ~50)
+./run_fast.sh          # DEFAULT: top‑2 substitution + MTP depth‑3  → ~40.5 tok/s decode
 ./start_ui.sh          # browser chat UI on :8080  → open the forwarded port
 ```
 
@@ -37,11 +37,13 @@ experts are **substituted with the best GPU‑resident experts**, so fewer exper
 the CPU. Lower `KEEP` = faster, with a quality trade‑off at the extreme. **MTP**
 (NEXTN speculative decode, depth‑3) stacks on top for a further ~1.5×.
 
-Measured on 2×H100‑NVL / AMD EPYC Zen4, `GPU_EXPERTS=104`, 5‑run median decode:
+Decode tok/s on 2×H100‑NVL / AMD EPYC Zen4, single stream (the default row is a fresh
+5‑run measurement on the live `GPU_EXPERTS=96` / 128k server; the rest are 5‑run medians
+at `GPU_EXPERTS=104`):
 
 | Command | `KEEP` (top‑N) | MTP | Decode | vs. baseline | Quality |
 |---|:--:|:--:|---:|:--:|---|
-| `./run_fast.sh` **(default)** | **2** | depth‑3 | **~34 tok/s** | **2.3×** | mostly clean; rare loops |
+| `./run_fast.sh` **(default)** | **2** | depth‑3 | **~40.5 tok/s** | **2.75×** | mostly clean; rare loops |
 | `KEEP=4 ./run_fast.sh` | 4 | depth‑3 | ~29 tok/s (est.) | 2.0× | clean (baseline‑equivalent) |
 | `KEEP=0 ./run_fast.sh` | 0 | depth‑3 | ~40 tok/s | 2.7× | drifts — not recommended |
 | `MTP=0 ./run_fast.sh` | 2 | off | ~22 tok/s | 1.5× | mostly clean |
@@ -49,9 +51,18 @@ Measured on 2×H100‑NVL / AMD EPYC Zen4, `GPU_EXPERTS=104`, 5‑run median dec
 | `MODE=off ./run_fast.sh` | — | depth‑3 | ~17.5 tok/s | 1.2× | clean (no substitution) |
 | `MODE=off MTP=0 ./run_fast.sh` | — | off | ~14.7 tok/s | 1.0× | clean (plain INT4 baseline) |
 
-Interactive throughput on the live server (`GPU_EXPERTS=96`, 128k context, warm) runs
-**~38–43 tok/s** with peaks to ~50 (MTP accept‑length ~2.7–3.9). Bench the exact
-config on your box with `bench/decode_bench.sh`.
+The default measured **40.46 tok/s** (5×300 tok, min 40.34 / max 40.60 — dead steady),
+MTP accept‑length ~2.7–3.9. Bench your own box with the two harnesses:
+
+```bash
+python3 bench/perf_probe/decbench.py 300 5   # pure decode tok/s (what the 40.5 above is)
+bash    bench/decode_bench.sh 6 256          # ~33 tok/s — folds one‑time prefill into a
+                                             # short run, so it reads lower; not a regression
+```
+
+> The two harnesses disagree on purpose: `decbench.py` reports steady‑state decode;
+> `decode_bench.sh` amortizes the prefill of a short 256‑token request into the rate, so
+> it always reads a few tok/s lower. Use `decbench.py` for the decode headline.
 
 > **Quality note:** `KEEP=2` (the default) is coherent on the vast majority of prompts
 > but can occasionally fall into a repetition loop on open‑ended generation. If you need
@@ -90,7 +101,7 @@ needs ~half the RAM since the CPU‑expert path is memory‑bandwidth bound):
 
 | File | Purpose |
 |---|---|
-| `run_fast.sh` | **The recommended launcher** — top‑2 substitution + MTP depth‑3 (~34–43 tok/s) |
+| `run_fast.sh` | **The recommended launcher** — top‑2 substitution + MTP depth‑3 (~40.5 tok/s) |
 | `run_server_int4.sh` | Underlying **INT4** launcher (plain baseline ~14.7 tok/s; `run_fast.sh` wraps it) |
 | `run_server.sh` | Launch the **FP8** server (the 8‑bit path) |
 | `chat_ui.py` / `start_ui.sh` | Zero‑dep browser chat UI → OpenAI endpoint |
@@ -221,7 +232,7 @@ The FP8 path instead uses the original GLM‑5.2 FP8 checkpoint; download it to 
 your choice and set `FP8_WEIGHTS` to it (it's also a source of `chat_template.jinja`,
 already vendored in this repo).
 
-### 2. Run the fast server (recommended — top‑2 + MTP, ~34–43 tok/s)
+### 2. Run the fast server (recommended — top‑2 + MTP, ~40.5 tok/s)
 
 ```bash
 ./run_fast.sh                       # DEFAULT: KEEP=2 + MTP depth‑3
@@ -236,7 +247,7 @@ writes the top‑K reroute sentinel `/tmp/kt_topk_mode`, and enables NEXTN/MTP.
 above for the numbers:
 
 ```bash
-./run_fast.sh                 # KEEP=2 + MTP   → ~34 tok/s   [default, recommended]
+./run_fast.sh                 # KEEP=2 + MTP   → ~40.5 tok/s [default, recommended]
 KEEP=4 ./run_fast.sh          # safer quality  → ~29 tok/s   (baseline‑equivalent)
 KEEP=0 ./run_fast.sh          # max speed      → ~40 tok/s   (quality drifts — avoid)
 MTP=0 ./run_fast.sh           # top‑2, no MTP  → ~22 tok/s
@@ -258,7 +269,7 @@ GPU_EXPERTS=96 \
 CONTEXT_LENGTH=131072 \
 MAX_TOTAL_TOKENS=131072 \
 MEM_FRACTION=0.94 \
-./run_fast.sh                       # top‑2 + MTP, 128k context  → ~38–43 tok/s interactive
+./run_fast.sh                       # top‑2 + MTP, 128k context  → ~40.5 tok/s decode
 
 ./start_ui.sh                       # chat UI on :8080 (proxies → :8000)
 ```
@@ -291,7 +302,7 @@ bash run_server_int4.sh
 Verified: coherent to 12k+ tokens, decode steady at **~14.6 tok/s** (plain baseline)
 even at 12k+ positions, ~88 GB/card, `available_gpu_mem≈8 GB` at 128k. Decode speed is
 unchanged vs the short‑context config (we are CPU‑MoE bound, so attention length is
-free); top‑2 + MTP from **2b** then lifts it to ~38–43 tok/s.
+free); top‑2 + MTP from **2b** then lifts it to ~40.5 tok/s.
 
 Two correctness fixes are baked into `run_server_int4.sh` and are **on by default**
 for this path — both were latent bugs that only a real long‑context / agent workload
@@ -415,7 +426,7 @@ GPU expert halves concurrently and merges them, so per‑layer latency is
 `max(CPU, GPU+attention)`. CUDA graphs eliminate per‑step launch overhead. Keeping
 the CPU weights **packed at 4 bits** (instead of pre‑expanding to int8) halves the
 memory traffic in the bandwidth‑bound CPU window — that took the plain baseline from
-~10.9 to ~14.7 tok/s. Two more layers then stack on top to reach the headline ~34–43
+~10.9 to ~14.7 tok/s. Two more layers then stack on top to reach the headline ~40.5
 tok/s: **top‑2 expert substitution** keeps each token's 2 most‑important experts on the
 CPU and reroutes the low‑weight tail to GPU‑resident experts (fewer CPU experts ⇒
 shorter critical path, ~1.5×), and **NEXTN/MTP speculative decode** (depth‑3, running on
