@@ -108,18 +108,26 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 
-# 4. One-click install: submodules -> SGLang fork (sglang-kt) -> kt-kernel,
+# 4. kt-kernel needs hwloc + libnuma (dev headers at BUILD time, .so at runtime),
+#    so set them up BEFORE the build in step 5.
+#    With sudo:  sudo apt install -y libhwloc-dev libnuma-dev pkg-config
+#    No sudo? Build hwloc into the venv prefix (this is what was validated here):
+#      curl -fsSL -o hwloc.tar.gz \
+#        https://download.open-mpi.org/release/hwloc/v2.11/hwloc-2.11.2.tar.gz
+#      tar xf hwloc.tar.gz && cd hwloc-2.11.2
+#      ./configure --prefix="$VIRTUAL_ENV" && make -j"$(nproc)" install && cd "$REPO"
+#      export PKG_CONFIG_PATH="$VIRTUAL_ENV/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+#    Ensure $VENV/lib is on LD_LIBRARY_PATH for any process importing kt_kernel. The
+#    launchers `source .venv/bin/activate`, so bake it into activate:
+#      echo 'export LD_LIBRARY_PATH="$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH"' >> .venv/bin/activate
+
+# 5. One-click install: submodules -> SGLang fork (sglang-kt) -> kt-kernel,
 #    compiled for YOUR CPU (auto-detects AVX-512 VNNI/BF16/VBMI). Needs CUDA 12.8+
 #    toolkit + a working nvcc. Validated on torch 2.9.1+cu128 / transformers 5.12.1
 #    / kt-kernel 0.6.2.post3.
 CPUINFER_USE_CUDA=1 ./ktransformers/install.sh        # `all` is the default
 #    (kt-kernel only:  ./ktransformers/install.sh kt-kernel ;
 #     for a different/older target CPU build with --manual — see install.sh -h)
-
-# 5. kt-kernel links hwloc + libnuma. If they are not on your system linker path,
-#    install them (e.g. `apt install libhwloc-dev libnuma-dev`) or build them into
-#    the venv prefix, and make sure $REPO/.venv/bin/activate appends their dir to
-#    LD_LIBRARY_PATH — the launchers rely on `source .venv/bin/activate` exporting it.
 
 # 6. Overlay THIS repo's patches on top of the freshly installed sglang-kt /
 #    kt-kernel (they live in-tree under .venv/... and were just overwritten).
@@ -133,7 +141,7 @@ kt doctor
 > `git checkout -- .venv` then restores the INT4-GPU remap, NSA, and MTP-under-CUDA-graph
 > fixes this repo tracks on top of them. The compiled `kt_kernel_ext*.so` tracked here
 > was built for an AMD Zen4 (AVX-512 VNNI, no AMX) CPU — if yours differs, keep the one
-> step 4 just built for your machine instead of restoring the tracked `.so`.
+> step 5 just built for your machine instead of restoring the tracked `.so`.
 
 > The launchers hard-code `VENV=.../.venv` relative to the repo and `source` it on
 > startup, so once `./.venv` exists you don't activate it by hand. **Always** go
