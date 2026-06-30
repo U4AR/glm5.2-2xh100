@@ -93,10 +93,20 @@ SPEC_DECODE=${SPEC_DECODE:-0}
 SPEC_STEPS=${SPEC_STEPS:-1}
 SPEC_TOPK=${SPEC_TOPK:-1}
 SPEC_DRAFT_TOKENS=${SPEC_DRAFT_TOKENS:-2}
+# decode = draft-extend uses the decode attention backend (flashmla needs
+# FlashMLADecodeMetadata.block_kv_indices; the default 'prefill' mode hands the
+# draft a PrefillMetadata and crashes in flashmla_backend.forward_extend).
+SPEC_ATTN_MODE=${SPEC_ATTN_MODE:-decode}
+# flashmla's draft-extend path is broken in this build (hands the draft a
+# PrefillMetadata but runs the decode kernel that needs block_kv_indices), so
+# run the DRAFT's attention on fa3 (the standard EAGLE Hopper backend) while the
+# TARGET model stays on flashmla. Set SPEC_DRAFT_ATTN= to disable the override.
+SPEC_DRAFT_ATTN=${SPEC_DRAFT_ATTN-fa3}
 SPEC_FLAG=""
 if [ "$SPEC_DECODE" = "1" ]; then
   export SGLANG_ENABLE_SPEC_V2=${SGLANG_ENABLE_SPEC_V2:-True}
-  SPEC_FLAG="--speculative-algorithm NEXTN --speculative-num-steps $SPEC_STEPS --speculative-eagle-topk $SPEC_TOPK --speculative-num-draft-tokens $SPEC_DRAFT_TOKENS"
+  SPEC_FLAG="--speculative-algorithm NEXTN --speculative-num-steps $SPEC_STEPS --speculative-eagle-topk $SPEC_TOPK --speculative-num-draft-tokens $SPEC_DRAFT_TOKENS --speculative-attention-mode $SPEC_ATTN_MODE"
+  [ -n "$SPEC_DRAFT_ATTN" ] && SPEC_FLAG="$SPEC_FLAG --speculative-draft-attention-backend $SPEC_DRAFT_ATTN"
 fi
 
 # --- NSA attention sub-backends (override for spec-verify experiments) ------
@@ -136,6 +146,10 @@ if [ "$DISABLE_NSA" = "1" ]; then
 else
   ATTENTION_BACKEND=${ATTENTION_BACKEND:-nsa}
 fi
+# Optional page-size override (the 'compressed'/DeepseekV4 in-graph-metadata
+# backend needs page_size 256; flashmla forces 64).
+PAGE_SIZE_FLAG=""
+[ -n "${PAGE_SIZE:-}" ] && PAGE_SIZE_FLAG="--page-size $PAGE_SIZE"
 
 echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
 
@@ -161,6 +175,7 @@ python -m sglang.launch_server \
   $MODEL_OVERRIDE_FLAG \
   --max-running-requests "$MAX_RUNNING" \
   --chunked-prefill-size "$CHUNKED_PREFILL" \
+  $PAGE_SIZE_FLAG \
   $CG_FLAG \
   $SPEC_FLAG \
   $NAN_FLAG \

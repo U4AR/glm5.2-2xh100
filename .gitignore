@@ -20,6 +20,10 @@ ktransformers/
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/attention/nsa_backend.py
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/moe/kt_ep_wrapper.py
 !.venv/lib/python3.12/site-packages/kt_kernel/kt_kernel_ext.cpython-312-x86_64-linux-gnu.so
+# MTP/NEXTN-under-CUDA-graphs fixes (2026-06-30): kt verify-batch buffer
+# registration + multi-step draft warmup hook. See BLOG / memory.
+!.venv/lib/python3.12/site-packages/sglang/srt/model_executor/cuda_graph_runner.py
+!.venv/lib/python3.12/site-packages/sglang/srt/layers/attention/triton_backend.py
 
 # stray scratch file
 test.js

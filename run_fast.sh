@@ -23,12 +23,22 @@
 #   KEEP=4 ./run_fast.sh          # safer quality, 1.25x
 #   KEEP=0 ./run_fast.sh          # max speed, also enables the CPU-skip (lower quality)
 #   MODE=off ./run_fast.sh        # disable substitution -> plain baseline
+#   MTP=1 ./run_fast.sh           # + NEXTN/MTP speculative decode (depth-3) on top
+#
+# MTP (2026-06-30): MTP now works UNDER CUDA GRAPHS at any KEEP (the kt verify-
+# batch buffer bug is fixed in cuda_graph_runner.py). Stacks with top-2:
+#   KEEP=2          no-MTP   22.0
+#   KEEP=2 MTP=1    depth-1  29.8   accept 1.7
+#   KEEP=2 MTP=1    depth-3  34.1   accept 2.5   <- peak; MTP=1 default
+#   KEEP=2 MTP=1    depth-5  28.9   accept 2.6   (verify cost > accept gain)
+#   normal MTP=1    depth-3  ~      also coherent (14.7 base). depth-3 is the sweet spot.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
 
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
 MODE=${MODE:-sub}               # sub = substitute the tail; off = baseline
+MTP=${MTP:-0}                   # 1 = enable NEXTN/MTP speculative decode (depth-3)
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then
@@ -56,5 +66,14 @@ export KT_RAWINT4_BACKEND=${KT_RAWINT4_BACKEND:-avx512_packed}
 export GPU_EXPERTS=${GPU_EXPERTS:-104}
 export MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-4096}
 export MEM_FRACTION=${MEM_FRACTION:-0.94}
+
+# --- optional NEXTN/MTP speculative decode (works under CUDA graphs now) ----
+if [ "$MTP" = "1" ]; then
+  export SPEC_DECODE=1
+  export SPEC_STEPS=${SPEC_STEPS:-3}            # depth-3 = peak net tok/s here
+  export SPEC_DRAFT_TOKENS=${SPEC_DRAFT_TOKENS:-4}
+  export SPEC_DRAFT_ATTN=${SPEC_DRAFT_ATTN:-triton}  # flashmla/fa3/compressed draft crash; triton works
+  echo "[run_fast] MTP ENABLED: NEXTN spec-decode steps=$SPEC_STEPS draft_tokens=$SPEC_DRAFT_TOKENS draft_attn=$SPEC_DRAFT_ATTN."
+fi
 
 exec bash run_server_int4.sh
