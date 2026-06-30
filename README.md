@@ -70,6 +70,36 @@ bash    bench/decode_bench.sh 6 256          # ~33 tok/s — folds one‑time pr
 > but degenerates — don't use it for real output. Details in
 > [BLOG_TOP2_EXPERTS.md](BLOG_TOP2_EXPERTS.md).
 
+### Per‑request "intelligence" tier (pick speed at call time)
+
+The top‑N knob is also selectable **per request, live, via the OpenAI `model`
+field** — no restart, no global flag. Append `-topN` (N = 0…8) to the model name:
+
+```bash
+curl localhost:8000/v1/chat/completions -d '{"model":"GLM5.2-top8", ...}'  # max quality (baseline)
+curl localhost:8000/v1/chat/completions -d '{"model":"GLM5.2-top2", ...}'  # fast (default)
+```
+
+`-top8` is bit‑identical to the baseline; `-top2` is the fast default; any N works.
+Different tiers can be **mixed in one batch / one CUDA graph** (the tier is a
+per‑token value, so there is **no graph recapture** when it changes). The bare
+name (`GLM5.2`) uses the server's default tier. The chat UI exposes it as an
+"intelligence" dropdown. Full write‑up: [BLOG_INTELLIGENCE_TIER.md](BLOG_INTELLIGENCE_TIER.md).
+
+**Batched throughput** (top‑2, throughput‑tuned `GPU_EXPERTS=96 MAX_RUNNING=8
+CUDA_GRAPH_MAX_BS=8`), aggregate decode tok/s by concurrent requests:
+
+| concurrent | + MTP | no‑MTP |
+|---|---:|---:|
+| 1 | 32 | 21 |
+| 2 | 44 | 34 |
+| 4 | 56 | 55 |
+| 8 | 73 | 78 |
+
+MTP is a single‑user win (harvests a lone stream's idle headroom); past ~4
+concurrent users its verify cost stops paying for itself — run `MTP=0` for a busy
+multi‑user endpoint.
+
 Underlying precision options (both serve the same model quality; INT4 is faster **and**
 needs ~half the RAM since the CPU‑expert path is memory‑bandwidth bound):
 

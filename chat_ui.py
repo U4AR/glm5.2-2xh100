@@ -65,6 +65,14 @@ PAGE = r"""<!doctype html>
     <div class="ctrls">
       <label>max_tokens <input type="number" id="maxtok" placeholder="adaptive" min="1" max="8000"></label>
       <label>temperature <input type="number" id="temp" value="0.6" min="0" max="2" step="0.1"></label>
+      <label>intelligence
+        <select id="tier" title="genuine top experts kept per token: higher = smarter, lower = faster">
+          <option value="8">top-8 · max quality (~20 tok/s)</option>
+          <option value="4">top-4 · balanced (~27 tok/s)</option>
+          <option value="2" selected>top-2 · fast (~40 tok/s)</option>
+          <option value="0">top-0 · fastest, may degrade</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="reset"> new chat each send</label>
       <span id="stat" class="stat"></span>
     </div>
@@ -116,8 +124,11 @@ async function send(){
 
   const t0=performance.now();
   let content='', reasoning='', usage=null;
+  // The "intelligence" tier is selected purely via the model name suffix
+  // (<base>-topN); the server routes it live, per request, no restart.
+  const tier = document.getElementById('tier').value;
   const reqBody = {
-    model: MODEL,
+    model: MODEL + '-top' + tier,
     messages: history,
     stream: true,
     stream_options: {include_usage: true},

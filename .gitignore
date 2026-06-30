@@ -24,6 +24,13 @@ ktransformers/
 # registration + multi-step draft warmup hook. See BLOG / memory.
 !.venv/lib/python3.12/site-packages/sglang/srt/model_executor/cuda_graph_runner.py
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/attention/triton_backend.py
+# Per-request "intelligence" tier via OpenAI model name "<base>-topN" (2026-06-30):
+# per-token keep_k plumbed Req -> ModelWorkerBatch -> ForwardBatch -> CUDA-graph
+# buffer -> deepseek_v2 routing kernel, switchable live per request, mixed-batch.
+!.venv/lib/python3.12/site-packages/sglang/srt/managers/schedule_batch.py
+!.venv/lib/python3.12/site-packages/sglang/srt/model_executor/forward_batch_info.py
+!.venv/lib/python3.12/site-packages/sglang/srt/entrypoints/openai/serving_chat.py
+!.venv/lib/python3.12/site-packages/sglang/srt/entrypoints/http_server.py
 
 # stray scratch file
 test.js
