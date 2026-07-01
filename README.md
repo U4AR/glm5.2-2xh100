@@ -161,7 +161,16 @@ venv:
 
 These steps build the Python environment once. All paths below are **relative to the
 repo**, so clone it anywhere — every launcher resolves `.venv`, `chat_template.jinja`,
-etc. from its own location.
+the weights, etc. from its own location.
+
+> **One place for paths.** Every launcher sources [`config.sh`](config.sh) at
+> startup — that's the single file to edit if your weights don't live under
+> `./weights/`. Set `WEIGHTS_DIR` (the parent dir of the checkpoints) there once and
+> it applies to `run_fast.sh`, `run_server.sh`, `run_server_int4.sh`, the bench/
+> experiment wrappers, and the `int4_scripts/` harnesses (via `int4_scripts/_paths.py`).
+> Every value is also overridable per-invocation via env, e.g.
+> `WEIGHTS_DIR=/mnt/nvme ./run_fast.sh`. The default `./weights` can be a real
+> directory or a symlink to fast scratch (`ln -s /mnt/nvme/models ./weights`).
 
 **This does not use stock `sglang` from PyPI.** It uses **KTransformers**, which
 bundles its *own* SGLang fork (the `kvcache-ai/sglang` submodule, installed as the
@@ -251,16 +260,26 @@ kt doctor
 ### 1. Get the weights
 
 INT4 path uses Phala's W4AFP8 export (4‑bit experts + FP8 non‑experts), ~373 GB.
-Point `WEIGHTS` at fast scratch (NVMe) with ~380 GB free:
+By default it downloads to `./weights/GLM-5.2-W4AFP8` (the path `config.sh` expects).
+To put it on fast scratch (NVMe, ~380 GB free) either symlink `./weights` there, or
+override the destination — pick **one place**:
 
 ```bash
-export WEIGHTS=/path/to/nvme/GLM-5.2-W4AFP8     # default: ./weights/GLM-5.2-W4AFP8
-HF_HUB_ENABLE_HF_TRANSFER=1 python int4_scripts/download_w4afp8.py
+# Default: downloads to ./weights/GLM-5.2-W4AFP8 (resumable, NFS-safe).
+python int4_scripts/download_w4afp8.py
+
+# Or send it elsewhere (both env vars are honored by config.sh too):
+WEIGHTS_DIR=/path/to/nvme python int4_scripts/download_w4afp8.py   # -> /path/to/nvme/GLM-5.2-W4AFP8
+WEIGHTS=/exact/dir/GLM-5.2-W4AFP8 python int4_scripts/download_w4afp8.py
 ```
 
-The FP8 path instead uses the original GLM‑5.2 FP8 checkpoint; download it to a dir of
-your choice and set `FP8_WEIGHTS` to it (it's also a source of `chat_template.jinja`,
-already vendored in this repo).
+The downloader disables hf‑xet and uses one worker by default (safe on NFS mounts,
+where xet's parallel writes stall). On a fast local disk, bump throughput with
+`HF_MAX_WORKERS=16 python int4_scripts/download_w4afp8.py`.
+
+The FP8 path instead uses the original GLM‑5.2 FP8 checkpoint; put it at
+`./weights/GLM-5.2-FP8` (or set `FP8_MODEL` in `config.sh`). It's also a source of
+`chat_template.jinja`, already vendored in this repo.
 
 ### 2. Run the fast server (recommended — top‑2 + MTP, ~40.5 tok/s)
 
@@ -316,9 +335,9 @@ instead want the **plain baseline** at long context (no substitution, no MTP —
 A/B quality), drive `run_server_int4.sh` directly:
 
 ```bash
-MODEL=$WEIGHTS \
+# MODEL / KT_WEIGHT_PATH default to ./weights/GLM-5.2-W4AFP8 via config.sh;
+# set them (or WEIGHTS_DIR) only if your weights live elsewhere.
 KT_METHOD=RAWINT4 \
-KT_WEIGHT_PATH=$WEIGHTS \
 KT_RAWINT4_BACKEND=avx512_packed \
 GPU_EXPERTS=96 \
 CONTEXT_LENGTH=131072 \
@@ -376,7 +395,9 @@ triggers:
 ### 2d. Run the FP8 server (8‑bit alternative — ~8.7 tok/s, needs ~629 GB / swap)
 
 ```bash
-MODEL=$FP8_WEIGHTS KT_WEIGHT_PATH=$FP8_WEIGHTS GPU_EXPERTS=48 bash run_server.sh
+# MODEL defaults to ./weights/GLM-5.2-FP8 via config.sh (set FP8_MODEL there, or
+# MODEL=... here, if it lives elsewhere).
+GPU_EXPERTS=48 bash run_server.sh
 ```
 
 ### 3. Chat UI (optional)

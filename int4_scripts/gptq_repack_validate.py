@@ -10,9 +10,9 @@ import os, json, numpy as np, torch
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 from safetensors import safe_open
 from safetensors.torch import save_file
+from _paths import W4, WEIGHTS_DIR  # repo-relative; see int4_scripts/_paths.py
 
-W4 = "/cache/nvme0/models/GLM-5.2-W4AFP8"
-OUT = "/cache/nvme1/gptq_test_layer3"
+OUT = os.environ.get("GPTQ_TEST_OUT", os.path.join(WEIGHTS_DIR, "gptq_test_layer3"))
 L, HID, MOE, NE_TEST, K = 3, 6144, 2048, 8, 8
 OFFSET = int(os.getenv("GPTQ_OFFSET", "8"))
 os.makedirs(OUT, exist_ok=True)

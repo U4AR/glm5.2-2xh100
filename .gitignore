@@ -1,4 +1,8 @@
 # ---- heavy / regenerable (NOT part of the baseline source) ----
+# model checkpoints — a real dir (from download_w4afp8.py) OR a machine-local
+# symlink to fast scratch. Either way it must never be committed. Configure the
+# path in config.sh (WEIGHTS_DIR); download with int4_scripts/download_w4afp8.py.
+/weights
 .venv/
 .hf/
 .pipcache/

@@ -5,9 +5,7 @@ Both models are GLM-5.2 -> expert weights should match within quant error.
 """
 import json, struct, numpy as np, torch
 from safetensors import safe_open
-
-W4="/cache/nvme0/models/GLM-5.2-W4AFP8"
-FP8="/data/models/GLM-5.2-FP8"
+from _paths import W4, FP8  # paths configured in int4_scripts/_paths.py (repo-relative)
 L, E = 3, 0
 proj = "gate_proj"
 

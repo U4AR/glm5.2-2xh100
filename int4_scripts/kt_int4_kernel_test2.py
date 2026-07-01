@@ -3,8 +3,8 @@ os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 from safetensors import safe_open
 import kt_kernel.experts_base as eb
 from kt_kernel.utils.amx import NativeMoEWrapper
+from _paths import W4  # repo-relative; see int4_scripts/_paths.py
 
-W4 = "/cache/nvme0/models/GLM-5.2-W4AFP8"
 L, HID, MOE, NE, K = 3, 6144, 2048, 256, 8
 ZERO = os.getenv("INPUT_ZERO", "0") == "1"
 NTOK = int(os.getenv("NTOK", "1"))

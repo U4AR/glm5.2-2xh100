@@ -21,8 +21,8 @@ cwm.get_moe_expert_parallel_world_size = lambda: 1  # monkeypatch: single rank
 
 from sglang.srt.layers.quantization.w4afp8 import W4AFp8Config, W4AFp8MoEMethod
 from sglang.srt.layers.moe.cutlass_w4a8_moe import cutlass_w4a8_moe
+from _paths import W4  # repo-relative; see int4_scripts/_paths.py
 
-W4 = "/cache/nvme0/models/GLM-5.2-W4AFP8"
 LAYER = int(os.getenv("LAYER", "3"))
 HID, MOE, GROUP = 6144, 2048, 128
 NE = int(os.getenv("NE", "8"))

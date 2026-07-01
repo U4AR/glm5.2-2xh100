@@ -1,6 +1,7 @@
 """
 Full repack: W4AFP8 routed experts -> kt GPTQ_INT4 format, one .safetensors shard
-per MoE layer, into /cache/nvme1/GLM-5.2-W4-GPTQ-experts/. Parallel over layers.
+per MoE layer, into $GPTQ_EXPERTS_DIR (default ./weights/GLM-5.2-W4-GPTQ-experts).
+Parallel over layers.
 Validated convention (cos 1.0): AutoGPTQ qweight int32 [in/8,out] 8x4bit lo-first
 along K, q=signed+8; scales [groups,out] fp16; group-128 symmetric.
 Non-expert tensors are NOT repacked (sglang reads them from --model-path=W4AFP8).
@@ -9,9 +10,8 @@ import os, json, numpy as np, torch
 from safetensors import safe_open
 from safetensors.torch import save_file
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from _paths import W4, GPTQ_EXPERTS_DIR as OUT  # repo-relative; see int4_scripts/_paths.py
 
-W4 = "/cache/nvme0/models/GLM-5.2-W4AFP8"
-OUT = "/cache/nvme1/GLM-5.2-W4-GPTQ-experts"
 os.makedirs(OUT, exist_ok=True)
 IDX = json.load(open(f"{W4}/model.safetensors.index.json"))["weight_map"]
 

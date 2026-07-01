@@ -4,11 +4,10 @@
 # This box: 2x H100 NVL (96GB), AMD EPYC 9V84 (80 cores, 2 NUMA nodes), 629GB RAM.
 set -euo pipefail
 
-# Resolve repo-relative paths from this script's location (clone anywhere).
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$REPO/.venv"
+# All paths come from config.sh (the one place to edit them); still env-overridable.
+source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 # Point MODEL at the GLM-5.2 FP8 checkpoint; override via the MODEL env var.
-MODEL=${MODEL:-$REPO/weights/GLM-5.2-FP8}
+MODEL=${MODEL:-$FP8_MODEL}
 
 # OpenAI-compatible /v1/chat/completions needs a chat template. The FP8 dir ships
 # chat_template.jinja but not as tokenizer.chat_template, so point sglang at the

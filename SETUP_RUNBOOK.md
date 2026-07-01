@@ -14,7 +14,7 @@ repo + tracked venv patches survive in `/data/models/RunGLM`; the 373 GB weights
 cd /data/models/RunGLM
 git fetch fast && git reset --hard fast/main          # 1. restore shipped state (41cb0a2)
 rm -f /tmp/kt_topk_mode /tmp/kt_skip_cpu              #    clear stale sentinels
-HF_HUB_ENABLE_HF_TRANSFER=1 python int4_scripts/download_w4afp8.py   # 2. weights (~373GB, ~3min)
+python int4_scripts/download_w4afp8.py   # -> ./weights/GLM-5.2-W4AFP8 (NFS-safe)   # 2. weights (~373GB, ~3min)
 ./run_fast.sh                                         # 3. launch top-2 + MTP depth-3 (DEFAULT)
 # wait ~4-5 min for boot, then verify:
 python3 bench/perf_probe/decbench.py 200 5            # ~34 tok/s
@@ -92,15 +92,19 @@ grep -n kt_topk_mode .venv/lib/python3.12/site-packages/sglang/srt/models/deepse
 
 ## 2. Re-download the weights (when `/cache` was wiped)
 
-~373 GB / 46 files from `PhalaCloud/GLM-5.2-W4AFP8` to `/cache/nvme0` (resumable —
-re-running skips complete files). nvme0 has ~3.2 TB free; takes ~2.5–3 min here.
+~373 GB / 46 files from `PhalaCloud/GLM-5.2-W4AFP8` → `./weights/GLM-5.2-W4AFP8`
+(resumable — re-running skips complete files). On this box `./weights` is a symlink to
+`/cache/nvme0/models` (ephemeral NVMe, ~3.2 TB free); takes ~2.5–3 min here. To put
+the weights elsewhere, edit `WEIGHTS_DIR` in `config.sh` (one place) or pass it inline.
 
 ```bash
 cd /data/models/RunGLM
-HF_HUB_ENABLE_HF_TRANSFER=1 python int4_scripts/download_w4afp8.py
+# recreate the scratch symlink on a wiped box, then download:
+ln -sfn /cache/nvme0/models ./weights          # this box only; skip if ./weights is a real dir
+python int4_scripts/download_w4afp8.py          # -> ./weights/GLM-5.2-W4AFP8 (NFS-safe)
 # verify:
-ls /cache/nvme0/models/GLM-5.2-W4AFP8/*.safetensors | wc -l   # -> 41
-ls /cache/nvme0/models/GLM-5.2-W4AFP8 | grep -E 'config.json|tokenizer.json|index'
+ls ./weights/GLM-5.2-W4AFP8/*.safetensors | wc -l   # -> 41
+ls ./weights/GLM-5.2-W4AFP8 | grep -E 'config.json|tokenizer.json|index'
 ```
 `HF_TOKEN` / `HF_HOME` are already set in the environment.
 
@@ -116,7 +120,7 @@ KEEP=4 ./run_fast.sh           # safer quality, ~18.5 tok/s
 KEEP=0 ./run_fast.sh           # max speed + CPU-skip, ~29 tok/s, degrades — avoid
 MODE=off ./run_fast.sh         # plain baseline, ~14.7 tok/s
 ```
-The config: `MODEL`/`KT_WEIGHT_PATH=/cache/nvme0/models/GLM-5.2-W4AFP8`,
+The config (all from `config.sh`): `MODEL`/`KT_WEIGHT_PATH=./weights/GLM-5.2-W4AFP8`,
 `KT_METHOD=RAWINT4`, `KT_RAWINT4_BACKEND=avx512_packed`, `GPU_EXPERTS=104`,
 `MEM_FRACTION=0.94`, `MAX_TOTAL_TOKENS=4096`, TP=2, CUDA graph on, flashmla, dense MLA.
 

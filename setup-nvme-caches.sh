@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ⚠️ MACHINE-SPECIFIC — DO NOT run on another host without editing first. This
+# formats/mounts THIS box's physical NVMe devices (/dev/nvme0n1, /dev/nvme1n1);
+# the device names and mount points below are hardware-specific, not repo-relative.
+# It is provisioning for the original 2×H100 box only — it is NOT needed to run the
+# server on a fresh clone (the launchers/config.sh don't depend on it). Adjust the
+# MOUNTS map to your own disks if you want the same scratch layout.
+#
 # Format (first boot only) and mount the two local 3.5T NVMe scratch disks at
 # /cache/nvme0 and /cache/nvme1. Restored 2026-06-22 after the original
 # /usr/local/sbin/setup-nvme-caches.sh went missing (service was failing 203/EXEC).

@@ -65,13 +65,23 @@ else
 fi
 
 # --- the winning INT4 recipe (see README) ----------------------------------
-export MODEL=${MODEL:-$(pwd)/weights/GLM-5.2-W4AFP8}
+# Paths come from config.sh (the one place to edit them); all env-overridable.
+source "$(dirname "$0")/config.sh"
+export MODEL=${MODEL:-$W4AFP8_MODEL}
 export KT_METHOD=${KT_METHOD:-RAWINT4}
 export KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
 export KT_RAWINT4_BACKEND=${KT_RAWINT4_BACKEND:-avx512_packed}
 export GPU_EXPERTS=${GPU_EXPERTS:-104}
-export MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-4096}
-export MEM_FRACTION=${MEM_FRACTION:-0.94}
+# KV pool: 4096 was a short-benchmark cap that silently truncated real chats at
+# ~3.6k total tokens (finish_reason "length"). MLA fp8 KV is ~43.9 KB/token.
+# NOTE: the KV pool is carved from the mem_fraction_static budget, but the
+# (1-mem_fraction) slack is what CUDA-graph capture + the NEXTN/MTP draft + the
+# flashmla prefill workspace need at warmup. Pushing mem_fraction to 0.97 and the
+# pool to the full 131072 (5.5GB) OOM'd there (only 3.3GB slack left). With 104
+# GPU experts, weights+fixed ~= 87GB, so ~82k tokens (3.6GB pool) is the practical
+# max that still leaves the ~5GB runtime headroom the old 0.94/4096 config had.
+export MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-81920}
+export MEM_FRACTION=${MEM_FRACTION:-0.95}
 
 # --- optional NEXTN/MTP speculative decode (works under CUDA graphs now) ----
 if [ "$MTP" = "1" ]; then

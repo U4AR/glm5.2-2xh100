@@ -13,9 +13,9 @@
 # This box: 2x H100 NVL (96GB), AMD EPYC 9V84 (80c, 2 NUMA, AVX512 no-AMX), 629GB.
 set -euo pipefail
 
-# Resolve repo-relative paths from this script's location (clone anywhere).
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$REPO/.venv"
+# All paths come from config.sh (the one place to edit them); every value is
+# still overridable via env. See config.sh for WEIGHTS_DIR / W4AFP8_MODEL / etc.
+source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 # sglang reads non-expert (block-FP8/BF16) weights from MODEL; kt reads the INT4
 # routed experts from KT_WEIGHT_PATH (separate dir for the GPTQ-repacked experts).
 # WINNING RECIPE (2026-06-25, ~10.1-10.6 tok/s decode > 8.7 FP8 baseline):
@@ -23,7 +23,7 @@ VENV="$REPO/.venv"
 #   (fast AVX512) + GPU_EXPERTS=104 (88GB/card). Needs the w4afp8.py -1-remap fix.
 #   GPTQ_INT4 CPU (nvme1) boots faster (~3min vs ~50min) but is AVX2-slow (~6.4).
 # Point MODEL/KT_WEIGHT_PATH at your downloaded weights (default: ./weights/...).
-MODEL=${MODEL:-$REPO/weights/GLM-5.2-W4AFP8}
+MODEL=${MODEL:-$W4AFP8_MODEL}
 KT_METHOD=${KT_METHOD:-FP8}
 KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
 
