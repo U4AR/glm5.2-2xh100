@@ -72,6 +72,25 @@ LIMIT=20 ./bench/run_benchmark.sh            # quick 20‑question smoke test
 
 See [bench/livebench/README.md](bench/livebench/README.md) for options and output format.
 
+Freeze GLM‑5.2's own LiveBench outcome into a pass/fail label set (analogous to
+Terminal‑Bench's `task_labels.txt`) so later runs can be diffed against it:
+
+```bash
+python bench/livebench/make_labels.py livebench_results.json          # write labels
+python bench/livebench/make_labels.py new_run.json --compare          # diff vs labels
+```
+
+**Agentic benchmark (Terminal‑Bench 2.0, executed pass/fail):** one command runs
+the real Harbor harness (a Docker container + graders per task) against the live
+server and scores it against GLM‑5.2's original labels. Strictly sequential (one
+task at a time, like LiveBench) — one GPU serves the agent, and concurrency
+starves decode into false timeouts:
+
+```bash
+./bench/run_terminalbench.sh                 # all 42 tasks, one at a time
+TASK=fix-git ./bench/run_terminalbench.sh    # one task only
+```
+
 > The two harnesses disagree on purpose: `decbench.py` reports steady‑state decode;
 > `decode_bench.sh` amortizes the prefill of a short 256‑token request into the rate, so
 > it always reads a few tok/s lower. Use `decbench.py` for the decode headline.
