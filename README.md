@@ -60,6 +60,18 @@ bash    bench/decode_bench.sh 6 256          # ~33 tok/s — folds one‑time pr
                                              # short run, so it reads lower; not a regression
 ```
 
+**Quality benchmark (LiveBench reasoning, 200 Qs, one at a time):** with the
+server running, one portable command scores the top‑2 tier end‑to‑end (dataset
+auto‑pulled from HuggingFace, so it works on a fresh box):
+
+```bash
+./bench/run_benchmark.sh                     # full suite, top‑2 (GLM5.2-top2)
+MODEL=GLM5.2-top8 ./bench/run_benchmark.sh   # baseline tier, for A/B
+LIMIT=20 ./bench/run_benchmark.sh            # quick 20‑question smoke test
+```
+
+See [bench/livebench/README.md](bench/livebench/README.md) for options and output format.
+
 > The two harnesses disagree on purpose: `decbench.py` reports steady‑state decode;
 > `decode_bench.sh` amortizes the prefill of a short 256‑token request into the rate, so
 > it always reads a few tok/s lower. Use `decbench.py` for the decode headline.

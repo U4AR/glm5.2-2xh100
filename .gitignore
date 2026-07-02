@@ -38,3 +38,6 @@ ktransformers/
 
 # stray scratch file
 test.js
+
+# LiveBench benchmark output
+livebench_results.json
