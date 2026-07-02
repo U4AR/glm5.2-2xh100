@@ -8,6 +8,9 @@
 .pipcache/
 tmp/
 scratch/
+# Terminal-Bench harness (harbor venv + task clone) — bootstrapped by
+# bench/terminalbench/setup_terminalbench.sh, never committed.
+.terminalbench/
 __pycache__/
 *.pyc
 *.log

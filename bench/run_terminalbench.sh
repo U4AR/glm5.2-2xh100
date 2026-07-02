@@ -18,19 +18,41 @@
 # concurrently starves per-request decode so agents blow their time budget and
 # log a FALSE AgentTimeoutError (a task that passes solo shows as failed).
 #
+# PORTABLE: on a fresh machine the harness (harbor venv + terminal-bench-2 tasks)
+# is bootstrapped automatically the first time you run this — nothing to copy.
+# Just start the server (./run_fast.sh) and run this one command.
+#
 # Env: TASK, MODEL, BASE, TB_DIR, OUT.
-# The heavy harness (harbor venv, terminal-bench-2 tasks, task_labels.txt) lives
-# in TB_DIR; this script is the thin portable wrapper that points it at localhost.
+# The heavy harness (harbor venv, terminal-bench-2 tasks) lives in TB_DIR; our
+# reference labels + verdict aggregator are committed under bench/terminalbench/
+# and copied in by the bootstrap. This script is the thin wrapper that
+# bootstraps if needed and points the harness at localhost.
 # ============================================================================
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO/config.sh"
 
-TB_DIR="${TB_DIR:-/data/projects/isolated_bench}"
+# Pick TB_DIR: honour an explicit override; else reuse an existing repo-local or
+# legacy harness; else default to a fresh repo-local one (bootstrapped below).
+if [ -z "${TB_DIR:-}" ]; then
+  if   [ -d "$REPO/.terminalbench" ];            then TB_DIR="$REPO/.terminalbench"
+  elif [ -d /data/projects/isolated_bench ];     then TB_DIR="/data/projects/isolated_bench"
+  else                                                TB_DIR="$REPO/.terminalbench"
+  fi
+fi
+export TB_DIR
 MODEL="${MODEL:-openai/GLM5.2}"
 BASE="${BASE:-http://localhost:8000/v1}"
 OUT="${OUT:-runs_full}"
+
+# --- bootstrap the harness if it isn't set up (one-time, idempotent) ----------
+if [ ! -x "$TB_DIR/venv/bin/harbor" ] || [ ! -d "$TB_DIR/terminal-bench-2" ] \
+   || [ ! -f "$TB_DIR/task_labels.txt" ]; then
+  echo ">>> Terminal-Bench harness not found at $TB_DIR — bootstrapping ..."
+  bash "$REPO/bench/terminalbench/setup_terminalbench.sh" || {
+    echo "ERROR: bootstrap failed" >&2; exit 1; }
+fi
 
 # --- rootless docker (harbor drives containers over the user socket) ---------
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

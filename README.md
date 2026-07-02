@@ -91,6 +91,17 @@ starves decode into false timeouts:
 TASK=fix-git ./bench/run_terminalbench.sh    # one task only
 ```
 
+Portable: on a **fresh machine** the first run bootstraps the harness itself —
+it creates a venv, installs the pinned `harbor==0.16.1` (the terminus‑2 agent
+ships inside it), and clones the `terminal-bench-2` task set into `TB_DIR`
+(default `.terminalbench/`). Nothing to copy over; only Docker (rootless) and a
+running server are prerequisites. The reference labels + verdict aggregator live
+in [`bench/terminalbench/`](bench/terminalbench/). To pre‑warm without running:
+
+```bash
+./bench/terminalbench/setup_terminalbench.sh
+```
+
 > The two harnesses disagree on purpose: `decbench.py` reports steady‑state decode;
 > `decode_bench.sh` amortizes the prefill of a short 256‑token request into the rate, so
 > it always reads a few tok/s lower. Use `decbench.py` for the decode headline.
