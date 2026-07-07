@@ -1,0 +1,10 @@
+served=GLM5.2 base_tier=top2 passes=3 gen=150
+
+=== tier top2  (GLM5.2-top2)  passes=3 gen=150 ===
+pass  median tok/s  mean tok/s     min     max  ttft_s
+   0         19.73       19.71   19.56   19.81   10.78
+   1         19.73       19.74   19.54   19.97   10.58
+   2         19.91       19.93   19.88   20.02   10.54
+  convergence: pass0=19.73 -> pass2=19.91 tok/s (+0.9%)
+
+wrote /data/models/RunGLM/experiments/adaptive_expert_cache/conv_top2.json
