@@ -148,3 +148,24 @@ Verified: warm-started N=96 served **33 tok/s on the very first prompt** (vs
 ~28 uniform cold) and hit 43 by the second — the ~2–3 min cold-convergence
 ramp is gone. Any N works: `GPU_EXPERTS=48 bash boot_adaptive_mtp.sh` slices
 the same ranking to top-48.
+
+## Low-VRAM regime (2026-07-24, partial — stopped early)
+
+Measured actual VRAM/card (nvidia-smi) + diverse held-out tok/s at low expert
+budgets (warm-start, MAX_TOTAL_TOKENS=4096, MEM_FRACTION=0.60):
+
+| N/layer | VRAM/card (measured) | coverage | held-out tok/s |
+|---|---|---|---|
+| 32 | 40.1 GiB | 0.61 | 32.3 |
+| 16 | 28.7 GiB | 0.43 | 30.3 |
+| 8  | 23.1 GiB | 0.26 | 27.1 |
+
+Linear fit: **~9.45 MiB/card per expert + a fixed ~17.5 GiB/card base**
+(dense/attention weights + minimal KV + CUDA graphs). The base is the hard
+floor: N→0 would still sit near ~18 GiB/card, so **~12 GiB/card total is NOT
+reachable** for GLM-5.2 on 2 cards without re-quantizing the dense trunk or
+using more TP shards. Even at the extreme low end the hybrid stays coherent and
+useful: N=8 (~23 GiB/card, coverage just 0.26) still holds ~27 tok/s because
+safe2 keeps genuine top-2 (CPU round-trip) and MTP-d3 amortizes it — the CPU
+expert path degrades gracefully rather than falling off a cliff. (N=4, N=0 runs
+were cut short.)
