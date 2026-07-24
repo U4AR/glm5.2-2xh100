@@ -17,8 +17,26 @@ export CUDA_GRAPH_MAX_BS=1
 export KT_HIT_STATS=0
 export KT_GPU_PREFILL_THRESHOLD=0
 export MEM_FRACTION=0.85
-export GPU_EXPERTS=96
-export PLACEMENT=uniform
+export GPU_EXPERTS=${GPU_EXPERTS:-96}
+# --- warm start: if a persisted hot-core ranking exists, boot the GPU already
+# holding the hottest-N experts (any N) instead of a uniform cold start. The
+# adaptive cache then only has to track per-workload drift, not climb from 0.5
+# coverage. Set WARM_START=0 to force the old uniform cold start. ---
+RANK_PT="experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt"
+if [ "${WARM_START:-1}" = "1" ] && [ -f "$RANK_PT" ]; then
+  WARM_MASK="/tmp/kt_warm_mask_${GPU_EXPERTS}.pt"
+  .venv/bin/python experiments/adaptive_expert_cache/decode_cache/build_hot_core.py \
+      mask "$GPU_EXPERTS" "$WARM_MASK" || { echo "warm-mask build failed, falling back to uniform"; unset WARM_MASK; }
+  if [ -n "${WARM_MASK:-}" ]; then
+    export PLACEMENT=oracle
+    export KT_ORACLE_MASK_PT="$WARM_MASK"
+    echo "[warm-start] booting from hot-core ranking -> $WARM_MASK (N=$GPU_EXPERTS/layer)"
+  else
+    export PLACEMENT=uniform
+  fi
+else
+  export PLACEMENT=uniform
+fi
 export KT_METHOD=RAWINT4
 export KT_RAWINT4_BACKEND=avx512_packed
 export TRITON_CACHE_DIR=/data/models/RunGLM/.triton-cache

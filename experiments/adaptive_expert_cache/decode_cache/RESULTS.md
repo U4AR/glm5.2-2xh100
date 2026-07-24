@@ -107,3 +107,44 @@ diverse-task capture distribution assumes: **N=64 (46 GiB of experts/card)
 matches N=96** for focused workloads. The simulation curve is the safe
 multi-domain lower bound. Practical floor: even N=24 (~17 GiB experts/card,
 would fit a single 48 GiB card + CPU) holds >30 tok/s once converged.
+
+### Fairness check: diverse warm-up + HELD-OUT prompts (2026-07-24)
+
+The single-prompt ladder above could overfit — repeating ONE prompt drives
+coverage artificially toward 1.0 because the same experts fire every step. So
+each N was re-measured with `conv_diverse.py`: warm the cache on a rotating set
+of 8 unrelated topics (LLM, immunology, contract law, monetary policy, history,
+chemistry, DB internals, music theory), then measure on 3 HELD-OUT topics the
+cache never trained on (stellar astrophysics, bread science, plate tectonics).
+
+| N/layer | expert VRAM/card | conv. coverage (diverse) | single-prompt tok/s | **held-out tok/s** |
+|---|---|---|---|---|
+| 48 | 34.6 GiB | 0.71 | 36.5 | **37.1** |
+| 64 | 46.1 GiB | 0.77 | 40.5 | **36.9** |
+| 96 | 69.1 GiB | 0.89 | 39.0 | **38.7** |
+
+Held-out speed is within ~1–2 tok/s of the single-prompt numbers and coverage
+under diverse traffic (0.71–0.89) is barely below single-prompt (0.79–0.90).
+This confirms the earlier phase-test finding: the hot core is largely
+**domain-independent** — a cache warmed on law/chemistry/music still serves
+astrophysics at ~37 tok/s. The single-prompt runs were NOT materially inflated.
+Plotted separately (purple diamonds) from the single-prompt points (green) in
+`figs/fig3_tps_vs_vram.png`.
+
+## Persisted hot core → warm start (2026-07-24)
+
+`hot_core_ranking.pt` (committed, int16 [78,256]) stores, per layer, all 256
+expert IDs sorted by genuine-top-2 usage — an N-agnostic, system-independent
+ranking built from 441k real routing events (`build_hot_core.py build`).
+
+Boot auto-loads it: `boot_adaptive_mtp.sh` checks for the file and, if present
+(default; `WARM_START=0` disables), generates an exact [78,256] GPU-placement
+mask for the box's own `GPU_EXPERTS=N` (`build_hot_core.py mask N`) and boots
+via the `oracle` placement strategy — GPU already holds the hottest-N experts.
+A NEW machine with the repo therefore starts at ~0.88 coverage instead of
+uniform's 0.50; the adaptive cache then only tracks per-workload drift.
+
+Verified: warm-started N=96 served **33 tok/s on the very first prompt** (vs
+~28 uniform cold) and hit 43 by the second — the ~2–3 min cold-convergence
+ramp is gone. Any N works: `GPU_EXPERTS=48 bash boot_adaptive_mtp.sh` slices
+the same ranking to top-48.

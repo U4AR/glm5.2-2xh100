@@ -119,12 +119,18 @@ vramf = Nfull * NUM_LAYERS * MIB_PER_EXPERT_CARD / 1024 + BASE_GIB_CARD
 tpsf = 1.0 / (t0 + t_miss * (1 - covf))
 fig, ax = plt.subplots(figsize=(8.5, 5))
 ax.plot(vramf, tpsf, lw=2.2, color="tab:blue", label="model (oracle-converged cache)")
-# measured 2026-07-24, same-boot protocol per N (converge on llm topic, then 3-pass measure)
-MEAS = [(24, 32.5, 0.590), (48, 35.5, 0.787), (64, 40.5, 0.854), (96, 39.0, 0.897)]
-for N, t, _ in MEAS:
-    v = N * 78 * 9.45 / 1024 + 14
-    ax.plot([v], [t], "o", color="tab:green", ms=9, zorder=5)
-ax.annotate("measured (adaptive, converged)", (48 * 78 * 9.45 / 1024 + 14, 35.5), xytext=(-30, 26), textcoords="offset points", color="tab:green")
+# measured 2026-07-24
+# (A) single-prompt converge then measure (optimistic: same-topic overfit)
+SINGLE = [(24, 32.5), (48, 36.5), (64, 40.5), (96, 39.0)]
+# (B) diverse rotating warm-up + HELD-OUT prompts the cache never saw (fair)
+HELDOUT = [(48, 37.1), (64, 36.9), (96, 38.7)]
+vx = lambda N: N * 78 * 9.45 / 1024 + 14
+for N, t in SINGLE:
+    ax.plot([vx(N)], [t], "o", color="tab:green", ms=9, zorder=5)
+for N, t in HELDOUT:
+    ax.plot([vx(N)], [t], "D", color="tab:purple", ms=8, zorder=6)
+ax.plot([], [], "o", color="tab:green", label="measured: single-prompt converged")
+ax.plot([], [], "D", color="tab:purple", label="measured: diverse warm-up, held-out prompt")
 ax.plot([96 * 78 * 9.45 / 1024 + 14], [28.2], "s", color="tab:gray", ms=8)
 ax.annotate("uniform@96: 28.2 meas.", (96 * 78 * 9.45 / 1024 + 14, 28.2), xytext=(-160, -14), textcoords="offset points", color="tab:gray")
 ax.axhline(TOP0_MEASURED, color="tab:red", ls=":", lw=1.5)
