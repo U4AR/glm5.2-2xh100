@@ -1,8 +1,9 @@
 """Validate per-request expert-tier selection via the OpenAI model name.
 
-Checks: (1) each '<base>-topN' tier returns coherent text and measures decode
-tok/s; (2) '-top8' == bare-name baseline routing (greedy/temp0 output match);
-(3) mixed concurrent tiers in flight (batched) all stay coherent.
+Checks: (1) each '<base>-topN' tier and adaptive speed level return coherent
+text and measure decode tok/s; (2) '-top8' == bare-name baseline routing
+(greedy/temp0 output match); (3) mixed concurrent tiers in flight (batched) all
+stay coherent.
 """
 import json
 import sys
@@ -45,14 +46,27 @@ PROMPT = "Write a short coherent paragraph about why the sky is blue. Then list 
 
 # --- per-tier coherence + speed ---
 results = {}
-for N in (8, 4, 2, 0):
-    model = f"{SERVED}-top{N}"
+tiers = [
+    "top8",
+    "top4",
+    "top2",
+    "adapt0",
+    "adapt50",
+    "adapt85",
+    "adapt90",
+    "adapt95",
+    "adapt98",
+    "adapt100",
+    "top0",
+]
+for tier in tiers:
+    model = f"{SERVED}-{tier}"
     txt, rc, ntok, dt = chat(model, PROMPT, max_tokens=200)
     toks = ntok / dt if dt else 0
     full = (rc + " " + txt).strip()
     coherent = ("blue" in full.lower() or "scatter" in full.lower()) and len(full) > 40
-    results[N] = (txt, toks, coherent)
-    print(f"-top{N}: {ntok} tok, {toks:.1f} tok/s, coherent={coherent}")
+    results[tier] = (txt, toks, coherent)
+    print(f"-{tier}: {ntok} tok, {toks:.1f} tok/s, coherent={coherent}")
     print(f"   ANSWER: {txt[:160]!r}\n")
 
 # --- baseline parity: top8 vs bare name, greedy ---
@@ -63,19 +77,20 @@ if b1.strip() != b2.strip():
     print(f"   bare : {b1[:120]!r}\n   top8 : {b2[:120]!r}")
 
 # --- mixed concurrent tiers (batched in flight) ---
-print("\nmixed concurrent batch (top8 + top2 + top4 + top0 simultaneously):")
+print("\nmixed concurrent batch (top8 + top2 + top4 + adapt50 + top0 simultaneously):")
 out = {}
-def worker(N):
-    txt, rc, ntok, dt = chat(f"{SERVED}-top{N}", PROMPT, max_tokens=150)
-    out[N] = (len((rc+txt).strip()) > 40, ntok/dt if dt else 0)
-ths = [threading.Thread(target=worker, args=(N,)) for N in (8, 4, 2, 0)]
+def worker(tier):
+    txt, rc, ntok, dt = chat(f"{SERVED}-{tier}", PROMPT, max_tokens=150)
+    out[tier] = (len((rc+txt).strip()) > 40, ntok/dt if dt else 0)
+mixed_tiers = ["top8", "top4", "top2", "adapt50", "top0"]
+ths = [threading.Thread(target=worker, args=(tier,)) for tier in mixed_tiers]
 t0 = time.time()
 for t in ths: t.start()
 for t in ths: t.join()
 agg = time.time() - t0
-for N in (8, 4, 2, 0):
-    coh, sp = out.get(N, (False, 0))
-    print(f"   -top{N}: coherent={coh}, {sp:.1f} tok/s (in mixed batch)")
+for tier in mixed_tiers:
+    coh, sp = out.get(tier, (False, 0))
+    print(f"   -{tier}: coherent={coh}, {sp:.1f} tok/s (in mixed batch)")
 print(f"   mixed wall: {agg:.1f}s")
 
 print("\nDONE")

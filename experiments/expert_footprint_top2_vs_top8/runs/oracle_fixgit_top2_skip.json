@@ -1,0 +1,18 @@
+{
+  "top2": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.319,
+        "total_s": 4.234,
+        "decode_s": 3.915,
+        "decode_tok_s": 51.09,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 51.09,
+    "agg_decode_tok_s": 51.09,
+    "total_completion_tokens": 200
+  }
+}

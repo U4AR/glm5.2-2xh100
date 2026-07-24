@@ -1,0 +1,1458 @@
+{
+  "tag": "exp3_git-multibranch",
+  "path": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_git-multibranch.pt",
+  "model": "GLM-5.2-W4AFP8",
+  "per_expert_bytes": 18874368,
+  "per_expert_mib": 18.0,
+  "records": 150,
+  "captured_layers": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77
+  ],
+  "layers_analyzed": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77
+  ],
+  "token_layer_rows": 19050,
+  "percentile_method": "numpy.percentile linear",
+  "top2": {
+    "total_distinct_count": 7497,
+    "total_footprint_mib": 134946.0,
+    "p90_count": 121.0,
+    "p90_footprint_mib": 2178.0,
+    "min_count": 41,
+    "median_count": 102.0,
+    "max_count": 127,
+    "per_layer": [
+      {
+        "layer": 3,
+        "distinct_count": 111,
+        "footprint_mib": 1998.0
+      },
+      {
+        "layer": 4,
+        "distinct_count": 117,
+        "footprint_mib": 2106.0
+      },
+      {
+        "layer": 5,
+        "distinct_count": 121,
+        "footprint_mib": 2178.0
+      },
+      {
+        "layer": 6,
+        "distinct_count": 127,
+        "footprint_mib": 2286.0
+      },
+      {
+        "layer": 7,
+        "distinct_count": 125,
+        "footprint_mib": 2250.0
+      },
+      {
+        "layer": 8,
+        "distinct_count": 123,
+        "footprint_mib": 2214.0
+      },
+      {
+        "layer": 9,
+        "distinct_count": 120,
+        "footprint_mib": 2160.0
+      },
+      {
+        "layer": 10,
+        "distinct_count": 121,
+        "footprint_mib": 2178.0
+      },
+      {
+        "layer": 11,
+        "distinct_count": 117,
+        "footprint_mib": 2106.0
+      },
+      {
+        "layer": 12,
+        "distinct_count": 93,
+        "footprint_mib": 1674.0
+      },
+      {
+        "layer": 13,
+        "distinct_count": 121,
+        "footprint_mib": 2178.0
+      },
+      {
+        "layer": 14,
+        "distinct_count": 114,
+        "footprint_mib": 2052.0
+      },
+      {
+        "layer": 15,
+        "distinct_count": 77,
+        "footprint_mib": 1386.0
+      },
+      {
+        "layer": 16,
+        "distinct_count": 83,
+        "footprint_mib": 1494.0
+      },
+      {
+        "layer": 17,
+        "distinct_count": 76,
+        "footprint_mib": 1368.0
+      },
+      {
+        "layer": 18,
+        "distinct_count": 57,
+        "footprint_mib": 1026.0
+      },
+      {
+        "layer": 19,
+        "distinct_count": 42,
+        "footprint_mib": 756.0
+      },
+      {
+        "layer": 20,
+        "distinct_count": 41,
+        "footprint_mib": 738.0
+      },
+      {
+        "layer": 21,
+        "distinct_count": 58,
+        "footprint_mib": 1044.0
+      },
+      {
+        "layer": 22,
+        "distinct_count": 73,
+        "footprint_mib": 1314.0
+      },
+      {
+        "layer": 23,
+        "distinct_count": 108,
+        "footprint_mib": 1944.0
+      },
+      {
+        "layer": 24,
+        "distinct_count": 114,
+        "footprint_mib": 2052.0
+      },
+      {
+        "layer": 25,
+        "distinct_count": 118,
+        "footprint_mib": 2124.0
+      },
+      {
+        "layer": 26,
+        "distinct_count": 119,
+        "footprint_mib": 2142.0
+      },
+      {
+        "layer": 27,
+        "distinct_count": 100,
+        "footprint_mib": 1800.0
+      },
+      {
+        "layer": 28,
+        "distinct_count": 102,
+        "footprint_mib": 1836.0
+      },
+      {
+        "layer": 29,
+        "distinct_count": 90,
+        "footprint_mib": 1620.0
+      },
+      {
+        "layer": 30,
+        "distinct_count": 88,
+        "footprint_mib": 1584.0
+      },
+      {
+        "layer": 31,
+        "distinct_count": 76,
+        "footprint_mib": 1368.0
+      },
+      {
+        "layer": 32,
+        "distinct_count": 67,
+        "footprint_mib": 1206.0
+      },
+      {
+        "layer": 33,
+        "distinct_count": 76,
+        "footprint_mib": 1368.0
+      },
+      {
+        "layer": 34,
+        "distinct_count": 74,
+        "footprint_mib": 1332.0
+      },
+      {
+        "layer": 35,
+        "distinct_count": 90,
+        "footprint_mib": 1620.0
+      },
+      {
+        "layer": 36,
+        "distinct_count": 88,
+        "footprint_mib": 1584.0
+      },
+      {
+        "layer": 37,
+        "distinct_count": 97,
+        "footprint_mib": 1746.0
+      },
+      {
+        "layer": 38,
+        "distinct_count": 83,
+        "footprint_mib": 1494.0
+      },
+      {
+        "layer": 39,
+        "distinct_count": 92,
+        "footprint_mib": 1656.0
+      },
+      {
+        "layer": 40,
+        "distinct_count": 109,
+        "footprint_mib": 1962.0
+      },
+      {
+        "layer": 41,
+        "distinct_count": 99,
+        "footprint_mib": 1782.0
+      },
+      {
+        "layer": 42,
+        "distinct_count": 103,
+        "footprint_mib": 1854.0
+      },
+      {
+        "layer": 43,
+        "distinct_count": 95,
+        "footprint_mib": 1710.0
+      },
+      {
+        "layer": 44,
+        "distinct_count": 98,
+        "footprint_mib": 1764.0
+      },
+      {
+        "layer": 45,
+        "distinct_count": 93,
+        "footprint_mib": 1674.0
+      },
+      {
+        "layer": 46,
+        "distinct_count": 97,
+        "footprint_mib": 1746.0
+      },
+      {
+        "layer": 47,
+        "distinct_count": 96,
+        "footprint_mib": 1728.0
+      },
+      {
+        "layer": 48,
+        "distinct_count": 105,
+        "footprint_mib": 1890.0
+      },
+      {
+        "layer": 49,
+        "distinct_count": 118,
+        "footprint_mib": 2124.0
+      },
+      {
+        "layer": 50,
+        "distinct_count": 93,
+        "footprint_mib": 1674.0
+      },
+      {
+        "layer": 51,
+        "distinct_count": 102,
+        "footprint_mib": 1836.0
+      },
+      {
+        "layer": 52,
+        "distinct_count": 93,
+        "footprint_mib": 1674.0
+      },
+      {
+        "layer": 53,
+        "distinct_count": 109,
+        "footprint_mib": 1962.0
+      },
+      {
+        "layer": 54,
+        "distinct_count": 96,
+        "footprint_mib": 1728.0
+      },
+      {
+        "layer": 55,
+        "distinct_count": 87,
+        "footprint_mib": 1566.0
+      },
+      {
+        "layer": 56,
+        "distinct_count": 104,
+        "footprint_mib": 1872.0
+      },
+      {
+        "layer": 57,
+        "distinct_count": 95,
+        "footprint_mib": 1710.0
+      },
+      {
+        "layer": 58,
+        "distinct_count": 122,
+        "footprint_mib": 2196.0
+      },
+      {
+        "layer": 59,
+        "distinct_count": 101,
+        "footprint_mib": 1818.0
+      },
+      {
+        "layer": 60,
+        "distinct_count": 97,
+        "footprint_mib": 1746.0
+      },
+      {
+        "layer": 61,
+        "distinct_count": 90,
+        "footprint_mib": 1620.0
+      },
+      {
+        "layer": 62,
+        "distinct_count": 111,
+        "footprint_mib": 1998.0
+      },
+      {
+        "layer": 63,
+        "distinct_count": 105,
+        "footprint_mib": 1890.0
+      },
+      {
+        "layer": 64,
+        "distinct_count": 96,
+        "footprint_mib": 1728.0
+      },
+      {
+        "layer": 65,
+        "distinct_count": 119,
+        "footprint_mib": 2142.0
+      },
+      {
+        "layer": 66,
+        "distinct_count": 93,
+        "footprint_mib": 1674.0
+      },
+      {
+        "layer": 67,
+        "distinct_count": 115,
+        "footprint_mib": 2070.0
+      },
+      {
+        "layer": 68,
+        "distinct_count": 115,
+        "footprint_mib": 2070.0
+      },
+      {
+        "layer": 69,
+        "distinct_count": 112,
+        "footprint_mib": 2016.0
+      },
+      {
+        "layer": 70,
+        "distinct_count": 113,
+        "footprint_mib": 2034.0
+      },
+      {
+        "layer": 71,
+        "distinct_count": 119,
+        "footprint_mib": 2142.0
+      },
+      {
+        "layer": 72,
+        "distinct_count": 118,
+        "footprint_mib": 2124.0
+      },
+      {
+        "layer": 73,
+        "distinct_count": 122,
+        "footprint_mib": 2196.0
+      },
+      {
+        "layer": 74,
+        "distinct_count": 118,
+        "footprint_mib": 2124.0
+      },
+      {
+        "layer": 75,
+        "distinct_count": 108,
+        "footprint_mib": 1944.0
+      },
+      {
+        "layer": 76,
+        "distinct_count": 121,
+        "footprint_mib": 2178.0
+      },
+      {
+        "layer": 77,
+        "distinct_count": 111,
+        "footprint_mib": 1998.0
+      }
+    ],
+    "expert_token_counts": [
+      341,
+      72,
+      310,
+      340,
+      217,
+      136,
+      126,
+      123,
+      148,
+      258,
+      122,
+      130,
+      117,
+      105,
+      343,
+      117,
+      140,
+      153,
+      108,
+      220,
+      172,
+      72,
+      88,
+      165,
+      336,
+      124,
+      155,
+      127,
+      241,
+      109,
+      124,
+      146,
+      258,
+      160,
+      201,
+      178,
+      169,
+      94,
+      264,
+      216,
+      157,
+      147,
+      87,
+      104,
+      200,
+      154,
+      129,
+      110,
+      142,
+      123,
+      130,
+      360,
+      211,
+      186,
+      104,
+      164,
+      73,
+      75,
+      106,
+      166,
+      247,
+      251,
+      186,
+      101,
+      88,
+      138,
+      112,
+      85,
+      76,
+      257,
+      90,
+      90,
+      158,
+      176,
+      127,
+      83,
+      100,
+      263,
+      118,
+      205,
+      162,
+      161,
+      201,
+      133,
+      90,
+      51,
+      59,
+      148,
+      112,
+      362,
+      87,
+      97,
+      139,
+      84,
+      171,
+      164,
+      194,
+      135,
+      180,
+      67,
+      75,
+      208,
+      114,
+      127,
+      169,
+      92,
+      130,
+      115,
+      199,
+      262,
+      105,
+      131,
+      106,
+      210,
+      172,
+      97,
+      268,
+      131,
+      129,
+      105,
+      144,
+      52,
+      185,
+      145,
+      96,
+      94,
+      137,
+      124,
+      108,
+      129,
+      76,
+      95,
+      214,
+      123,
+      142,
+      104,
+      164,
+      215,
+      247,
+      110,
+      88,
+      132,
+      147,
+      196,
+      150,
+      183,
+      64,
+      355,
+      141,
+      249,
+      123,
+      126,
+      147,
+      61,
+      196,
+      169,
+      72,
+      97,
+      58,
+      112,
+      108,
+      142,
+      111,
+      168,
+      105,
+      154,
+      359,
+      131,
+      105,
+      128,
+      258,
+      182,
+      100,
+      123,
+      126,
+      95,
+      138,
+      87,
+      90,
+      229,
+      294,
+      311,
+      64,
+      108,
+      162,
+      98,
+      130,
+      235,
+      172,
+      144,
+      140,
+      82,
+      80,
+      153,
+      90,
+      228,
+      197,
+      128,
+      198,
+      119,
+      91,
+      126,
+      70,
+      101,
+      103,
+      95,
+      102,
+      193,
+      81,
+      119,
+      118,
+      99,
+      124,
+      266,
+      108,
+      78,
+      137,
+      156,
+      196,
+      228,
+      154,
+      171,
+      126,
+      170,
+      121,
+      349,
+      111,
+      116,
+      109,
+      296,
+      219,
+      157,
+      87,
+      230,
+      140,
+      121,
+      118,
+      73,
+      118,
+      192,
+      116,
+      101,
+      150,
+      185,
+      123,
+      79,
+      109,
+      84,
+      130,
+      81,
+      164,
+      75,
+      168,
+      157,
+      122,
+      199
+    ],
+    "p90_expert_load": 244.0
+  },
+  "top8": {
+    "total_distinct_count": 16300,
+    "total_footprint_mib": 293400.0,
+    "p90_count": 239.20000000000002,
+    "p90_footprint_mib": 4305.6,
+    "min_count": 184,
+    "median_count": 215.0,
+    "max_count": 252,
+    "per_layer": [
+      {
+        "layer": 3,
+        "distinct_count": 248,
+        "footprint_mib": 4464.0
+      },
+      {
+        "layer": 4,
+        "distinct_count": 250,
+        "footprint_mib": 4500.0
+      },
+      {
+        "layer": 5,
+        "distinct_count": 248,
+        "footprint_mib": 4464.0
+      },
+      {
+        "layer": 6,
+        "distinct_count": 252,
+        "footprint_mib": 4536.0
+      },
+      {
+        "layer": 7,
+        "distinct_count": 248,
+        "footprint_mib": 4464.0
+      },
+      {
+        "layer": 8,
+        "distinct_count": 246,
+        "footprint_mib": 4428.0
+      },
+      {
+        "layer": 9,
+        "distinct_count": 246,
+        "footprint_mib": 4428.0
+      },
+      {
+        "layer": 10,
+        "distinct_count": 240,
+        "footprint_mib": 4320.0
+      },
+      {
+        "layer": 11,
+        "distinct_count": 237,
+        "footprint_mib": 4266.0
+      },
+      {
+        "layer": 12,
+        "distinct_count": 226,
+        "footprint_mib": 4068.0
+      },
+      {
+        "layer": 13,
+        "distinct_count": 238,
+        "footprint_mib": 4284.0
+      },
+      {
+        "layer": 14,
+        "distinct_count": 234,
+        "footprint_mib": 4212.0
+      },
+      {
+        "layer": 15,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 16,
+        "distinct_count": 207,
+        "footprint_mib": 3726.0
+      },
+      {
+        "layer": 17,
+        "distinct_count": 200,
+        "footprint_mib": 3600.0
+      },
+      {
+        "layer": 18,
+        "distinct_count": 184,
+        "footprint_mib": 3312.0
+      },
+      {
+        "layer": 19,
+        "distinct_count": 188,
+        "footprint_mib": 3384.0
+      },
+      {
+        "layer": 20,
+        "distinct_count": 184,
+        "footprint_mib": 3312.0
+      },
+      {
+        "layer": 21,
+        "distinct_count": 194,
+        "footprint_mib": 3492.0
+      },
+      {
+        "layer": 22,
+        "distinct_count": 208,
+        "footprint_mib": 3744.0
+      },
+      {
+        "layer": 23,
+        "distinct_count": 221,
+        "footprint_mib": 3978.0
+      },
+      {
+        "layer": 24,
+        "distinct_count": 234,
+        "footprint_mib": 4212.0
+      },
+      {
+        "layer": 25,
+        "distinct_count": 234,
+        "footprint_mib": 4212.0
+      },
+      {
+        "layer": 26,
+        "distinct_count": 228,
+        "footprint_mib": 4104.0
+      },
+      {
+        "layer": 27,
+        "distinct_count": 216,
+        "footprint_mib": 3888.0
+      },
+      {
+        "layer": 28,
+        "distinct_count": 218,
+        "footprint_mib": 3924.0
+      },
+      {
+        "layer": 29,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 30,
+        "distinct_count": 202,
+        "footprint_mib": 3636.0
+      },
+      {
+        "layer": 31,
+        "distinct_count": 199,
+        "footprint_mib": 3582.0
+      },
+      {
+        "layer": 32,
+        "distinct_count": 186,
+        "footprint_mib": 3348.0
+      },
+      {
+        "layer": 33,
+        "distinct_count": 191,
+        "footprint_mib": 3438.0
+      },
+      {
+        "layer": 34,
+        "distinct_count": 185,
+        "footprint_mib": 3330.0
+      },
+      {
+        "layer": 35,
+        "distinct_count": 204,
+        "footprint_mib": 3672.0
+      },
+      {
+        "layer": 36,
+        "distinct_count": 193,
+        "footprint_mib": 3474.0
+      },
+      {
+        "layer": 37,
+        "distinct_count": 208,
+        "footprint_mib": 3744.0
+      },
+      {
+        "layer": 38,
+        "distinct_count": 212,
+        "footprint_mib": 3816.0
+      },
+      {
+        "layer": 39,
+        "distinct_count": 203,
+        "footprint_mib": 3654.0
+      },
+      {
+        "layer": 40,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 41,
+        "distinct_count": 206,
+        "footprint_mib": 3708.0
+      },
+      {
+        "layer": 42,
+        "distinct_count": 210,
+        "footprint_mib": 3780.0
+      },
+      {
+        "layer": 43,
+        "distinct_count": 209,
+        "footprint_mib": 3762.0
+      },
+      {
+        "layer": 44,
+        "distinct_count": 202,
+        "footprint_mib": 3636.0
+      },
+      {
+        "layer": 45,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 46,
+        "distinct_count": 210,
+        "footprint_mib": 3780.0
+      },
+      {
+        "layer": 47,
+        "distinct_count": 209,
+        "footprint_mib": 3762.0
+      },
+      {
+        "layer": 48,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 49,
+        "distinct_count": 221,
+        "footprint_mib": 3978.0
+      },
+      {
+        "layer": 50,
+        "distinct_count": 212,
+        "footprint_mib": 3816.0
+      },
+      {
+        "layer": 51,
+        "distinct_count": 214,
+        "footprint_mib": 3852.0
+      },
+      {
+        "layer": 52,
+        "distinct_count": 211,
+        "footprint_mib": 3798.0
+      },
+      {
+        "layer": 53,
+        "distinct_count": 214,
+        "footprint_mib": 3852.0
+      },
+      {
+        "layer": 54,
+        "distinct_count": 228,
+        "footprint_mib": 4104.0
+      },
+      {
+        "layer": 55,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 56,
+        "distinct_count": 210,
+        "footprint_mib": 3780.0
+      },
+      {
+        "layer": 57,
+        "distinct_count": 208,
+        "footprint_mib": 3744.0
+      },
+      {
+        "layer": 58,
+        "distinct_count": 215,
+        "footprint_mib": 3870.0
+      },
+      {
+        "layer": 59,
+        "distinct_count": 215,
+        "footprint_mib": 3870.0
+      },
+      {
+        "layer": 60,
+        "distinct_count": 214,
+        "footprint_mib": 3852.0
+      },
+      {
+        "layer": 61,
+        "distinct_count": 213,
+        "footprint_mib": 3834.0
+      },
+      {
+        "layer": 62,
+        "distinct_count": 224,
+        "footprint_mib": 4032.0
+      },
+      {
+        "layer": 63,
+        "distinct_count": 215,
+        "footprint_mib": 3870.0
+      },
+      {
+        "layer": 64,
+        "distinct_count": 223,
+        "footprint_mib": 4014.0
+      },
+      {
+        "layer": 65,
+        "distinct_count": 225,
+        "footprint_mib": 4050.0
+      },
+      {
+        "layer": 66,
+        "distinct_count": 219,
+        "footprint_mib": 3942.0
+      },
+      {
+        "layer": 67,
+        "distinct_count": 231,
+        "footprint_mib": 4158.0
+      },
+      {
+        "layer": 68,
+        "distinct_count": 222,
+        "footprint_mib": 3996.0
+      },
+      {
+        "layer": 69,
+        "distinct_count": 216,
+        "footprint_mib": 3888.0
+      },
+      {
+        "layer": 70,
+        "distinct_count": 234,
+        "footprint_mib": 4212.0
+      },
+      {
+        "layer": 71,
+        "distinct_count": 221,
+        "footprint_mib": 3978.0
+      },
+      {
+        "layer": 72,
+        "distinct_count": 227,
+        "footprint_mib": 4086.0
+      },
+      {
+        "layer": 73,
+        "distinct_count": 230,
+        "footprint_mib": 4140.0
+      },
+      {
+        "layer": 74,
+        "distinct_count": 227,
+        "footprint_mib": 4086.0
+      },
+      {
+        "layer": 75,
+        "distinct_count": 220,
+        "footprint_mib": 3960.0
+      },
+      {
+        "layer": 76,
+        "distinct_count": 224,
+        "footprint_mib": 4032.0
+      },
+      {
+        "layer": 77,
+        "distinct_count": 231,
+        "footprint_mib": 4158.0
+      }
+    ],
+    "expert_token_counts": [
+      900,
+      432,
+      717,
+      1053,
+      661,
+      598,
+      561,
+      509,
+      577,
+      841,
+      565,
+      508,
+      543,
+      531,
+      928,
+      626,
+      554,
+      610,
+      494,
+      769,
+      645,
+      449,
+      511,
+      729,
+      854,
+      565,
+      657,
+      605,
+      768,
+      483,
+      491,
+      725,
+      854,
+      599,
+      632,
+      695,
+      580,
+      524,
+      717,
+      681,
+      594,
+      568,
+      518,
+      545,
+      764,
+      639,
+      580,
+      540,
+      641,
+      495,
+      456,
+      1013,
+      651,
+      707,
+      439,
+      810,
+      490,
+      518,
+      520,
+      704,
+      705,
+      711,
+      640,
+      513,
+      512,
+      625,
+      527,
+      449,
+      477,
+      765,
+      470,
+      541,
+      576,
+      632,
+      551,
+      516,
+      457,
+      839,
+      543,
+      598,
+      608,
+      613,
+      710,
+      553,
+      523,
+      422,
+      434,
+      651,
+      490,
+      981,
+      482,
+      402,
+      510,
+      416,
+      641,
+      576,
+      694,
+      579,
+      633,
+      538,
+      444,
+      580,
+      515,
+      543,
+      587,
+      493,
+      605,
+      488,
+      854,
+      684,
+      521,
+      605,
+      512,
+      650,
+      578,
+      567,
+      713,
+      528,
+      537,
+      437,
+      567,
+      430,
+      657,
+      568,
+      462,
+      514,
+      504,
+      631,
+      464,
+      538,
+      471,
+      480,
+      671,
+      518,
+      600,
+      575,
+      526,
+      710,
+      651,
+      500,
+      496,
+      646,
+      558,
+      677,
+      618,
+      709,
+      431,
+      878,
+      646,
+      714,
+      573,
+      508,
+      567,
+      400,
+      575,
+      758,
+      415,
+      546,
+      400,
+      610,
+      601,
+      511,
+      465,
+      586,
+      685,
+      626,
+      984,
+      608,
+      460,
+      610,
+      851,
+      578,
+      559,
+      645,
+      522,
+      544,
+      609,
+      593,
+      522,
+      749,
+      775,
+      820,
+      435,
+      578,
+      645,
+      532,
+      569,
+      632,
+      592,
+      670,
+      702,
+      483,
+      518,
+      572,
+      515,
+      678,
+      560,
+      552,
+      577,
+      693,
+      509,
+      660,
+      507,
+      683,
+      608,
+      541,
+      524,
+      576,
+      466,
+      595,
+      516,
+      527,
+      483,
+      722,
+      492,
+      489,
+      571,
+      569,
+      663,
+      606,
+      737,
+      790,
+      625,
+      685,
+      521,
+      870,
+      535,
+      717,
+      633,
+      787,
+      611,
+      591,
+      444,
+      755,
+      476,
+      610,
+      479,
+      535,
+      571,
+      632,
+      523,
+      506,
+      568,
+      726,
+      444,
+      454,
+      595,
+      503,
+      534,
+      437,
+      698,
+      457,
+      569,
+      579,
+      593,
+      658
+    ],
+    "p90_expert_load": 743.0
+  },
+  "ratios": {
+    "total_footprint_top8_over_top2": 2.174203014539149,
+    "p90_footprint_top8_over_top2": 1.9768595041322317
+  }
+}

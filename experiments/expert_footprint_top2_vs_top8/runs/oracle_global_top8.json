@@ -1,0 +1,54 @@
+{
+  "top8": {
+    "rows": [
+      {
+        "prompt_tokens": 1169,
+        "completion_tokens": 82,
+        "ttft_s": 11.084,
+        "total_s": 14.682,
+        "decode_s": 3.598,
+        "decode_tok_s": 22.79,
+        "task": "llm-inference-batching-scheduler"
+      },
+      {
+        "prompt_tokens": 179,
+        "completion_tokens": 200,
+        "ttft_s": 1.936,
+        "total_s": 10.494,
+        "decode_s": 8.558,
+        "decode_tok_s": 23.37,
+        "task": "largest-eigenval"
+      },
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.879,
+        "total_s": 11.01,
+        "decode_s": 10.131,
+        "decode_tok_s": 19.74,
+        "task": "fix-git"
+      },
+      {
+        "prompt_tokens": 84,
+        "completion_tokens": 200,
+        "ttft_s": 1.092,
+        "total_s": 9.46,
+        "decode_s": 8.368,
+        "decode_tok_s": 23.9,
+        "task": "compile-compcert"
+      },
+      {
+        "prompt_tokens": 253,
+        "completion_tokens": 200,
+        "ttft_s": 2.387,
+        "total_s": 10.958,
+        "decode_s": 8.57,
+        "decode_tok_s": 23.34,
+        "task": "git-multibranch"
+      }
+    ],
+    "mean_decode_tok_s": 22.63,
+    "agg_decode_tok_s": 22.49,
+    "total_completion_tokens": 882
+  }
+}

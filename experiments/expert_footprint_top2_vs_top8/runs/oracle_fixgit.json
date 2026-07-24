@@ -1,0 +1,34 @@
+{
+  "top8": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.574,
+        "total_s": 9.554,
+        "decode_s": 8.981,
+        "decode_tok_s": 22.27,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 22.27,
+    "agg_decode_tok_s": 22.27,
+    "total_completion_tokens": 200
+  },
+  "top0": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.327,
+        "total_s": 3.186,
+        "decode_s": 2.859,
+        "decode_tok_s": 69.95,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 69.95,
+    "agg_decode_tok_s": 69.95,
+    "total_completion_tokens": 200
+  }
+}

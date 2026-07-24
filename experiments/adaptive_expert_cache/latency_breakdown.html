@@ -1,0 +1,374 @@
+<title>Per-token latency & CPU/GPU overlap — GLM-5.2 hybrid MoE decode</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f6;
+    --ink: #191e2a; --ink-soft: #3c4657; --muted: #667085; --faint: #97a1b2;
+    --line: #e2e6ee; --line-strong: #cdd4e0; --accent: #4a63c8;
+    --c-base: #6b83b8; --c-gpu: #1f9e86; --c-hand: #d29a34; --c-cpu: #d8543b;
+    --c-idle: #b8c0ce;
+    --shadow: 0 1px 2px rgba(18,24,38,.05), 0 8px 24px rgba(18,24,38,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1016; --surface: #151a22; --surface-2: #1b212b;
+      --ink: #e9edf4; --ink-soft: #c2cad8; --muted: #8a94a6; --faint: #5f6b7e;
+      --line: #242c38; --line-strong: #313a48; --accent: #8098ee;
+      --c-base: #7d95cc; --c-gpu: #2fc0a2; --c-hand: #e6b452; --c-cpu: #ec6a4d;
+      --c-idle: #3a4453;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f6;
+    --ink: #191e2a; --ink-soft: #3c4657; --muted: #667085; --faint: #97a1b2;
+    --line: #e2e6ee; --line-strong: #cdd4e0; --accent: #4a63c8;
+    --c-base: #6b83b8; --c-gpu: #1f9e86; --c-hand: #d29a34; --c-cpu: #d8543b;
+    --c-idle: #b8c0ce;
+    --shadow: 0 1px 2px rgba(18,24,38,.05), 0 8px 24px rgba(18,24,38,.06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1016; --surface: #151a22; --surface-2: #1b212b;
+    --ink: #e9edf4; --ink-soft: #c2cad8; --muted: #8a94a6; --faint: #5f6b7e;
+    --line: #242c38; --line-strong: #313a48; --accent: #8098ee;
+    --c-base: #7d95cc; --c-gpu: #2fc0a2; --c-hand: #e6b452; --c-cpu: #ec6a4d;
+    --c-idle: #3a4453;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: clamp(28px, 5vw, 64px) clamp(18px, 4vw, 40px) 96px; }
+
+  .eyebrow { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 14px; }
+  h1 { font-size: clamp(27px, 4.2vw, 42px); line-height: 1.08; letter-spacing: -.02em; margin: 0 0 16px; text-wrap: balance; font-weight: 680; }
+  .lede { font-size: clamp(16px, 1.9vw, 19px); color: var(--ink-soft); max-width: 64ch; margin: 0 0 24px; text-wrap: pretty; }
+  .lede b { color: var(--ink); font-weight: 620; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 12.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; }
+  .chip b { color: var(--ink-soft); font-weight: 600; }
+
+  hr.rule { border: 0; border-top: 1px solid var(--line); margin: 44px 0; }
+  h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 6px; }
+  .section-note { color: var(--muted); font-size: 14.5px; margin: 0 0 22px; max-width: 68ch; }
+  .section-note b { color: var(--ink-soft); }
+
+  /* verdict cards */
+  .verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .verdict { grid-template-columns: 1fr; } }
+  .vcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .vcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .vcard.abs::before { background: var(--c-base); }
+  .vcard.ctl::before { background: var(--c-cpu); }
+  .vcard .tag { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+  .vcard h3 { margin: 0 0 8px; font-size: 19px; font-weight: 660; letter-spacing: -.01em; }
+  .vcard h3 .num { font-family: ui-monospace, monospace; }
+  .vcard.abs h3 .num { color: var(--c-base); }
+  .vcard.ctl h3 .num { color: var(--c-cpu); }
+  .vcard p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 0 0 20px; }
+  .lg { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-soft); }
+  .sw { width: 13px; height: 13px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+  .lg small { color: var(--faint); font-size: 12px; }
+
+  /* stacked budget bars */
+  .cases { display: flex; flex-direction: column; gap: 20px; }
+  .case-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .case-title { display: flex; align-items: baseline; gap: 10px; }
+  .case-name { font-weight: 620; font-size: 16px; letter-spacing: -.01em; }
+  .case-sub { font-size: 13px; color: var(--muted); }
+  .case-metrics { font-size: 13.5px; color: var(--muted); }
+  .case-metrics b { color: var(--ink); font-weight: 650; font-size: 15px; }
+  .case-metrics .tps { color: var(--c-gpu); font-weight: 650; }
+  .track { position: relative; height: 40px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .bar { position: absolute; inset: 0; display: flex; }
+  .seg { height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; transform-origin: left center; animation: grow .75s cubic-bezier(.2,.7,.2,1) both; }
+  .seg span { font-size: 11.5px; font-weight: 600; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.28); white-space: nowrap; padding: 0 4px; }
+  .seg.base { background: var(--c-base); } .seg.gpu { background: var(--c-gpu); animation-delay:.05s; }
+  .seg.hand { background: var(--c-hand); animation-delay:.1s; } .seg.cpu { background: var(--c-cpu); animation-delay:.16s; }
+  @keyframes grow { from { transform: scaleX(0); opacity:.4; } to { transform: scaleX(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce) { .seg, .blk { animation: none !important; } }
+  .case.hot .track { box-shadow: 0 0 0 1px var(--c-cpu), var(--shadow); }
+  .axis { position: relative; height: 18px; margin-top: 8px; }
+  .axis .tick { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: var(--faint); }
+  .axis .tick::before { content: ""; position: absolute; top: -6px; left: 50%; width: 1px; height: 4px; background: var(--line-strong); }
+  .axis-label { text-align: right; font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+
+  .callout { display: flex; align-items: center; gap: 18px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--c-cpu); border-radius: 10px; padding: 18px 20px; margin: 26px 0 0; box-shadow: var(--shadow); }
+  .callout .big { font-size: clamp(28px, 4.4vw, 38px); font-weight: 700; letter-spacing: -.02em; color: var(--c-cpu); line-height: 1; }
+  .callout .big small { font-size: 15px; color: var(--muted); font-weight: 500; }
+  .callout p { margin: 0; font-size: 14px; color: var(--ink-soft); max-width: 58ch; }
+
+  /* ---- gantt / overlap lanes ---- */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 820px) { .panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 20px; box-shadow: var(--shadow); }
+  .panel h3 { margin: 0 0 3px; font-size: 15.5px; font-weight: 640; letter-spacing: -.01em; }
+  .panel .ph-sub { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; }
+  .panel.prod { border-color: var(--c-cpu); }
+  .panel .verd { display: inline-block; font-size: 11px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; margin-bottom: 12px; }
+  .panel .verd.hidden { color: var(--c-gpu); background: color-mix(in srgb, var(--c-gpu) 15%, transparent); }
+  .panel .verd.exposed { color: var(--c-cpu); background: color-mix(in srgb, var(--c-cpu) 15%, transparent); }
+
+  .gantt { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+  .lane { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 10px; }
+  .lane .lbl { font-size: 11px; font-weight: 600; color: var(--muted); text-align: right; letter-spacing: .02em; }
+  .lanetrack { position: relative; height: 30px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .blk { position: absolute; top: 0; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.3); overflow: hidden; white-space: nowrap; }
+  .blk.submit { background: var(--c-hand); }
+  .blk.mask   { background: color-mix(in srgb, var(--c-base) 70%, #888); }
+  .blk.gpu    { background: var(--c-gpu); }
+  .blk.cpu    { background: var(--c-cpu); }
+  .blk.merge  { background: color-mix(in srgb, var(--c-base) 55%, #999); }
+  .blk.idle   { background: repeating-linear-gradient(45deg, var(--c-idle), var(--c-idle) 4px, transparent 4px, transparent 8px); color: var(--faint); text-shadow:none; border-right:1px dashed var(--line-strong); }
+  .blk.idle span { color: var(--faint); }
+  .gaxis { position: relative; height: 16px; margin: 8px 0 0 48px; }
+  .gaxis .t { position: absolute; top: 0; transform: translateX(-50%); font-size: 10px; color: var(--faint); }
+  .glabel { margin: 2px 0 0 48px; font-size: 11px; color: var(--faint); }
+  .waitnote { margin-top: 12px; font-size: 12.5px; color: var(--ink-soft); }
+  .waitnote b { color: var(--ink); }
+  .waitnote .g { color: var(--c-gpu); font-weight:650; } .waitnote .k { color: var(--c-cpu); font-weight:650; }
+
+  /* table */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+  thead th { text-align: right; font-weight: 600; color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 12px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 11px 14px; text-align: right; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
+  tbody td:first-child { text-align: left; color: var(--ink); font-weight: 560; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.ref td, tbody tr.ref td:first-child { color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+  td .tot { color: var(--ink); font-weight: 650; }
+  .cpu-cell { color: var(--c-cpu) !important; font-weight: 600; }
+
+  .takeaway { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .takeaway ul { margin: 0; padding-left: 20px; }
+  .takeaway li { margin: 10px 0; color: var(--ink-soft); font-size: 15px; }
+  .takeaway li b { color: var(--ink); }
+  .k { color: var(--c-cpu); font-weight: 650; } .g { color: var(--c-gpu); font-weight: 650; }
+  footer { margin-top: 40px; color: var(--faint); font-size: 12.5px; line-height:1.7; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Latency &amp; overlap profile · GLM-5.2 hybrid MoE decode</p>
+    <h1>Where a token's time goes — and how the GPU and CPU actually share the work</h1>
+    <p class="lede">GLM-5.2 keeps <b>96 of 256</b> experts on the GPU and computes the rest on the CPU, <b>concurrently</b>. Per MoE layer the CPU job is fired async, the GPU experts run in parallel, then the layer waits for whichever lane is slower. The question isn't just "how long is each stage" — it's <b>who is waiting for whom</b>. Measured below, in both the instrumented (eager) path and the production CUDA-graph path.</p>
+    <div class="chips">
+      <span class="chip"><b>Model</b> GLM-5.2 · W4AFP8 · 256 experts, 8 active, 78 layers</span>
+      <span class="chip"><b>HW</b> 2×H100 · TP2</span>
+      <span class="chip"><b>Resident</b> 96 GPU experts</span>
+      <span class="chip"><b>CPU</b> RAWINT4 · AVX-512 VNNI · 72 threads</span>
+      <span class="chip"><b>Decode</b> bs=1 · CUDA graphs on</span>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <!-- ============ THE BOTTLENECK ============ -->
+  <section>
+    <h2>What's the bottleneck now</h2>
+    <p class="section-note">There are two honest answers, at two levels. One is fixed and dominates the clock; the other is the only thing the expert-placement work can move.</p>
+    <div class="verdict">
+      <div class="vcard abs">
+        <p class="tag">Biggest absolute cost · fixed</p>
+        <h3>Attention + dense base &nbsp;<span class="num">35.5 ms</span></h3>
+        <p>~71% of a fast decode step is memory-bandwidth-bound: reading the attention (MLA) and dense/shared weights plus the KV cache from HBM, every single token. It's there even with <em>zero</em> experts on the CPU. Nothing in expert placement touches it — only <b>MTP / speculative decode</b> amortizes it across accepted tokens.</p>
+      </div>
+      <div class="vcard ctl">
+        <p class="tag">Biggest controllable cost · the pole</p>
+        <h3>CPU expert compute &nbsp;<span class="num">~3 ms / expert</span></h3>
+        <p>Inside the MoE region the CPU is the <b>exposed pole in production</b>: the GPU finishes its resident experts in a fraction of the time and then <b>idles waiting for the CPU</b>. Each genuine expert that isn't GPU-resident adds ~3&nbsp;ms/token. The GPU is under-utilized during decode; CPU expert throughput is the wall.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ============ OVERLAP LANES ============ -->
+  <section>
+    <h2>How CPU and GPU overlap — per MoE layer</h2>
+    <p class="section-note">Two lanes, drawn to real timing. The <b>GPU / main-stream</b> lane runs submit → mask → the resident-expert GEMM → a wait → merge. The <b>CPU worker</b> lane runs the non-resident experts, kicked off by <em>submit</em> and running <b>in parallel</b>. Whether the CPU is hidden depends entirely on whether it finishes inside the GPU's window — and that window is ~4× narrower in production.</p>
+
+    <div class="legend">
+      <span class="lg"><span class="sw" style="background:var(--c-hand)"></span> submit <small>stage-copy + async enqueue</small></span>
+      <span class="lg"><span class="sw" style="background:color-mix(in srgb,var(--c-base) 70%,#888)"></span> mask/remap</span>
+      <span class="lg"><span class="sw" style="background:var(--c-gpu)"></span> GPU expert GEMM</span>
+      <span class="lg"><span class="sw" style="background:var(--c-cpu)"></span> CPU experts</span>
+      <span class="lg"><span class="sw" style="background:var(--c-idle)"></span> idle / waiting</span>
+    </div>
+
+    <div class="panels">
+      <!-- EAGER panel -->
+      <div class="panel">
+        <span class="verd hidden">CPU hidden</span>
+        <h3>Instrumented path <span class="mono" style="color:var(--muted);font-weight:500;font-size:13px;">(eager)</span></h3>
+        <p class="ph-sub">Measured directly, ~5 of 8 experts on CPU. GPU window is wide (0.41&nbsp;ms), so the CPU finishes inside it.</p>
+        <div class="gantt">
+          <div class="lane">
+            <span class="lbl">GPU</span>
+            <div class="lanetrack">
+              <!-- scale: 0..0.90ms => *111.1% -->
+              <div class="blk submit" style="left:0%;width:23.0%"><span>submit</span></div>
+              <div class="blk mask" style="left:23.0%;width:18.4%"><span>mask</span></div>
+              <div class="blk gpu" style="left:41.4%;width:45.1%"><span>GPU experts · 0.41</span></div>
+              <div class="blk idle" style="left:86.5%;width:5.3%"><span></span></div>
+              <div class="blk merge" style="left:91.8%;width:3.4%"></div>
+            </div>
+          </div>
+          <div class="lane">
+            <span class="lbl">CPU</span>
+            <div class="lanetrack">
+              <div class="blk idle" style="left:0%;width:23.0%"><span>queued</span></div>
+              <div class="blk cpu" style="left:23.0%;width:68.8%"><span>CPU experts (≈5) · overlapped</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="gaxis mono"><span class="t" style="left:0%">0</span><span class="t" style="left:55.5%">0.5</span><span class="t" style="left:100%">0.9 ms</span></div>
+        <div class="glabel mono">per MoE layer</div>
+        <p class="waitnote">GPU waits only <span class="g">cpu_wait = 0.05 ms</span>. The CPU's ~5 experts finish inside the GPU window → <b>the layer is GPU-bound, CPU fully hidden.</b></p>
+      </div>
+
+      <!-- PRODUCTION panel -->
+      <div class="panel prod">
+        <span class="verd exposed">CPU exposed</span>
+        <h3>Production path <span class="mono" style="color:var(--muted);font-weight:500;font-size:13px;">(CUDA graph)</span></h3>
+        <p class="ph-sub">The Python/launch spine collapses and the GPU GEMM speeds up ~4×; the CPU's AVX work is unchanged → it becomes the pole.</p>
+        <div class="gantt">
+          <div class="lane">
+            <span class="lbl">GPU</span>
+            <div class="lanetrack">
+              <!-- scale: 0..0.24ms => *416.7% ; gpu 0.094 => 39.2% ; cpu 0.20 => 83.3% -->
+              <div class="blk gpu" style="left:0%;width:39.2%"><span>GPU · 0.09</span></div>
+              <div class="blk idle" style="left:39.2%;width:44.1%"><span>idle — waiting on CPU</span></div>
+              <div class="blk merge" style="left:83.3%;width:8%"></div>
+            </div>
+          </div>
+          <div class="lane">
+            <span class="lbl">CPU</span>
+            <div class="lanetrack">
+              <div class="blk cpu" style="left:0%;width:83.3%"><span>CPU experts (≈5) · 0.20</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="gaxis mono"><span class="t" style="left:0%">0</span><span class="t" style="left:83.3%">0.2</span><span class="t" style="left:100%">0.24 ms</span></div>
+        <div class="glabel mono">per MoE layer · derived from graph-mode decode rates</div>
+        <p class="waitnote">Now <span class="k">CPU 0.20 ms &gt; GPU 0.09 ms</span>: the GPU sits idle ~0.11&nbsp;ms/layer waiting. Summed over 75 layers this is the <b>~3 ms/token per expert</b> you pay on the wall clock.</p>
+      </div>
+    </div>
+
+    <p class="section-note" style="margin-top:22px;">The overlap machinery is real and it works — the CPU genuinely computes its experts <em>while</em> the GPU computes its own. The catch is a speed <b>mismatch</b>: CUDA graphs make the GPU MoE ~4× faster but do nothing for the CPU's AVX kernels, so at production speed the tiny GPU window can no longer hide the CPU, and the GPU ends up waiting.</p>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ============ WHOLE-TOKEN BUDGET ============ -->
+  <section>
+    <h2>Wall-clock budget per token</h2>
+    <p class="section-note">Each bar is one decode step on a common 70&nbsp;ms axis. These are <b>net contributions to the measured total</b> (isolated by differencing server configs), so they sum to the real per-token time even though the stages overlap in flight. Only the red CPU-expert contribution grows as the genuine top-2 move off the GPU.</p>
+
+    <div class="legend">
+      <span class="lg"><span class="sw" style="background:var(--c-base)"></span> Attention + dense + overhead <small>fixed</small></span>
+      <span class="lg"><span class="sw" style="background:var(--c-gpu)"></span> GPU expert MoE <small>fixed</small></span>
+      <span class="lg"><span class="sw" style="background:var(--c-hand)"></span> CPU handshake <small>fixed</small></span>
+      <span class="lg"><span class="sw" style="background:var(--c-cpu)"></span> CPU expert compute <small>the pole</small></span>
+    </div>
+
+    <div class="cases">
+      <div class="case">
+        <div class="case-head"><div class="case-title"><span class="case-name">Both top-2 on GPU</span><span class="case-sub">0 experts on CPU</span></div>
+          <div class="case-metrics"><b class="mono">44.14 ms</b> / token · <span class="tps mono">22.66 tok/s</span></div></div>
+        <div class="track"><div class="bar">
+          <div class="seg base" style="width:50.70%"><span>35.49</span></div>
+          <div class="seg gpu" style="width:10.07%"><span>7.05</span></div>
+          <div class="seg hand" style="width:2.29%"></div>
+        </div></div>
+      </div>
+      <div class="case">
+        <div class="case-head"><div class="case-title"><span class="case-name">One top-2 on CPU</span><span class="case-sub">1 expert on CPU</span></div>
+          <div class="case-metrics"><b class="mono">46.94 ms</b> / token · <span class="tps mono">21.30 tok/s</span></div></div>
+        <div class="track"><div class="bar">
+          <div class="seg base" style="width:50.70%"><span>35.49</span></div>
+          <div class="seg gpu" style="width:10.07%"><span>7.05</span></div>
+          <div class="seg hand" style="width:2.29%"></div>
+          <div class="seg cpu" style="width:4.00%"><span>+2.80</span></div>
+        </div></div>
+      </div>
+      <div class="case hot">
+        <div class="case-head"><div class="case-title"><span class="case-name">Both top-2 on CPU</span><span class="case-sub">2 experts on CPU</span></div>
+          <div class="case-metrics"><b class="mono">50.23 ms</b> / token · <span class="tps mono">19.91 tok/s</span></div></div>
+        <div class="track"><div class="bar">
+          <div class="seg base" style="width:50.70%"><span>35.49</span></div>
+          <div class="seg gpu" style="width:10.07%"><span>7.05</span></div>
+          <div class="seg hand" style="width:2.29%"></div>
+          <div class="seg cpu" style="width:8.70%"><span>+6.09</span></div>
+        </div></div>
+      </div>
+      <div class="axis" aria-hidden="true">
+        <span class="tick" style="left:0%">0</span><span class="tick" style="left:14.29%">10</span>
+        <span class="tick" style="left:28.57%">20</span><span class="tick" style="left:42.86%">30</span>
+        <span class="tick" style="left:57.14%">40</span><span class="tick" style="left:71.43%">50</span>
+        <span class="tick" style="left:85.71%">60</span><span class="tick" style="left:100%">70</span>
+      </div>
+      <div class="axis-label mono">ms / token</div>
+    </div>
+
+    <div class="callout">
+      <div class="big mono">+3.0<small>&nbsp;ms/tok</small></div>
+      <p>Every genuine expert served from the CPU instead of the GPU costs ~<b>3.0&nbsp;ms/token</b> — dead-linear from 0→8 experts. That penalty <em>is</em> the GPU idling in the panel above.</p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ============ SWEEP TABLE ============ -->
+  <section>
+    <h2>Full expert-load sweep</h2>
+    <p class="section-note">The same step as more genuine experts are forced onto the CPU. Fixed stages hold; the CPU column is the only mover — and its ~3&nbsp;ms/expert is the exposed wait, not hidden compute.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>Experts on CPU</th>
+          <th><span class="dot" style="background:var(--c-base)"></span>Attn+base</th>
+          <th><span class="dot" style="background:var(--c-gpu)"></span>GPU MoE</th>
+          <th><span class="dot" style="background:var(--c-hand)"></span>Handshake</th>
+          <th><span class="dot" style="background:var(--c-cpu)"></span>CPU experts</th>
+          <th>Total ms</th><th>tok/s</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>0 &nbsp;<span class="case-sub">(both top-2 on GPU)</span></td><td class="mono">35.49</td><td class="mono">7.05</td><td class="mono">1.60</td><td class="mono cpu-cell">0.00</td><td class="mono"><span class="tot">44.14</span></td><td class="mono">22.66</td></tr>
+          <tr><td>1</td><td class="mono">35.49</td><td class="mono">7.05</td><td class="mono">1.60</td><td class="mono cpu-cell">+2.80</td><td class="mono"><span class="tot">46.94</span></td><td class="mono">21.30</td></tr>
+          <tr><td>2 &nbsp;<span class="case-sub">(both top-2 on CPU)</span></td><td class="mono">35.49</td><td class="mono">7.05</td><td class="mono">1.60</td><td class="mono cpu-cell">+6.09</td><td class="mono"><span class="tot">50.23</span></td><td class="mono">19.91</td></tr>
+          <tr class="ref"><td>4 &nbsp;<span class="case-sub">reference</span></td><td class="mono">35.49</td><td class="mono">7.05</td><td class="mono">1.60</td><td class="mono cpu-cell">+12.40</td><td class="mono"><span class="tot">56.54</span></td><td class="mono">17.69</td></tr>
+          <tr class="ref"><td>8 &nbsp;<span class="case-sub">full top-8</span></td><td class="mono">35.49</td><td class="mono">7.05</td><td class="mono">1.60</td><td class="mono cpu-cell">+24.11</td><td class="mono"><span class="tot">68.25</span></td><td class="mono">14.65</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ============ TAKEAWAY ============ -->
+  <section>
+    <h2>What this says</h2>
+    <div class="takeaway">
+      <ul>
+        <li><b>The GPU is not the bottleneck during decode — it's underused.</b> Per layer it finishes its experts in <span class="g">~0.09 ms</span> and then waits <span class="k">~0.11 ms</span> for the CPU. The overlap works; the two lanes are just mismatched in speed.</li>
+        <li><b>CPU expert throughput is the pole we can move.</b> Each non-resident genuine expert = <span class="k">~3 ms/token</span> of GPU idle-wait. Fewer CPU experts (substitution) or a faster CPU kernel shortens that lane directly.</li>
+        <li><b>Placement can't win it.</b> At 96/256 the per-layer top-2 set outgrows the resident slots on diverse tokens, so some genuine top-2 always lands on the CPU — the accuracy-safe <span class="mono">44→50 ms</span> gap.</li>
+        <li><b>The real lever is MTP / speculative decode.</b> It's the one thing that attacks <em>both</em> poles at once: it amortizes the fixed <span style="color:var(--c-base);font-weight:650;">35.5 ms base</span> and the per-token CPU wait across several accepted tokens — without dropping any expert.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="mono">
+    Measured 2026-07-07 · GLM-5.2 W4AFP8 on 2×H100 · GPU_EXPERTS=96 · MEM_FRACTION=0.90 · RAWINT4 avx512_packed CPU experts.<br>
+    Whole-token buckets: warm streaming decode, gen=150, temp 0, CUDA graphs on, rates exclude prefill; isolated by differencing bypass / skip / no-skip / per-tier configs.<br>
+    Per-layer lanes: eager (no CUDA graph) + SGLANG_KT_HYBRID_TIMING DEEP, layers 0/5/20/35, ~5 experts on CPU (fixed uniform placement). Production lane derived from graph-mode decode rates.
+  </footer>
+</div>

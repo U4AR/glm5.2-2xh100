@@ -1,0 +1,50 @@
+{
+  "top2": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.367,
+        "total_s": 5.327,
+        "decode_s": 4.961,
+        "decode_tok_s": 40.32,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 40.32,
+    "agg_decode_tok_s": 40.31,
+    "total_completion_tokens": 200
+  },
+  "top8": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.839,
+        "total_s": 11.24,
+        "decode_s": 10.401,
+        "decode_tok_s": 19.23,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 19.23,
+    "agg_decode_tok_s": 19.23,
+    "total_completion_tokens": 200
+  },
+  "top0": {
+    "rows": [
+      {
+        "prompt_tokens": 46,
+        "completion_tokens": 200,
+        "ttft_s": 0.324,
+        "total_s": 2.878,
+        "decode_s": 2.554,
+        "decode_tok_s": 78.31,
+        "task": "fix-git"
+      }
+    ],
+    "mean_decode_tok_s": 78.31,
+    "agg_decode_tok_s": 78.31,
+    "total_completion_tokens": 200
+  }
+}

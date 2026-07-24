@@ -1,0 +1,77 @@
+{
+  "baseline": {
+    "tasks": 5,
+    "total_elapsed_s": 47.144,
+    "mean_elapsed_s": 9.429,
+    "prompt_tokens": 1731,
+    "completion_tokens": 640,
+    "total_tokens": 2371,
+    "completion_tok_s": 13.575,
+    "total_tok_s": 50.293
+  },
+  "adaptive": {
+    "tasks": 5,
+    "total_elapsed_s": 46.665,
+    "mean_elapsed_s": 9.333,
+    "prompt_tokens": 1731,
+    "completion_tokens": 640,
+    "total_tokens": 2371,
+    "completion_tok_s": 13.715,
+    "total_tok_s": 50.809
+  },
+  "total_delta_s": -0.479,
+  "total_speedup": 1.0103,
+  "completion_tok_s_speedup": 1.0103,
+  "rows": [
+    {
+      "task": "llm-inference-batching-scheduler",
+      "baseline_s": 17.41,
+      "adaptive_s": 17.733,
+      "delta_s": 0.323,
+      "speedup": 0.9818,
+      "baseline_ctok_s": 7.352,
+      "adaptive_ctok_s": 7.218,
+      "prompt_tokens": 1169
+    },
+    {
+      "task": "largest-eigenval",
+      "baseline_s": 7.705,
+      "adaptive_s": 7.394,
+      "delta_s": -0.311,
+      "speedup": 1.0421,
+      "baseline_ctok_s": 16.612,
+      "adaptive_ctok_s": 17.311,
+      "prompt_tokens": 179
+    },
+    {
+      "task": "fix-git",
+      "baseline_s": 7.014,
+      "adaptive_s": 6.966,
+      "delta_s": -0.048,
+      "speedup": 1.0069,
+      "baseline_ctok_s": 18.25,
+      "adaptive_ctok_s": 18.374,
+      "prompt_tokens": 46
+    },
+    {
+      "task": "compile-compcert",
+      "baseline_s": 7.179,
+      "adaptive_s": 7.008,
+      "delta_s": -0.171,
+      "speedup": 1.0244,
+      "baseline_ctok_s": 17.829,
+      "adaptive_ctok_s": 18.266,
+      "prompt_tokens": 84
+    },
+    {
+      "task": "git-multibranch",
+      "baseline_s": 7.836,
+      "adaptive_s": 7.564,
+      "delta_s": -0.272,
+      "speedup": 1.036,
+      "baseline_ctok_s": 16.335,
+      "adaptive_ctok_s": 16.923,
+      "prompt_tokens": 253
+    }
+  ]
+}

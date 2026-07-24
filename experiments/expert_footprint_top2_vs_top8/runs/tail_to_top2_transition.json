@@ -1,0 +1,91 @@
+{
+  "llm-inference-batching-scheduler": {
+    "unique_top2": 13778,
+    "unique_tail": 18592,
+    "baseline_any_block_top2": 0.7176041666666667,
+    "tail_before_cases": 15284,
+    "tail_before_later_top2": 10268,
+    "tail_before_later_top2_rate": 0.6718136613451976,
+    "tail_ever_top2_any_order_rate": 0.7302065404475043,
+    "top2_first_without_prior_tail": 3510
+  },
+  "largest-eigenval": {
+    "unique_top2": 7381,
+    "unique_tail": 14989,
+    "baseline_any_block_top2": 0.3844270833333333,
+    "tail_before_cases": 12666,
+    "tail_before_later_top2": 4358,
+    "tail_before_later_top2_rate": 0.3440707405652929,
+    "tail_ever_top2_any_order_rate": 0.44572686636867037,
+    "top2_first_without_prior_tail": 3023
+  },
+  "fix-git": {
+    "unique_top2": 3190,
+    "unique_tail": 8627,
+    "baseline_any_block_top2": 0.16614583333333333,
+    "tail_before_cases": 7614,
+    "tail_before_later_top2": 1261,
+    "tail_before_later_top2_rate": 0.16561597058050959,
+    "tail_ever_top2_any_order_rate": 0.2635910513504115,
+    "top2_first_without_prior_tail": 1929
+  },
+  "compile-compcert": {
+    "unique_top2": 4339,
+    "unique_tail": 11236,
+    "baseline_any_block_top2": 0.22598958333333333,
+    "tail_before_cases": 9772,
+    "tail_before_later_top2": 2076,
+    "tail_before_later_top2_rate": 0.212443716741711,
+    "tail_ever_top2_any_order_rate": 0.31505873976504095,
+    "top2_first_without_prior_tail": 2263
+  },
+  "git-multibranch": {
+    "unique_top2": 7497,
+    "unique_tail": 15761,
+    "baseline_any_block_top2": 0.39046875,
+    "tail_before_cases": 13473,
+    "tail_before_later_top2": 4670,
+    "tail_before_later_top2_rate": 0.3466191642544348,
+    "tail_ever_top2_any_order_rate": 0.44146944990800074,
+    "top2_first_without_prior_tail": 2827
+  },
+  "_aggregate": {
+    "tail_before_cases": 58809,
+    "tail_before_later_top2": 22633,
+    "tail_before_later_top2_rate": 0.38485605944668333,
+    "baseline_task_block_top2_rate": 0.37692708333333336,
+    "top2_first_without_prior_tail": 13552,
+    "by_first_tail_rank": {
+      "3": {
+        "cases": 8080,
+        "later_top2": 4390,
+        "rate": 0.5433168316831684
+      },
+      "4": {
+        "cases": 9070,
+        "later_top2": 4246,
+        "rate": 0.4681367144432194
+      },
+      "5": {
+        "cases": 9712,
+        "later_top2": 3980,
+        "rate": 0.4098023064250412
+      },
+      "6": {
+        "cases": 10306,
+        "later_top2": 3687,
+        "rate": 0.35775276537939066
+      },
+      "7": {
+        "cases": 10900,
+        "later_top2": 3419,
+        "rate": 0.3136697247706422
+      },
+      "8": {
+        "cases": 10741,
+        "later_top2": 2911,
+        "rate": 0.27101759612699006
+      }
+    }
+  }
+}

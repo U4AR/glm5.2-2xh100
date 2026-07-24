@@ -1,0 +1,36 @@
+{
+  "top2": {
+    "union_blocks": 15191,
+    "frequency": {
+      "2": 4140,
+      "3": 2812,
+      "1": 5027,
+      "5": 1594,
+      "4": 1618
+    },
+    "task_sizes": {
+      "llm-inference-batching-scheduler": 13778,
+      "largest-eigenval": 7381,
+      "fix-git": 3190,
+      "compile-compcert": 4339,
+      "git-multibranch": 7497
+    }
+  },
+  "top8": {
+    "union_blocks": 19042,
+    "frequency": {
+      "4": 4951,
+      "3": 3786,
+      "5": 7152,
+      "2": 2286,
+      "1": 867
+    },
+    "task_sizes": {
+      "llm-inference-batching-scheduler": 18794,
+      "largest-eigenval": 15689,
+      "fix-git": 9543,
+      "compile-compcert": 12035,
+      "git-multibranch": 16300
+    }
+  }
+}

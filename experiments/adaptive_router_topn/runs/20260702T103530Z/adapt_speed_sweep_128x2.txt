@@ -1,0 +1,6 @@
+served=GLM5.2 gen_tokens=128 repeats=2
+
+model              median tok/s  min tok/s  coherent   repeat
+GLM5.2-adapt0              18.8       16.9    6/6       0/6  
+GLM5.2-adapt50             21.2       18.2    6/6       0/6  
+GLM5.2-adapt100            29.7       28.5    6/6       0/6  

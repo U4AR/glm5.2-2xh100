@@ -1,0 +1,211 @@
+{
+  "tasks": [
+    "llm-inference-batching-scheduler",
+    "largest-eigenval",
+    "fix-git",
+    "compile-compcert",
+    "git-multibranch"
+  ],
+  "percentages": [
+    50,
+    75,
+    90,
+    95,
+    99,
+    100
+  ],
+  "modes": {
+    "top2": {
+      "total_selections": 260400,
+      "unique_blocks": 15191,
+      "coverage_table": [
+        {
+          "pct": 50,
+          "blocks": 1735,
+          "mib": 31230.0,
+          "gib": 30.498046875,
+          "full_share": 0.09036458333333333,
+          "actual_coverage": 0.5000537634408602
+        },
+        {
+          "pct": 75,
+          "blocks": 4372,
+          "mib": 78696.0,
+          "gib": 76.8515625,
+          "full_share": 0.22770833333333335,
+          "actual_coverage": 0.7500499231950845
+        },
+        {
+          "pct": 90,
+          "blocks": 7631,
+          "mib": 137358.0,
+          "gib": 134.138671875,
+          "full_share": 0.3974479166666667,
+          "actual_coverage": 0.9000192012288787
+        },
+        {
+          "pct": 95,
+          "blocks": 9697,
+          "mib": 174546.0,
+          "gib": 170.455078125,
+          "full_share": 0.5050520833333333,
+          "actual_coverage": 0.9500115207373272
+        },
+        {
+          "pct": 99,
+          "blocks": 12971,
+          "mib": 233478.0,
+          "gib": 228.005859375,
+          "full_share": 0.6755729166666666,
+          "actual_coverage": 0.9900038402457757
+        },
+        {
+          "pct": 100,
+          "blocks": 15191,
+          "mib": 273438.0,
+          "gib": 267.029296875,
+          "full_share": 0.7911979166666666,
+          "actual_coverage": 1.0
+        }
+      ],
+      "growth": [
+        {
+          "task": "llm-inference-batching-scheduler",
+          "task_unique_blocks": 13778,
+          "new_blocks": 13778,
+          "cumulative_unique_blocks": 13778,
+          "cumulative_mib": 248004.0,
+          "cumulative_gib": 242.19140625
+        },
+        {
+          "task": "largest-eigenval",
+          "task_unique_blocks": 7381,
+          "new_blocks": 543,
+          "cumulative_unique_blocks": 14321,
+          "cumulative_mib": 257778.0,
+          "cumulative_gib": 251.736328125
+        },
+        {
+          "task": "fix-git",
+          "task_unique_blocks": 3190,
+          "new_blocks": 236,
+          "cumulative_unique_blocks": 14557,
+          "cumulative_mib": 262026.0,
+          "cumulative_gib": 255.884765625
+        },
+        {
+          "task": "compile-compcert",
+          "task_unique_blocks": 4339,
+          "new_blocks": 181,
+          "cumulative_unique_blocks": 14738,
+          "cumulative_mib": 265284.0,
+          "cumulative_gib": 259.06640625
+        },
+        {
+          "task": "git-multibranch",
+          "task_unique_blocks": 7497,
+          "new_blocks": 453,
+          "cumulative_unique_blocks": 15191,
+          "cumulative_mib": 273438.0,
+          "cumulative_gib": 267.029296875
+        }
+      ]
+    },
+    "top8": {
+      "total_selections": 1041600,
+      "unique_blocks": 19042,
+      "coverage_table": [
+        {
+          "pct": 50,
+          "blocks": 4013,
+          "mib": 72234.0,
+          "gib": 70.541015625,
+          "full_share": 0.20901041666666667,
+          "actual_coverage": 0.5000086405529954
+        },
+        {
+          "pct": 75,
+          "blocks": 8409,
+          "mib": 151362.0,
+          "gib": 147.814453125,
+          "full_share": 0.43796875,
+          "actual_coverage": 0.7500019201228879
+        },
+        {
+          "pct": 90,
+          "blocks": 12527,
+          "mib": 225486.0,
+          "gib": 220.201171875,
+          "full_share": 0.6524479166666667,
+          "actual_coverage": 0.9000220814132105
+        },
+        {
+          "pct": 95,
+          "blocks": 14582,
+          "mib": 262476.0,
+          "gib": 256.32421875,
+          "full_share": 0.7594791666666667,
+          "actual_coverage": 0.9500192012288786
+        },
+        {
+          "pct": 99,
+          "blocks": 17213,
+          "mib": 309834.0,
+          "gib": 302.572265625,
+          "full_share": 0.8965104166666666,
+          "actual_coverage": 0.9900009600614439
+        },
+        {
+          "pct": 100,
+          "blocks": 19042,
+          "mib": 342756.0,
+          "gib": 334.72265625,
+          "full_share": 0.9917708333333334,
+          "actual_coverage": 1.0
+        }
+      ],
+      "growth": [
+        {
+          "task": "llm-inference-batching-scheduler",
+          "task_unique_blocks": 18794,
+          "new_blocks": 18794,
+          "cumulative_unique_blocks": 18794,
+          "cumulative_mib": 338292.0,
+          "cumulative_gib": 330.36328125
+        },
+        {
+          "task": "largest-eigenval",
+          "task_unique_blocks": 15689,
+          "new_blocks": 123,
+          "cumulative_unique_blocks": 18917,
+          "cumulative_mib": 340506.0,
+          "cumulative_gib": 332.525390625
+        },
+        {
+          "task": "fix-git",
+          "task_unique_blocks": 9543,
+          "new_blocks": 47,
+          "cumulative_unique_blocks": 18964,
+          "cumulative_mib": 341352.0,
+          "cumulative_gib": 333.3515625
+        },
+        {
+          "task": "compile-compcert",
+          "task_unique_blocks": 12035,
+          "new_blocks": 17,
+          "cumulative_unique_blocks": 18981,
+          "cumulative_mib": 341658.0,
+          "cumulative_gib": 333.650390625
+        },
+        {
+          "task": "git-multibranch",
+          "task_unique_blocks": 16300,
+          "new_blocks": 61,
+          "cumulative_unique_blocks": 19042,
+          "cumulative_mib": 342756.0,
+          "cumulative_gib": 334.72265625
+        }
+      ]
+    }
+  }
+}

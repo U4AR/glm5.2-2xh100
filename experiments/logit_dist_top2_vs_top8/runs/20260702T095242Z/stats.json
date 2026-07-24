@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "date_utc": "2026-07-02T09:54:51.543927+00:00",
+    "base": "http://127.0.0.1:8000",
+    "model_root": "GLM5.2",
+    "n_prompts": 96,
+    "workers": 8,
+    "seed": 20260702,
+    "records": 192
+  },
+  "stats": {
+    "n_pairs": 96,
+    "top2_minus_top8_logprob_mean": -0.14519088825607204,
+    "top2_minus_top8_logprob_median": -0.04700673185288906,
+    "top2_minus_top8_logprob_sd": 0.25408303116159214,
+    "mean_ci95_bootstrap": [
+      -0.19584853330438654,
+      -0.09424237610223782
+    ],
+    "paired_t_normal_approx_p": 2.157706235905721e-08,
+    "sign_test_nonzero_n": 96,
+    "sign_test_top2_higher_n": 12,
+    "sign_test_two_sided_p": 1.8316192854098385e-14,
+    "abs_logprob_diff_median": 0.16621682792901993,
+    "abs_logprob_diff_p90": 0.47051897644996643,
+    "same_first_token_rate": 0.7395833333333334,
+    "top_logprobs_count_min": 1,
+    "top_logprobs_count_median": 1.0,
+    "top_logprobs_count_max": 1
+  }
+}

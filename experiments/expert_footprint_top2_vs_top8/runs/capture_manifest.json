@@ -1,0 +1,47 @@
+{
+  "base": "http://127.0.0.1:8000",
+  "model": "GLM5.2",
+  "max_tokens": 1,
+  "items": [
+    {
+      "tag": "exp3_llm-inference-batching-scheduler",
+      "trace": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_llm-inference-batching-scheduler.pt",
+      "prompt_chars": 4345,
+      "max_tokens": 1,
+      "elapsed_s": 1.422,
+      "response_id": "038feb58293c4e29b11fbceca1bb30b6"
+    },
+    {
+      "tag": "exp3_largest-eigenval",
+      "trace": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_largest-eigenval.pt",
+      "prompt_chars": 715,
+      "max_tokens": 1,
+      "elapsed_s": 3.899,
+      "response_id": "708ead3ab92143218f93876c7f579498"
+    },
+    {
+      "tag": "exp3_fix-git",
+      "trace": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_fix-git.pt",
+      "prompt_chars": 157,
+      "max_tokens": 1,
+      "elapsed_s": 1.723,
+      "response_id": "afe92cb213cb4388817d9383b393536e"
+    },
+    {
+      "tag": "exp3_compile-compcert",
+      "trace": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_compile-compcert.pt",
+      "prompt_chars": 324,
+      "max_tokens": 1,
+      "elapsed_s": 2.434,
+      "response_id": "6d1a53c7c82240fdbe404f34d8fc7626"
+    },
+    {
+      "tag": "exp3_git-multibranch",
+      "trace": "/data/models/RunGLM/experiments/expert_footprint_top2_vs_top8/runs/exp3_git-multibranch.pt",
+      "prompt_chars": 1092,
+      "max_tokens": 1,
+      "elapsed_s": 5.026,
+      "response_id": "c0f9a51c2403449a8304a8d8a77b49c7"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+>>> compile-compcert
+DONE compile-compcert
+
+=== VERDICT (executed reward vs original labels) ===
+task                                     orig    reward  ours    agree
+---------------------------------------------------------------------------
+adaptive-rejection-sampler               failed  -       ERROR:AgentTimeoutError 
+bn-fit-modify                            passed  -       ERROR:CancelledError 
+break-filter-js-from-html                passed  -       ERROR:AgentTimeoutError 
+build-cython-ext                         passed  -       ERROR:AgentTimeoutError 
+build-pmars                              passed  -       ERROR:AgentTimeoutError 
+build-pov-ray                            passed  -       ERROR:CancelledError 
+caffe-cifar-10                           failed  -       ERROR:AgentTimeoutError 
+cancel-async-tasks                       passed  -       ERROR:AgentTimeoutError 
+chess-best-move                          failed  -       ERROR:AgentTimeoutError 
+circuit-fibsqrt                          failed  -       ERROR:CancelledError 
+cobol-modernization                      passed  -       ERROR:CancelledError 
+code-from-image                          failed  -       ERROR:CancelledError 
+compile-compcert                         passed  -       ERROR:CancelledError 
+configure-git-webserver                  passed  -       ERROR:CancelledError 
+constraints-scheduling                   passed  -       ERROR:CancelledError 
+count-dataset-tokens                     passed  -       ERROR:CancelledError 
+crack-7z-hash                            failed  -       ERROR:CancelledError 
+custom-memory-heap-crash                 passed  -       ERROR:CancelledError 
+db-wal-recovery                          failed  -       ERROR:CancelledError 
+distribution-search                      passed  -       ERROR:CancelledError 
+dna-assembly                             failed  -       ERROR:CancelledError 
+dna-insert                               failed  -       ERROR:CancelledError 
+extract-elf                              passed  -       ERROR:CancelledError 
+extract-moves-from-video                 failed  -       ERROR:CancelledError 
+feal-differential-cryptanalysis          passed  -       ERROR:InternalServerError 
+feal-linear-cryptanalysis                failed  -       ERROR:InternalServerError 
+filter-js-from-html                      failed  -       ERROR:InternalServerError 
+financial-document-processor             failed  -       ERROR:InternalServerError 
+fix-code-vulnerability                   passed  -       ERROR:InternalServerError 
+fix-git                                  passed  -       ERROR:InternalServerError 
+gcode-to-text                            failed  -       ERROR:InternalServerError 
+git-leak-recovery                        passed  -       ERROR:InternalServerError 
+git-multibranch                          passed  -       ERROR:InternalServerError 
+gpt2-codegolf                            failed  -       ERROR:InternalServerError 
+headless-terminal                        failed  -       ERROR:InternalServerError 
+hf-model-inference                       passed  -       ERROR:RuntimeError 
+install-windows-3.11                     failed  -       ERROR:RuntimeError 
+kv-store-grpc                            failed  -       ERROR:RuntimeError 
+large-scale-text-editing                 passed  -       ERROR:InternalServerError 
+largest-eigenval                         passed  -       ERROR:InternalServerError 
+llm-inference-batching-scheduler         passed  -       ERROR:InternalServerError 
+log-summary-date-ranges                  passed  -       ERROR:InternalServerError 
+
+=== SUMMARY ===
+completed: 0/42
+orig-PASSED reproduced as pass: 0/0 scored (of 24 total)
+orig-FAILED reproduced as fail: 0/0 scored (of 18 total)
+label agreement: 0/0

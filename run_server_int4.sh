@@ -169,7 +169,7 @@ python -m sglang.launch_server \
   --kt-method "$KT_METHOD" \
   --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-2048}" \
   $DYN_FLAG \
-  --kt-expert-placement-strategy uniform \
+  --kt-expert-placement-strategy "${PLACEMENT:-uniform}" \
   --tp-size "${TP_SIZE:-2}" \
   --trust-remote-code \
   --host 0.0.0.0 \

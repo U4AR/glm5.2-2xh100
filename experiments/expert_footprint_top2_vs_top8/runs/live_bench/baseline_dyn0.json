@@ -1,0 +1,87 @@
+{
+  "label": "baseline_dyn0",
+  "model": "GLM5.2",
+  "max_tokens": 128,
+  "summary": {
+    "tasks": 5,
+    "total_elapsed_s": 47.144,
+    "mean_elapsed_s": 9.429,
+    "prompt_tokens": 1731,
+    "completion_tokens": 640,
+    "total_tokens": 2371,
+    "completion_tok_s": 13.575,
+    "total_tok_s": 50.293
+  },
+  "rows": [
+    {
+      "label": "baseline_dyn0",
+      "task": "llm-inference-batching-scheduler",
+      "elapsed_s": 17.41,
+      "prompt_chars": 4345,
+      "prompt_tokens": 1169,
+      "completion_tokens": 128,
+      "total_tokens": 1297,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "Let me start by understanding the task. I need to read requests from two input files, and produce batching plans that meet specific performance thresholds.\n\nLet me first look at the input data and the cost model to understand the structure.",
+      "completion_tok_s": 7.352,
+      "total_tok_s": 74.499
+    },
+    {
+      "label": "baseline_dyn0",
+      "task": "largest-eigenval",
+      "elapsed_s": 7.705,
+      "prompt_chars": 715,
+      "prompt_tokens": 179,
+      "completion_tokens": 128,
+      "total_tokens": 307,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "Let me start by understanding the problem. I need to implement a function `find_dominant_eigenvalue_and_eigenvector` in `/app/eigen.py` that finds the dominant eigenvalue (largest magnitude) and corresponding eigenvector of a 2D square nump",
+      "completion_tok_s": 16.612,
+      "total_tok_s": 39.842
+    },
+    {
+      "label": "baseline_dyn0",
+      "task": "fix-git",
+      "elapsed_s": 7.014,
+      "prompt_chars": 157,
+      "prompt_tokens": 46,
+      "completion_tokens": 128,
+      "total_tokens": 174,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "1.  **Analyze the User's Problem:**\n    *   The user made changes to their personal site.\n    *   They checked out the `master` branch (`git checkout master`).\n    *   Now, they can't find the changes they made.\n    *   They want help findi",
+      "completion_tok_s": 18.25,
+      "total_tok_s": 24.808
+    },
+    {
+      "label": "baseline_dyn0",
+      "task": "compile-compcert",
+      "elapsed_s": 7.179,
+      "prompt_chars": 324,
+      "prompt_tokens": 84,
+      "completion_tokens": 128,
+      "total_tokens": 212,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "The user wants me to build CompCert version 3.13.1 from source under /tmp/CompCert/, configure it to the OS and ISA of the development environment, and ensure it can be invoked through /tmp/CompCert/ccomp. CompCert must be freshly built fro",
+      "completion_tok_s": 17.829,
+      "total_tok_s": 29.529
+    },
+    {
+      "label": "baseline_dyn0",
+      "task": "git-multibranch",
+      "elapsed_s": 7.836,
+      "prompt_chars": 1092,
+      "prompt_tokens": 253,
+      "completion_tokens": 128,
+      "total_tokens": 381,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "Let me break down the requirements:\n\n1. Set up a Git server hosting a project over SSH at `git@localhost:/git/project`\n2. Password authentication with password \"password\"\n3. Deploy contents from two branches (main and dev) to separate HTTPS",
+      "completion_tok_s": 16.335,
+      "total_tok_s": 48.621
+    }
+  ]
+}

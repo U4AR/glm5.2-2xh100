@@ -1,0 +1,21 @@
+{
+  "uniform_baseline_pct": 37.5,
+  "K_per_layer": 96,
+  "global": {
+    "on_all_tasks_pct": 69.0,
+    "per_task_pct": {
+      "llm-inference-batching-scheduler": 70.0,
+      "largest-eigenval": 66.6,
+      "fix-git": 58.4,
+      "compile-compcert": 67.8,
+      "git-multibranch": 68.2
+    }
+  },
+  "per_question": {
+    "llm-inference-batching-scheduler": 72.0,
+    "largest-eigenval": 80.3,
+    "fix-git": 91.6,
+    "compile-compcert": 88.0,
+    "git-multibranch": 81.1
+  }
+}

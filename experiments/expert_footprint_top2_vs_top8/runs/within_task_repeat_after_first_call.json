@@ -1,0 +1,54 @@
+{
+  "top2": {
+    "taskfreq_le_1": {
+      "cases": 5027,
+      "repeat_fraction": 0.6345733041575492,
+      "median_count": 2,
+      "mean_count": 5.6063258404615075
+    },
+    "taskfreq_le_2": {
+      "cases": 13307,
+      "repeat_fraction": 0.6476290674081311,
+      "median_count": 2,
+      "mean_count": 6.600736454497633
+    },
+    "taskfreq_le_4": {
+      "cases": 28215,
+      "repeat_fraction": 0.672053872053872,
+      "median_count": 3,
+      "mean_count": 6.990217969165338
+    },
+    "taskfreq_le_5": {
+      "cases": 36185,
+      "repeat_fraction": 0.6681221500621805,
+      "median_count": 3,
+      "mean_count": 7.196352079590991
+    }
+  },
+  "top8": {
+    "taskfreq_le_1": {
+      "cases": 867,
+      "repeat_fraction": 0.825836216839677,
+      "median_count": 6,
+      "mean_count": 13.416378316032295
+    },
+    "taskfreq_le_2": {
+      "cases": 5439,
+      "repeat_fraction": 0.8005148005148005,
+      "median_count": 5,
+      "mean_count": 14.448244162529877
+    },
+    "taskfreq_le_4": {
+      "cases": 36601,
+      "repeat_fraction": 0.809622687904702,
+      "median_count": 5,
+      "mean_count": 14.12630802437092
+    },
+    "taskfreq_le_5": {
+      "cases": 72361,
+      "repeat_fraction": 0.8210085543317532,
+      "median_count": 5,
+      "mean_count": 14.394494271776233
+    }
+  }
+}

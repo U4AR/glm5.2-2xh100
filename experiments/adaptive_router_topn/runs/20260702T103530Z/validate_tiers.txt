@@ -1,0 +1,28 @@
+served model id: GLM5.2
+
+-top8: 200 tok, 18.7 tok/s, coherent=True
+   ANSWER: ''
+
+-top4: 200 tok, 26.5 tok/s, coherent=True
+   ANSWER: ''
+
+-top2: 200 tok, 37.9 tok/s, coherent=True
+   ANSWER: ''
+
+-adapt: 200 tok, 23.3 tok/s, coherent=True
+   ANSWER: ''
+
+-top0: 200 tok, 71.7 tok/s, coherent=True
+   ANSWER: '</think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think>'
+
+baseline parity (bare vs -top8, greedy): match=True
+
+mixed concurrent batch (top8 + top2 + top4 + adapt + top0 simultaneously):
+   -top8: coherent=True, 10.6 tok/s (in mixed batch)
+   -top4: coherent=True, 5.0 tok/s (in mixed batch)
+   -top2: coherent=True, 9.6 tok/s (in mixed batch)
+   -adapt: coherent=True, 5.4 tok/s (in mixed batch)
+   -top0: coherent=True, 4.7 tok/s (in mixed batch)
+   mixed wall: 31.7s
+
+DONE

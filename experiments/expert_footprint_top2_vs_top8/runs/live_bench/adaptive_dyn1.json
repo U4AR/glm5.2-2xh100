@@ -1,0 +1,87 @@
+{
+  "label": "adaptive_dyn1",
+  "model": "GLM5.2",
+  "max_tokens": 128,
+  "summary": {
+    "tasks": 5,
+    "total_elapsed_s": 46.665,
+    "mean_elapsed_s": 9.333,
+    "prompt_tokens": 1731,
+    "completion_tokens": 640,
+    "total_tokens": 2371,
+    "completion_tok_s": 13.715,
+    "total_tok_s": 50.809
+  },
+  "rows": [
+    {
+      "label": "adaptive_dyn1",
+      "task": "llm-inference-batching-scheduler",
+      "elapsed_s": 17.733,
+      "prompt_chars": 4345,
+      "prompt_tokens": 1169,
+      "completion_tokens": 128,
+      "total_tokens": 1297,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "Let me start by understanding the task thoroughly.\n\nWe need to read requests from two input files and produce batching plans for each. The goal is to pack requests into batches efficiently, minimizing cost, pad ratio, and latency.\n\nKey cons",
+      "completion_tok_s": 7.218,
+      "total_tok_s": 73.142
+    },
+    {
+      "label": "adaptive_dyn1",
+      "task": "largest-eigenval",
+      "elapsed_s": 7.394,
+      "prompt_chars": 715,
+      "prompt_tokens": 179,
+      "completion_tokens": 128,
+      "total_tokens": 307,
+      "finish_reason": "length",
+      "content_is_none": false,
+      "output_preview": "Let me start by examining the existing files",
+      "completion_tok_s": 17.311,
+      "total_tok_s": 41.519
+    },
+    {
+      "label": "adaptive_dyn1",
+      "task": "fix-git",
+      "elapsed_s": 6.966,
+      "prompt_chars": 157,
+      "prompt_tokens": 46,
+      "completion_tokens": 128,
+      "total_tokens": 174,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "1.  **Analyze the User's Problem:**\n    *   The user made changes to their personal site.\n    *   They checked out the `master` branch (`git checkout master`).\n    *   Now they can't find those changes.\n    *   They want help finding the ch",
+      "completion_tok_s": 18.374,
+      "total_tok_s": 24.977
+    },
+    {
+      "label": "adaptive_dyn1",
+      "task": "compile-compcert",
+      "elapsed_s": 7.008,
+      "prompt_chars": 324,
+      "prompt_tokens": 84,
+      "completion_tokens": 128,
+      "total_tokens": 212,
+      "finish_reason": "length",
+      "content_is_none": false,
+      "output_preview": "I'll start by examining the environment and the CompCert source code to determine the appropriate configuration.</think>ls /tmp/CompCert/ && uname -a && uname -m && cat /etc/os-release 2>/dev/null | head -20</think>ls -la /tmp/CompCert/ && ",
+      "completion_tok_s": 18.266,
+      "total_tok_s": 30.253
+    },
+    {
+      "label": "adaptive_dyn1",
+      "task": "git-multibranch",
+      "elapsed_s": 7.564,
+      "prompt_chars": 1092,
+      "prompt_tokens": 253,
+      "completion_tokens": 128,
+      "total_tokens": 381,
+      "finish_reason": "length",
+      "content_is_none": true,
+      "output_preview": "Let me break down this task:\n\n1. Set up a Git server accessible at `git@localhost:/git/project` with SSH password authentication (password \"password\")\n2. Deploy contents from `main` and `dev` branches to HTTPS endpoints via Nginx:\n   - Main",
+      "completion_tok_s": 16.923,
+      "total_tok_s": 50.373
+    }
+  ]
+}
