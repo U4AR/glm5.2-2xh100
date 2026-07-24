@@ -119,9 +119,12 @@ vramf = Nfull * NUM_LAYERS * MIB_PER_EXPERT_CARD / 1024 + BASE_GIB_CARD
 tpsf = 1.0 / (t0 + t_miss * (1 - covf))
 fig, ax = plt.subplots(figsize=(8.5, 5))
 ax.plot(vramf, tpsf, lw=2.2, color="tab:blue", label="model (oracle-converged cache)")
-meas = [(96, 39.0, "adaptive @96 (measured 38–40)"), (96, 28.2, "uniform @96 (measured)")]
-ax.plot([96 * 78 * 9.45 / 1024 + 14], [39.0], "o", color="tab:green", ms=9)
-ax.annotate("adaptive@96: 38–40 meas.", (96 * 78 * 9.45 / 1024 + 14, 39), xytext=(-160, 10), textcoords="offset points", color="tab:green")
+# measured 2026-07-24, same-boot protocol per N (converge on llm topic, then 3-pass measure)
+MEAS = [(24, 32.5, 0.590), (48, 35.5, 0.787), (64, 40.5, 0.854), (96, 39.0, 0.897)]
+for N, t, _ in MEAS:
+    v = N * 78 * 9.45 / 1024 + 14
+    ax.plot([v], [t], "o", color="tab:green", ms=9, zorder=5)
+ax.annotate("measured (adaptive, converged)", (48 * 78 * 9.45 / 1024 + 14, 35.5), xytext=(-30, 26), textcoords="offset points", color="tab:green")
 ax.plot([96 * 78 * 9.45 / 1024 + 14], [28.2], "s", color="tab:gray", ms=8)
 ax.annotate("uniform@96: 28.2 meas.", (96 * 78 * 9.45 / 1024 + 14, 28.2), xytext=(-160, -14), textcoords="offset points", color="tab:gray")
 ax.axhline(TOP0_MEASURED, color="tab:red", ls=":", lw=1.5)

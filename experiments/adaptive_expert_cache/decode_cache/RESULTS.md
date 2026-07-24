@@ -87,3 +87,23 @@ GiB-expert budget (e.g. 2×A6000-class, N=48) still predicts ~33 tok/s (85% of
 the 2×H100 result), because the adaptive cache always holds the hottest-N.
 Uniform placement at the SAME VRAM gets only ~28 → the cache's advantage GROWS
 as VRAM shrinks.
+
+### Live validation of the VRAM ladder (2026-07-24, same protocol per N)
+
+Rebooted the real server at several GPU_EXPERTS values (uniform cold start,
+12–14 convergence passes on one topic, then 3-pass measure + coherence test):
+
+| N/layer | expert VRAM/card | conv. coverage | measured tok/s (cold → converged) | model pred |
+|---|---|---|---|---|
+| 24 | 17.3 GiB | 0.59 | 27 → **31–34** | 28.5 |
+| 48 | 34.6 GiB | 0.79 | 25 → **34–39** | 32.6 |
+| 64 | 46.1 GiB | 0.85 | 28 → **40–41** | 34.9 |
+| 96 | 69.1 GiB | 0.90 | 28 → **38–40** | 38.5 |
+
+All coherent (N=24 showed longer reasoning chains — mild quality cost of
+heavier substitution). Measured points sit ON or ABOVE the model curve
+because a converged single-topic cache achieves higher coverage than the
+diverse-task capture distribution assumes: **N=64 (46 GiB of experts/card)
+matches N=96** for focused workloads. The simulation curve is the safe
+multi-domain lower bound. Practical floor: even N=24 (~17 GiB experts/card,
+would fit a single 48 GiB card + CPU) holds >30 tok/s once converged.
