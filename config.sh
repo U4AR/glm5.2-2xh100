@@ -34,3 +34,10 @@ export GPTQ_EXPERTS_DIR="${GPTQ_EXPERTS_DIR:-$WEIGHTS_DIR/GLM-5.2-W4-GPTQ-expert
 # ---- runtime locations (repo-local so nothing leaks onto the root disk) -----
 export VENV="${VENV:-$REPO/.venv}"
 export HF_HOME="${HF_HOME:-$REPO/.hf}"
+
+# Per-checkout runtime state. The patched SGLang code reads these variables;
+# avoiding global /tmp paths lets multiple RunGLM checkouts coexist safely.
+export RUNTIME_DIR="${RUNTIME_DIR:-$REPO/.runtime}"
+export KT_TOPK_MODE_FILE="${KT_TOPK_MODE_FILE:-$RUNTIME_DIR/kt_topk_mode}"
+export KT_SKIP_CPU_FILE="${KT_SKIP_CPU_FILE:-$RUNTIME_DIR/kt_skip_cpu}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$REPO/.triton-cache}"

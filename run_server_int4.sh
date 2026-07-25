@@ -54,6 +54,8 @@ mkdir -p "$HF_HOME"
 GPU_EXPERTS=${GPU_EXPERTS:-96}
 MEM_FRACTION=${MEM_FRACTION:-0.94}
 CPUINFER=${CPUINFER:-72}
+NUMA_NODES=${NUMA_NODES:-"0 1"}
+KT_THREADPOOL_COUNT=${KT_THREADPOOL_COUNT:-2}
 MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-8192}
 # Explicit max sequence length (positions). Model supports 1M, but leave unset
 # and sglang derives a huge default; pin it so a coding agent's long context is
@@ -163,8 +165,8 @@ python -m sglang.launch_server \
   --model-path "$MODEL" \
   --kt-weight-path "$KT_WEIGHT_PATH" \
   --kt-cpuinfer "$CPUINFER" \
-  --kt-threadpool-count 2 \
-  --kt-numa-nodes 0 1 \
+  --kt-threadpool-count "$KT_THREADPOOL_COUNT" \
+  --kt-numa-nodes $NUMA_NODES \
   --kt-num-gpu-experts "$GPU_EXPERTS" \
   --kt-method "$KT_METHOD" \
   --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-2048}" \

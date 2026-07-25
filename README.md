@@ -1,4 +1,22 @@
-# RunGLM — GLM‑5.2 (754B) on 2×H100 at ~40 tok/s
+# RunGLM — GLM‑5.2 (754B) on two GPUs
+
+Portable deployment now auto-detects conservative TP2 profiles. The first
+non-H100 target is **2× L40/L40S with sufficient host RAM**; the measured
+performance reference remains 2× H100 NVL. For a fresh machine:
+
+```bash
+git clone --branch experiment/adaptive-decode-cache --single-branch \
+  https://github.com/U4AR/glm5.2-2xh100.git RunGLM
+cd RunGLM
+./setup.sh
+python int4_scripts/download_w4afp8.py
+./run_adaptive.sh
+```
+
+Read [PORTABLE_DEPLOYMENT.md](PORTABLE_DEPLOYMENT.md) for the RunPod recipe,
+preflight behavior, hardware profiles, and current support boundary. Automatic
+profiles establish safe first-boot capacity; throughput claims below remain
+specific to the hardware on which they were measured.
 
 Serve **GLM‑5.2**, a 754B‑parameter MoE model, on a single dual‑H100 box using
 **SGLang + KTransformers (kt‑kernel)** heterogeneous CPU+GPU Mixture‑of‑Experts.
