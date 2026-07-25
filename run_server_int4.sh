@@ -199,6 +199,7 @@ python -m sglang.launch_server \
   $CONTEXT_LENGTH_FLAG \
   $RANDOM_SEED_FLAG \
   $MODEL_OVERRIDE_FLAG \
+  --log-level "${LOG_LEVEL:-info}" \
   --max-running-requests "$MAX_RUNNING" \
   --chunked-prefill-size "$CHUNKED_PREFILL" \
   $IDLE_FLAG \

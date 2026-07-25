@@ -158,7 +158,7 @@ does not match the model, it logs a warning and falls back to `uniform`
 restores the old behaviour. Rebuild the ranking for another workload with
 `experiments/adaptive_expert_cache/decode_cache/build_hot_core.py`.
 
-### Why placement barely moves the needle: decode is no longer CPU‑expert‑bound
+### Why placement barely moves the needle: the CPU path costs a *fixed* toll, not a per‑expert one
 
 A budget sweep under `hotcore` (all four points on the 9‑prompt suite) shows
 throughput is **nearly flat in CPU expert traffic**:
@@ -185,11 +185,45 @@ samples come from graph‑capture/prefill contexts, because the hooks sit in the
 Python `apply()` which CUDA‑graph replay bypasses entirely — there is currently
 **no steady‑state intra‑step attribution** available in the graphs‑on regime.)
 
-So this reverses the earlier H100‑era assumption. On that box the CPU path cost
-3.73× and dominated decode; here, after the fp8‑KV and CPUINFER fixes, the CPU
-expert path is a small and largely overlapped term. Better masks cannot pay much
-— the remaining time is attention, GPU MoE, fixed per‑layer host overhead and MTP
-verify. Target those next, not placement.
+**But the CPU path is *not* cheap — it is just insensitive to how much work you
+give it.** Measured `top0` (`KEEP=0` + `/tmp/kt_skip_cpu`, all 8 slots filled from
+GPU‑resident experts, CPU path skipped entirely; output incoherent by
+construction, this is a ceiling probe only):
+
+| config | tok/s | accept | ms/token | ms/step |
+|---|---:|---:|---:|---:|
+| `safe2` hotcore N=30 | 20.11 | 3.10 | 49.73 | 154.2 |
+| `safe2` uniform N=30 | 19.64 | 3.07 | 50.92 | 156.3 |
+| **`top0` — no CPU path** | **42.77** | 3.47 | 23.38 | **81.1** |
+
+Removing the CPU path is worth **2.13× on tok/s / 1.90× on step time**. So it
+costs **73 ms of a 154 ms step — 47% — or 0.97 ms per MoE layer.** Decomposing
+that against the traffic sweep above:
+
+* the part that **scales with expert count** is ~2.4 ms per trip/token, so at
+  0.86 trips/token only **~2 ms/step**;
+* the remaining **~71 ms/step (97%) is fixed** — paid per layer whether the CPU
+  handles two experts or none.
+
+A bandwidth cross‑check confirms it is not streaming: 0.86 trips/token × 4 draft
+tokens × 19.46 MB = 67 MB/layer/step, which at the measured 356 GB/s is 0.19 ms/layer
+= **14 ms/step of real DRAM traffic** against 73 ms/step of measured cost. Cutting
+uniform→hotcore should have saved ~15 ms/step on bandwidth alone and saved 2.
+The expert streaming is already hidden; what is exposed is the per‑layer
+`submit_forward` + cross‑stream `sync` round trip, ~1 ms × 75 layers.
+
+So the H100‑era conclusion in
+`experiments/expert_footprint_top2_vs_top8/ORACLE_CEILING.md` holds here and is
+now quantified: **per‑layer cost is `max(cpu_time, gpu_time)` plus a fixed
+dispatch toll, and the toll — not the expert count — is what you are paying.**
+That is the whole reason a 4.5× coverage improvement bought 2%.
+
+The next lever is therefore **the per‑layer host round trip**, not placement,
+not coverage, not more VRAM. Options worth measuring: a per‑layer "all routed
+experts are resident → skip the CPU call" gate (only ~1% of layers qualify at
+57% coverage, since it needs all 2×4 slots resident — but ~43% would qualify at
+the H100's 90%), coalescing submit/sync across layers, or cutting the
+`cudaLaunchHostFunc` host‑node round trip that CUDA graphs impose per layer.
 
 Two levers that do **not** pay off at 2×L40, both measured — don't re‑litigate:
 
