@@ -165,7 +165,7 @@ fi
 PAGE_SIZE_FLAG=""
 [ -n "${PAGE_SIZE:-}" ] && PAGE_SIZE_FLAG="--page-size $PAGE_SIZE"
 
-echo "GLM-5.2-$KT_METHOD  TP2  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  sleep_on_idle=$SLEEP_ON_IDLE  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
+echo "GLM-5.2-$KT_METHOD  TP${TP_SIZE:-2}  model=$MODEL  kt_weights=$KT_WEIGHT_PATH  gpu_experts=$GPU_EXPERTS  mem_fraction=$MEM_FRACTION  cpuinfer=$CPUINFER  cuda_graph=$([ "$DISABLE_CUDA_GRAPH" = 1 ] && echo off || echo on)  sleep_on_idle=$SLEEP_ON_IDLE  spec_decode=$([ "$SPEC_DECODE" = 1 ] && echo on || echo off)  rawint4_backend=${KT_RAWINT4_BACKEND:-auto}  nsa_prefill=${NSA_PREFILL_BACKEND:-default}"
 
 python -m sglang.launch_server \
   --model-path "$MODEL" \

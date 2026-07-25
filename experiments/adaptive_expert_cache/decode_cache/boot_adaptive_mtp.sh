@@ -25,8 +25,13 @@ export SGLANG_ENABLE_SPEC_V2=True
 export DISABLE_CUDA_GRAPH=0
 export CUDA_GRAPH_MAX_BS=1
 export KT_HIT_STATS=0
-export KT_GPU_PREFILL_THRESHOLD=0
-export MEM_FRACTION=0.85
+export KT_GPU_PREFILL_THRESHOLD="${KT_GPU_PREFILL_THRESHOLD:-0}"
+# Overridable so the hardware profiler / a single-GPU run can lower it; the
+# validated 2xH100 adaptive default stays 0.85.
+export MEM_FRACTION="${MEM_FRACTION:-0.85}"
+# Per-layer resident expert count. The profiler auto-sizes this from per-card
+# VRAM for non-2xH100 topologies (e.g. ~24 on a single H100 under TP=1); 96 is
+# the validated 2xH100 default when nothing set it.
 export GPU_EXPERTS=${GPU_EXPERTS:-96}
 # --- warm start: if a persisted hot-core ranking exists, boot the GPU already
 # holding the hottest-N experts (any N) instead of a uniform cold start. The

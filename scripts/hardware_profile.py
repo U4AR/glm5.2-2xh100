@@ -69,15 +69,64 @@ def env_enabled(name: str) -> bool:
 
 
 def gpu_rows() -> list[tuple[str, int]]:
-    text = command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits")
+    text = command(
+        "nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"
+    )
     rows = []
     for line in text.splitlines():
+        parts = line.split(",")
+        if len(parts) < 3:
+            continue
+        index = parts[0].strip()
+        name = ",".join(parts[1:-1]).strip()
         try:
-            name, memory = line.rsplit(",", 1)
-            rows.append((name.strip(), int(memory.strip())))
+            rows.append((index, name, int(parts[-1].strip())))
         except ValueError:
             pass
-    return rows
+    # Honor CUDA_VISIBLE_DEVICES so a masked single-card run (e.g. exporting
+    # CUDA_VISIBLE_DEVICES=0 on a 2-GPU host) is profiled as one GPU, not two.
+    # nvidia-smi ignores the mask, so we filter here. UUID masks are left
+    # untouched (we only match plain integer indices).
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is not None and visible.strip() != "":
+        wanted = [tok.strip() for tok in visible.split(",") if tok.strip() != ""]
+        if wanted and all(tok.isdigit() for tok in wanted):
+            selected = [row for row in rows if row[0] in wanted]
+            if selected:
+                rows = selected
+    return [(name, memory) for _, name, memory in rows]
+
+
+# --- calibrated per-card VRAM footprint model (measured on 2xH100, TP2) -------
+# footprint/card ≈ TRUNK_TOTAL/TP + N * MOE_LAYERS * EXPERT_FULL/TP + KV + headroom
+# where N is the per-layer resident expert count (--kt-num-gpu-experts). The
+# dense trunk and each INT4 expert are both TP-sharded along the intermediate
+# dim, so per-card cost ≈ full/TP. Constants: 17.5 GiB/card base at TP2 -> 35 GiB
+# unsharded trunk; 9.45 MiB/card/expert at TP2 -> 18.9 MiB unsharded; 78 layers
+# minus 3 dense = 75 MoE layers; fp8 MLA KV ~44 KB/token (replicated per rank).
+_TRUNK_TOTAL_MIB = 35_000.0
+_EXPERT_FULL_MIB = 18.9
+_MOE_LAYERS = 75
+_KV_MIB_PER_TOKEN = 44.0 / 1024.0
+
+
+def fit_gpu_experts(minimum_mib: int, tp: int, mem_fraction: float, max_tokens: int) -> int:
+    """Largest per-layer resident expert count that fits one card's VRAM budget.
+
+    Conservative: a fat headroom absorbs the CUDA-graph pool, the MTP draft
+    model, and prefill scratch so a first boot does not OOM. Values remain
+    env-overridable, so this only needs to be safe, not optimal.
+    """
+    tp = max(1, tp)
+    budget = minimum_mib * mem_fraction
+    trunk = _TRUNK_TOTAL_MIB / tp
+    kv = max_tokens * _KV_MIB_PER_TOKEN
+    headroom = 12_000.0  # cuda graphs + draft(MTP) + prefill scratch + slack
+    avail = budget - trunk - kv - headroom
+    per_n = _MOE_LAYERS * _EXPERT_FULL_MIB / tp
+    if avail <= 0 or per_n <= 0:
+        return 1
+    return max(1, min(256, int(avail / per_n)))
 
 
 def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[str, str]:
@@ -85,7 +134,8 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     minimum_mib = min((memory for _, memory in rows), default=0)
     names = " ".join(name.lower() for name, _ in rows)
     cpus = available_cpus()
-    profile, gpu_experts, mem_fraction, max_tokens = "generic-tp2", 16, "0.85", 8192
+    tp = max(1, count)
+    profile, gpu_experts, mem_fraction, max_tokens = f"generic-tp{tp}", 16, "0.85", 8192
     max_running = "1"
     context_length = str(max_tokens)
 
@@ -102,6 +152,11 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
         max_running = "2"
     elif count == 2 and minimum_mib >= 45_000:
         profile, gpu_experts = "2x48gb", 24
+    else:
+        # Any other topology (1 GPU, 3+, or an unrecognized 2-GPU host): size the
+        # resident expert count from measured per-card VRAM instead of a fixed
+        # table. TP = GPU count; extra GPUs shard the same expert set thinner.
+        gpu_experts = fit_gpu_experts(minimum_mib, tp, float(mem_fraction), max_tokens)
 
     numa_nodes = sorted(
         path.name.removeprefix("node")
@@ -136,10 +191,24 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
 def problems(rows: list[tuple[str, int]], adaptive: bool, weights_dir: Path | None) -> list[str]:
     found = []
     memory = mem_gib()
-    if len(rows) != 2:
-        found.append(f"expected 2 NVIDIA GPUs for the supported path; detected {len(rows)}")
-    if rows and min(value for _, value in rows) < 22_000:
-        found.append("less than 22 GiB VRAM/card is below the measured TP2 floor")
+    count = len(rows)
+    minimum_mib = min((value for _, value in rows), default=0)
+    tp = max(1, count)
+    if count == 0:
+        found.append("no NVIDIA GPUs detected")
+    else:
+        # The dense trunk (~35 GiB unsharded) is TP-sharded across the cards and
+        # is not optional. A card whose budget cannot hold its trunk shard plus a
+        # little room for KV/graphs/>=1 expert cannot run this model at all.
+        selected_mem = choose_profile(rows, adaptive)["MEM_FRACTION"] or "0.85"
+        trunk_shard = _TRUNK_TOTAL_MIB / tp
+        budget = minimum_mib * float(selected_mem)
+        if budget < trunk_shard + 2_000:
+            found.append(
+                f"per-card budget ~{budget:.0f} MiB (VRAM {minimum_mib} MiB x "
+                f"mem_fraction {selected_mem}) cannot hold the dense-trunk shard "
+                f"~{trunk_shard:.0f} MiB at TP={tp}; use a bigger card or more GPUs"
+            )
     flags = cpu_flags()
     if "avx512_vnni" not in flags:
         if not env_enabled("RUNGLM_ALLOW_AVX2"):
@@ -189,6 +258,12 @@ def main() -> int:
         print("Defaults:", " ".join(f"{k}={v}" for k, v in profile.items() if k != "RUNGLM_PROFILE"))
 
     if args.check:
+        if len(rows) != 2:
+            print(
+                f"WARNING: {len(rows)} GPU(s) detected; the measured reference is 2x"
+                " GPU. Single/other-count runs are auto-sized from VRAM and are"
+                " functional but unvalidated for peak throughput."
+            )
         if (
             env_enabled("RUNGLM_ALLOW_AVX2")
             and "avx512_vnni" not in cpu_flags()
