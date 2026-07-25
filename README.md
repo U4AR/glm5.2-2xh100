@@ -138,9 +138,11 @@ expert round trips from 1.75 to 0.86 per token.
 `PLACEMENT=hotcore` (now the default in `run_server_int4.sh`) slices each layer's
 hottest‑N at boot from the committed, N‑agnostic ranking
 `experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt`. Measured on
-the 9‑prompt suite: **19.65 → 21.26 tok/s (+8.2%)**, replicated exactly across
-two runs, accept unchanged at ~3.1. **Output is identical** — under `safe2` the
-genuine top‑2 always compute, so placement changes only *where*, never *which*.
+the 9‑prompt suite over four runs — 21.26, 21.26, 21.23, 20.66 tok/s (mean
+**21.10**) — against a **19.6** baseline: **+7.6%**, accept unchanged at ~3.1.
+**Output is identical** — under `safe2` the genuine top‑2 always compute, so
+placement changes only *where*, never *which* (accept lengths matched
+prompt‑for‑prompt across placements).
 
 It is safe to leave on everywhere: if the ranking file is missing or its shape
 does not match the model, it logs a warning and falls back to `uniform`
