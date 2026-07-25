@@ -9,6 +9,7 @@ KT_REPO="${KT_REPO:-https://github.com/U4AR/ktransformers.git}"
 KT_BRANCH="${KT_BRANCH:-glm5.2-2xh100-stable}"
 KT_COMMIT="${KT_COMMIT:-512802b9025d149681401f1c63519afa8caa34ea}"
 INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-0}"
+export PIP_NO_CACHE_DIR="${PIP_NO_CACHE_DIR:-1}"
 
 command -v "$PYTHON" >/dev/null || {
   echo "Python 3.12 is required (or set PYTHON=/path/to/python3.12)." >&2
@@ -62,8 +63,8 @@ while IFS= read -r tracked; do
 done < <(git -C "$REPO" ls-files '.venv/**')
 
 "$PYTHON" -m venv "$VENV"
-# A fresh clone contains the original machine's extension only as a patch
-# artifact. Remove it explicitly before compiling for the current CPU/GPU.
+# Never reuse a binary from an earlier setup attempt or copied workspace.
+# kt-kernel must be compiled against this machine's CPU, Python, torch and CUDA.
 find "$VENV/lib/python3.12/site-packages/kt_kernel" -maxdepth 1 \
   -type f -name 'kt_kernel_ext*.so' -delete 2>/dev/null || true
 source "$VENV/bin/activate"
@@ -74,7 +75,17 @@ export CMAKE_PREFIX_PATH="$VENV"
 export CMAKE_LIBRARY_PATH="$VENV/lib"
 export CMAKE_INCLUDE_PATH="$VENV/include"
 
-CPUINFER_USE_CUDA=1 "$REPO/ktransformers/install.sh"
+KT_INSTALL_ARGS=()
+CPU_FLAGS="$(awk -F: '/^flags[[:space:]]*:/{print $2; exit}' /proc/cpuinfo)"
+if [[ " $CPU_FLAGS " != *" avx512_vnni "* ]]; then
+  # The preflight above has already required explicit RUNGLM_ALLOW_AVX2=1 and
+  # verified AVX2+FMA. Build against the AVX2 baseline rather than -march=native
+  # so the result remains usable across comparable AVX2 hosts.
+  export CPUINFER_CPU_INSTRUCT=AVX2
+  export CPUINFER_ENABLE_AMX=OFF
+  KT_INSTALL_ARGS=(--manual)
+fi
+CPUINFER_USE_CUDA=1 "$REPO/ktransformers/install.sh" all "${KT_INSTALL_ARGS[@]}"
 python -m pip install -r "$REPO/requirements-lock.txt"
 "$REPO/scripts/apply_runtime_overlays.sh" "$OVERLAY_BACKUP"
 

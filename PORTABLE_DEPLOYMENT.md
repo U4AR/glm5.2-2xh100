@@ -29,9 +29,13 @@ python int4_scripts/download_w4afp8.py
 ./run_adaptive.sh
 ```
 
-`setup.sh` builds kt-kernel on the final pod. It never restores the checked-in
-Zen4/Hopper extension. It installs the pinned KTransformers fork, restores only
-the portable Python overlays, and runs `kt doctor`.
+`setup.sh` builds kt-kernel on the final pod. No compiled kt-kernel extension
+is distributed by the current branch: setup removes any stale local copy,
+disables pip wheel-cache
+reuse, and rebuilds against the final machine's Python, PyTorch, CUDA and CPU.
+On AVX2-only hosts it explicitly targets the AVX2+FMA baseline rather than
+`-march=native`. It then restores only the portable Python overlays and runs
+`kt doctor`.
 
 `run_adaptive.sh` detects the hardware, runs preflight checks, then applies safe
 first-boot settings. For two 48 GiB L40/L40S-class cards:
