@@ -33,6 +33,7 @@ export GPU_EXPERTS=${GPU_EXPERTS:-96}
 # adaptive cache then only has to track per-workload drift, not climb from 0.5
 # coverage. Set WARM_START=0 to force the old uniform cold start. ---
 RANK_PT="experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt"
+PRIOR_PT="experiments/adaptive_expert_cache/decode_cache/hot_core_prior.pt"
 if [ "${WARM_START:-1}" = "1" ] && [ -f "$RANK_PT" ]; then
   WARM_MASK="$RUNTIME_DIR/kt_warm_mask_${GPU_EXPERTS}.pt"
   .venv/bin/python experiments/adaptive_expert_cache/decode_cache/build_hot_core.py \
@@ -40,6 +41,10 @@ if [ "${WARM_START:-1}" = "1" ] && [ -f "$RANK_PT" ]; then
   if [ -n "${WARM_MASK:-}" ]; then
     export PLACEMENT=oracle
     export KT_ORACLE_MASK_PT="$WARM_MASK"
+    if [ -f "$PRIOR_PT" ]; then
+      export KT_ADAPTIVE_PRIOR_PT="$REPO/$PRIOR_PT"
+      export KT_ADAPTIVE_PRIOR_MASS="${KT_ADAPTIVE_PRIOR_MASS:-64}"
+    fi
     echo "[warm-start] booting from hot-core ranking -> $WARM_MASK (N=$GPU_EXPERTS/layer)"
   else
     export PLACEMENT=uniform
@@ -52,10 +57,10 @@ export KT_RAWINT4_BACKEND=avx512_packed
 export TRITON_CACHE_DIR
 # --- adaptive cache ---
 export KT_ADAPTIVE_DECODE=1
-export KT_ADAPTIVE_PERIOD=32
-export KT_ADAPTIVE_LAYERS_PER_TICK=2
-export KT_ADAPTIVE_MAX_SWAP=24
-export KT_ADAPTIVE_MARGIN=1.3
-export KT_ADAPTIVE_DECAY=0.98
-export KT_ADAPTIVE_MIN_EVENTS=64
+export KT_ADAPTIVE_PERIOD="${KT_ADAPTIVE_PERIOD:-32}"
+export KT_ADAPTIVE_LAYERS_PER_TICK="${KT_ADAPTIVE_LAYERS_PER_TICK:-2}"
+export KT_ADAPTIVE_MAX_SWAP="${KT_ADAPTIVE_MAX_SWAP:-24}"
+export KT_ADAPTIVE_MARGIN="${KT_ADAPTIVE_MARGIN:-1.3}"
+export KT_ADAPTIVE_DECAY="${KT_ADAPTIVE_DECAY:-0.98}"
+export KT_ADAPTIVE_MIN_EVENTS="${KT_ADAPTIVE_MIN_EVENTS:-64}"
 exec bash run_server_int4.sh

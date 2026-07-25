@@ -54,6 +54,8 @@ mkdir -p "$HF_HOME"
 GPU_EXPERTS=${GPU_EXPERTS:-96}
 MEM_FRACTION=${MEM_FRACTION:-0.94}
 CPUINFER=${CPUINFER:-72}
+NUMA_NODES=${NUMA_NODES:-"0 1"}
+KT_THREADPOOL_COUNT=${KT_THREADPOOL_COUNT:-2}
 MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-8192}
 # Explicit max sequence length (positions). Model supports 1M, but leave unset
 # and sglang derives a huge default; pin it so a coding agent's long context is
@@ -74,6 +76,9 @@ KT_GPU_PREFILL_THRESHOLD=${KT_GPU_PREFILL_THRESHOLD:-2048}
 DISABLE_CUDA_GRAPH=${DISABLE_CUDA_GRAPH:-0}
 CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-1}
 SLEEP_ON_IDLE=${SLEEP_ON_IDLE:-1}
+# Optional reproducibility control. Leave unset for SGLang's historical
+# auto-generated seed; set it for exact A/B performance comparisons.
+RANDOM_SEED=${RANDOM_SEED:-}
 
 CG_FLAG=""
 if [ "$DISABLE_CUDA_GRAPH" = "1" ]; then
@@ -130,6 +135,9 @@ CHAT_TEMPLATE_FLAG=""
 CONTEXT_LENGTH_FLAG=""
 [ -n "$CONTEXT_LENGTH" ] && CONTEXT_LENGTH_FLAG="--context-length $CONTEXT_LENGTH"
 
+RANDOM_SEED_FLAG=""
+[ -n "$RANDOM_SEED" ] && RANDOM_SEED_FLAG="--random-seed $RANDOM_SEED"
+
 # --- NSA (Native Sparse Attention) long-context fix --------------------------
 # GLM-5.2 uses DeepSeek Sparse Attention: a lightning indexer selects the top
 # `index_topk` (=2048) tokens per query once the sequence exceeds 2048. This
@@ -163,8 +171,8 @@ python -m sglang.launch_server \
   --model-path "$MODEL" \
   --kt-weight-path "$KT_WEIGHT_PATH" \
   --kt-cpuinfer "$CPUINFER" \
-  --kt-threadpool-count 2 \
-  --kt-numa-nodes 0 1 \
+  --kt-threadpool-count "$KT_THREADPOOL_COUNT" \
+  --kt-numa-nodes $NUMA_NODES \
   --kt-num-gpu-experts "$GPU_EXPERTS" \
   --kt-method "$KT_METHOD" \
   --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-2048}" \
@@ -178,6 +186,7 @@ python -m sglang.launch_server \
   --kv-cache-dtype "${KV_CACHE_DTYPE:-fp8_e4m3}" \
   --max-total-tokens "$MAX_TOTAL_TOKENS" \
   $CONTEXT_LENGTH_FLAG \
+  $RANDOM_SEED_FLAG \
   $MODEL_OVERRIDE_FLAG \
   --max-running-requests "$MAX_RUNNING" \
   --chunked-prefill-size "$CHUNKED_PREFILL" \

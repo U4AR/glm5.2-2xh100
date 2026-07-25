@@ -149,6 +149,38 @@ Verified: warm-started N=96 served **33 tok/s on the very first prompt** (vs
 ramp is gone. Any N works: `GPU_EXPERTS=48 bash boot_adaptive_mtp.sh` slices
 the same ranking to top-48.
 
+### Persisted counter prior and performance gate (2026-07-25)
+
+The placement mask alone did not initialize the adaptive counters: they still
+started at zero and forgot the evidence behind the saved ranking.
+`hot_core_prior.pt` now stores normalized `[78,256]` genuine-top-2 frequencies
+from the same 441k-event capture. Boot seeds each routed layer from it.
+
+The prior is intentionally a **64-event bootstrap/tie-breaker**, not a
+long-lived anchor. Testing 65,536 events exposed a full-layer-restage cost:
+1–4 expert micro-corrections each took about 145–205 ms, nearly the same as a
+24-expert correction, and reduced the five-run median to ~31.5 tok/s.
+
+Controlled A/B (same H100 host, exact server arguments, fixed SGLang seed
+830577833, same initial N=96 saved mask, coherence 4/4 in both):
+
+| adaptive counter bootstrap | fresh 5-run median | next 5-run median | combined 10-run median |
+|---|---:|---:|---:|
+| previous zero counters | 31.16 tok/s | 34.31 tok/s | 32.66 tok/s |
+| persisted prior, mass 64 | **38.67 tok/s** | 33.74 tok/s | **36.32 tok/s** |
+
+The corrected fresh median is also above the independently measured
+pre-portability reference of 37.05 tok/s. Request-level spread remains wide
+(roughly 28–42 tok/s) because safe2 placement changes alter substituted tail
+experts and therefore MTP acceptance while the cache converges.
+
+A repeat mass-64 boot with the same explicit SGLang seed produced 31.25 tok/s:
+the CPU MoE/safe2 path is not seed-deterministic, and early routing differences
+are amplified by 16–24-expert adaptive updates. Disabling updates isolated the
+committed diverse ordering at a stable **35.07 tok/s** (35.02–35.26). Thus the
+remaining spread is expert-ordering/MTP-path variance rather than different
+launcher settings; use multi-run or converged measurements, not one fresh boot.
+
 ## Low-VRAM regime (2026-07-24, partial — stopped early)
 
 Measured actual VRAM/card (nvidia-smi) + diverse held-out tok/s at low expert
