@@ -180,10 +180,17 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     cpuinfer = 72 if profile == "2xh100" and cpus >= 80 else max(
         1, min(72, cpus - max(4, cpus // 8))
     )
-    # RunPod currently exposes a wider host CPU view/quota than the 32 vCPUs
-    # actually allocated to the 2xL40 pod. Keep four cores for SGLang/CUDA.
+    # The CPU-expert path is DRAM-bandwidth-bound, not FLOP-bound, so the right
+    # thread count is the one that saturates memory bandwidth -- not "all cores".
+    # Measured streaming-read sweep on the 2xL40 pod (dual EPYC 7773X, DDR4):
+    #   8 thr 163 GB/s | 16 thr 248 | 28 thr 296 | 56 thr 356 | 112 thr 271
+    # i.e. bandwidth peaks near 56 and *regresses* past it. 56 cut decode step
+    # time 170ms -> 152ms vs the previous hardcoded 28. Re-measure per host with
+    # a streaming-read benchmark before changing this; do not assume more=better.
+    # (The prior value of 28 assumed a 32-vCPU pod allocation; measured parallel
+    # capacity on this host is ~40 cores, and the bandwidth curve peaks higher.)
     if profile == "2xl40":
-        cpuinfer = 28
+        cpuinfer = min(56, max(1, cpus - max(4, cpus // 8)))
     selected = {
         "RUNGLM_PROFILE": profile,
         "TP_SIZE": str(tp),
@@ -206,6 +213,19 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
         selected["KT_W4AFP8_GPU_BACKEND"] = "cutlass_sm90"
         selected["FP8_GEMM_BACKEND"] = "cutlass"
         selected["ATTENTION_BACKEND"] = "flashmla"
+    # fp8 KV cache is only validated on the flashmla path. On every other
+    # attention backend (the Triton fallback that non-Hopper cards land on) an
+    # fp8_e4m3 KV cache measurably degrades MTP/NEXTN acceptance, because the
+    # draft head's agreement with the target is sensitive to KV precision.
+    # Measured on 2xL40 switching fp8_e4m3 -> bf16 (accept length, greedy):
+    #   technical prose 2.2 -> 2.63 | structured list -> 3.21
+    #   code generation -> 3.27     | reasoning -> 3.36  | repetitive -> 3.75
+    # Net decode throughput went 12.9 -> 16.5 tok/s (and ~22.5 on code), i.e.
+    # the "MTP accept length collapsed on this box" symptom was this setting.
+    # MLA makes it nearly free: kv_lora_rank=512 means bf16 KV for 8192 tokens
+    # costs well under 1 GB. Default anything that is not flashmla to bf16.
+    if selected.get("ATTENTION_BACKEND") != "flashmla":
+        selected["KV_CACHE_DTYPE"] = "auto"
     # The measured path remains AVX-512 VNNI. An explicitly allowed AVX2 host
     # must not inherit run_fast.sh's avx512_packed default or it will SIGILL.
     if "avx512_vnni" not in cpu_flags() and "avx2" in cpu_flags():

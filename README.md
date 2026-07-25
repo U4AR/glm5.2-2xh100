@@ -83,6 +83,37 @@ bash    bench/decode_bench.sh 6 256          # ~33 tok/s — folds one‑time pr
                                              # short run, so it reads lower; not a regression
 ```
 
+### 2×L40 (non‑Hopper) — and the fp8‑KV / MTP pitfall
+
+Measured 2026‑07‑25 on 2×L40 46 GB + dual EPYC 7773X (AVX2, no AVX‑512), plain
+`safe2` routing + MTP depth‑3, `GPU_EXPERTS=24`:
+
+| workload | accept | tok/s |
+|---|:--:|---:|
+| general‑prompt suite (10 prompts, aggregate) | 3.02 | **18.9** |
+| structured / JSON output | 3.58 | 24.3 |
+| code generation | ~3.0–3.3 | 19–22 |
+| technical prose (`decbench.py`) | 2.63 | 16.5 |
+
+Two settings account for a **+46%** swing over the previous 2×L40 defaults (12.9 tok/s):
+
+1. **`kv_cache_dtype` must be `auto` (bf16) on any non‑`flashmla` attention
+   backend.** fp8 KV is only validated on flashmla; on the Triton path that
+   non‑Hopper cards fall back to, it measurably degrades **MTP/NEXTN acceptance**
+   (accept 2.2 → 3.0+, tok/s 12.9 → 16.5). This presents as "MTP accept length
+   collapsed on this machine" and is easy to misattribute to the CPU‑expert path.
+   MLA makes the fix nearly free — `kv_lora_rank=512`, so bf16 KV at 8192 tokens
+   costs under 1 GB. `hardware_profile.py` now defaults this automatically.
+2. **`CPUINFER` should saturate memory bandwidth, not core count.** The CPU‑expert
+   path is DRAM‑bandwidth‑bound. Measured streaming‑read sweep on this host:
+   8 thr 163 GB/s · 16 thr 248 · 28 thr 296 · **56 thr 356** · 112 thr 271 — it
+   peaks near 56 and *regresses* past it. Going 28 → 56 cut decode step time
+   170 ms → 152 ms. Re‑measure per host; more threads is not monotonically better.
+
+Note `decbench.py`'s technical‑essay prompt is the **worst case** for MTP
+acceptance (2.63 vs 3.58 on structured output), so it understates real
+coding‑agent throughput by ~30%. Cross‑check with a code or JSON prompt.
+
 **Quality benchmark (LiveBench reasoning, 200 Qs, one at a time):** with the
 server running, one portable command scores the top‑2 tier end‑to‑end (dataset
 auto‑pulled from HuggingFace, so it works on a fresh box):
