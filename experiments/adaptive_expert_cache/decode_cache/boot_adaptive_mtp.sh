@@ -52,10 +52,14 @@ if [ "${WARM_START:-1}" = "1" ] && [ -f "$RANK_PT" ]; then
     fi
     echo "[warm-start] booting from hot-core ranking -> $WARM_MASK (N=$GPU_EXPERTS/layer)"
   else
-    export PLACEMENT=uniform
+    # `hotcore`, not `uniform`: uniform fills each layer with experts 0..N-1 by
+    # index (12.7% top-2 coverage at N=30). hotcore slices the same committed
+    # ranking this warm-start path uses, and itself falls back to uniform if the
+    # ranking is missing or shaped for another model.
+    export PLACEMENT=hotcore
   fi
 else
-  export PLACEMENT=uniform
+  export PLACEMENT=hotcore
 fi
 export KT_METHOD=RAWINT4
 # Preserve the hardware-profile or caller override. AVX-512 remains the H100

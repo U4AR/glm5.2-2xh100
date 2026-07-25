@@ -55,13 +55,25 @@ fi
 python3 "$REPO/scripts/hardware_profile.py" --check --weights-dir "$W4AFP8_MODEL"
 
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
-MODE=${MODE:-sub}               # sub = substitute the tail; off = baseline
 MTP=${MTP:-1}                   # 1 = NEXTN/MTP speculative decode (depth-3); DEFAULT ON
+
+# Default routing mode comes from the hardware profile, NOT a hardcoded `sub`.
+# `sub2` substitutes the six non-kept slots with GPU-resident experts, so its
+# coherence depends on the resident set being good: validated at 96-104
+# experts/layer (2xH100), measured INCOHERENT at 24-30 (2xL40). The profile
+# emits RUNGLM_TOPK_MODE=safe2 for any host that cannot hold enough experts;
+# safe2 routes a non-resident genuine expert to the CPU instead, so it is always
+# correct. Explicit MODE= still wins.
+MODE=${MODE:-$([ "${RUNGLM_TOPK_MODE:-sub2}" = "safe2" ] && echo safe || echo sub)}
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then
   rm -f "$KT_TOPK_MODE_FILE" "$KT_SKIP_CPU_FILE"
   echo "[run_fast] substitution DISABLED (plain baseline)."
+elif [ "$MODE" = "safe" ]; then
+  printf 'safe%s' "$KEEP" > "$KT_TOPK_MODE_FILE"
+  rm -f "$KT_SKIP_CPU_FILE"
+  echo "[run_fast] SAFE routing: genuine top-$KEEP always kept; non-resident ones go to the CPU path (always correct, this host cannot hold enough experts for coherent substitution)."
 else
   printf 'sub%s' "$KEEP" > "$KT_TOPK_MODE_FILE"
   echo "[run_fast] top-K substitution ENABLED: keep genuine top-$KEEP, substitute the rest ($KT_TOPK_MODE_FILE=sub$KEEP)."

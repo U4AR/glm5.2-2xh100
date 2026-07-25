@@ -231,6 +231,24 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     # costs well under 1 GB. Default anything that is not flashmla to bf16.
     if selected.get("ATTENTION_BACKEND") != "flashmla":
         selected["KV_CACHE_DTYPE"] = "auto"
+    # Per-layer hot-core placement. `uniform` fills every layer with experts
+    # 0..N-1 BY INDEX, so top-2 coverage is only N/256 (12.7% at N=30) -- nothing
+    # about it is informed by routing. `hotcore` gives each layer its own
+    # hottest-N from the committed ranking and is strictly better on every host
+    # (it self-falls-back to uniform if the ranking does not match the model).
+    selected["PLACEMENT"] = "hotcore"
+
+    # Top-K routing mode -- THE portability trap. `sub2` keeps the genuine top-2
+    # and substitutes the other six slots with GPU-RESIDENT experts, so its
+    # output quality depends entirely on how good the resident set is:
+    #   validated coherent at 96-104 experts/layer (2xH100, ~90% top-2 coverage)
+    #   measured INCOHERENT at 24-30 experts/layer (2xL40, ~41% coverage)
+    # `safe2` instead sends a non-resident genuine expert to the CPU, so it is
+    # always correct and only ever slower. Anything below the validated-coherent
+    # point therefore defaults to safe2; the 30..96 range is untested, and the
+    # conservative choice there is the correct-by-construction one.
+    selected["RUNGLM_TOPK_MODE"] = "sub2" if gpu_experts >= 96 else "safe2"
+
     # The measured path remains AVX-512 VNNI. An explicitly allowed AVX2 host
     # must not inherit run_fast.sh's avx512_packed default or it will SIGILL.
     if "avx512_vnni" not in cpu_flags() and "avx2" in cpu_flags():

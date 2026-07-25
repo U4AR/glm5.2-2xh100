@@ -11,8 +11,16 @@ cd RunGLM
 export RUNGLM_ALLOW_AVX2=1   # required only on AVX2-only hosts such as this L40 pod
 INSTALL_SYSTEM_DEPS=1 ./setup.sh
 python int4_scripts/download_w4afp8.py
-./run_adaptive.sh
+./run_fast.sh
 ```
+
+`run_fast.sh` is the right first boot on **any** host: `hardware_profile.py`
+picks the expert budget, thread count, backends, KV dtype, per-layer `hotcore`
+placement, and — importantly — whether top-2 **substitution** is safe on this
+box (see [Portability](#portability--what-a-fresh-machine-gets-right-automatically)).
+Prefer it over `./run_adaptive.sh`: the decode-time adaptive cache measured
+**net-negative** on mixed traffic (18.2/18.2/19.0 vs 19.6 tok/s on 2×L40) and
+~0.999× on 2×H100.
 
 Read [PORTABLE_DEPLOYMENT.md](PORTABLE_DEPLOYMENT.md) for the RunPod recipe,
 preflight behavior, hardware profiles, and current support boundary. Automatic
@@ -135,6 +143,11 @@ The middle column is the point: the best *globally* hot set of 30 reaches only
 17.2%, barely above arbitrary. Per‑layer placement reaches 56.8%, cutting CPU
 expert round trips from 1.75 to 0.86 per token.
 
+⚠️ **Those coverage figures are in‑sample** — the ranking was built from the same
+routing captures. Scored **leave‑one‑task‑out**, hotcore at N=30 covers
+**41.0%**, not 56.8% (still far above index placement's ~12.7%, which is
+workload‑independent). Use 41% for any projection.
+
 `PLACEMENT=hotcore` (now the default in `run_server_int4.sh`) slices each layer's
 hottest‑N at boot from the committed, N‑agnostic ranking
 `experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt`.
@@ -224,6 +237,33 @@ experts are resident → skip the CPU call" gate (only ~1% of layers qualify at
 57% coverage, since it needs all 2×4 slots resident — but ~43% would qualify at
 the H100's 90%), coalescing submit/sync across layers, or cutting the
 `cudaLaunchHostFunc` host‑node round trip that CUDA graphs impose per layer.
+
+Full write‑up for this machine, including the skip‑gate and caching feasibility
+analysis: **[MACHINE_2XL40_FINDINGS.md](MACHINE_2XL40_FINDINGS.md)**.
+
+## Portability — what a fresh machine gets right automatically
+
+`scripts/hardware_profile.py` is the single place that adapts the deployment.
+Run `python3 scripts/hardware_profile.py --shell` to see what your host resolves
+to. Everything it emits is env‑overridable. Four of these were bugs that cost
+real throughput on the first non‑H100 host, so they are auto‑derived now:
+
+| setting | rule | why |
+|---|---|---|
+| `KV_CACHE_DTYPE` | `auto` (bf16) unless the backend is `flashmla` | fp8 KV wrecks MTP acceptance on the Triton path; ~1 GB to fix |
+| `CPUINFER` | thread count that saturates **memory bandwidth**, not core count | the CPU expert path is DRAM‑bound and *regresses* past the peak |
+| `PLACEMENT` | `hotcore` everywhere | `uniform` places experts by index, ignoring routing entirely |
+| `RUNGLM_TOPK_MODE` | `sub2` at ≥96 experts/layer, else `safe2` | `sub2` is coherent at 96–104/layer but **incoherent at 24–30**; `safe2` is always correct |
+| `KT_RAWINT4_BACKEND` | `avx2_packed` when AVX‑512 VNNI is absent | otherwise SIGILL |
+| `GPU_EXPERTS` / `MEM_FRACTION` | measured table for known cards, VRAM model otherwise | first boot must not OOM |
+
+The `RUNGLM_TOPK_MODE` gate is the one to understand before trusting output on a
+new box: `sub2` substitutes six of the eight routed slots with GPU‑resident
+experts, so its quality depends entirely on the resident set being good. It is
+validated at 96–104 experts/layer and was measured **incoherent** at 24–30. The
+30–96 range is untested and deliberately defaults to the correct‑by‑construction
+`safe2`. If your host lands there and you want the speed, validate coherence
+first with `experiments/adaptive_expert_cache/coherence_test.py`.
 
 Two levers that do **not** pay off at 2×L40, both measured — don't re‑litigate:
 
