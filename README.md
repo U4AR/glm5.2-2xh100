@@ -114,13 +114,55 @@ Note `decbench.py`'s technical‑essay prompt is the **worst case** for MTP
 acceptance (2.63 vs 3.58 on structured output), so it understates real
 coding‑agent throughput by ~30%. Cross‑check with a code or JSON prompt.
 
+### Expert placement: `hotcore` is the default, and `uniform` was the trap
+
+`--kt-expert-placement-strategy uniform` — the old default — spreads the expert
+budget evenly *across layers* but then fills each layer with experts **0..N‑1 by
+index**. Nothing about placement was informed by routing: expert 0 was resident
+in all 75 layers, expert 200 in none. Top‑2 coverage was therefore just `N/256`
+= **12.7%** at `GPU_EXPERTS=30`.
+
+Routing is in fact strongly concentrated — but **the hot set differs per layer**.
+Measured over 441k genuine‑top‑2 events (`hot_core_prior.pt`):
+
+| N/layer | index 0..N‑1 (`uniform`) | best single global set | per‑layer hottest‑N (`hotcore`) |
+|---:|---:|---:|---:|
+| 24 | 10.0% | 14.0% | 51.3% |
+| **30** | **12.7%** | 17.2% | **56.8%** |
+| 104 | 41.0% | 49.9% | 90.3% |
+
+The middle column is the point: the best *globally* hot set of 30 reaches only
+17.2%, barely above arbitrary. Per‑layer placement reaches 56.8%, cutting CPU
+expert round trips from 1.75 to 0.86 per token.
+
+`PLACEMENT=hotcore` (now the default in `run_server_int4.sh`) slices each layer's
+hottest‑N at boot from the committed, N‑agnostic ranking
+`experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt`. Measured on
+the 9‑prompt suite: **19.65 → 21.26 tok/s (+8.2%)**, replicated exactly across
+two runs, accept unchanged at ~3.1. **Output is identical** — under `safe2` the
+genuine top‑2 always compute, so placement changes only *where*, never *which*.
+
+It is safe to leave on everywhere: if the ranking file is missing or its shape
+does not match the model, it logs a warning and falls back to `uniform`
+(verified by booting with a bogus `KT_HOTCORE_RANKING_PT`). `PLACEMENT=uniform`
+restores the old behaviour. Rebuild the ranking for another workload with
+`experiments/adaptive_expert_cache/decode_cache/build_hot_core.py`.
+
+Note the ceiling, though: coverage rose 4.5× but throughput only 8%. That
+reproduces the H100 finding in `experiments/expert_footprint_top2_vs_top8/ORACLE_CEILING.md`
+— per‑layer cost is `max(cpu_time, gpu_time)` and the kt worker pays a fixed
+`submit_forward + sync` per layer whether or not any expert misses GPU. Placement
+is worth a single‑digit‑percent win, not a multiple.
+
 Two levers that do **not** pay off at 2×L40, both measured — don't re‑litigate:
 
 * **Raising `GPU_EXPERTS` is nearly exhausted.** Under `safe2` only the genuine
   top‑2 reach the CPU, so CPU traffic scales as `2 × (1 − residency)`. Going
   24 → 30 moves that just 1.81 → 1.77 experts/token: +3% (18.9 → 19.6 tok/s).
   `32 @ mem_fraction 0.91` OOMs during CUDA‑graph capture. Mattering would need
-  residency near H100's 40% (104/256), which 46 GB cards cannot hold.
+  residency near H100's 40% (104/256), which 46 GB cards cannot hold. (Those
+  numbers are under `uniform`; `hotcore` raises the coverage *at* N=30 instead
+  of needing a bigger N, which is why it wins where raising N did not.)
 * **`./run_adaptive.sh` (decode‑time expert cache) is net‑negative here.** On a
   diverse 9‑prompt suite it scored 18.2 / 18.2 / 19.0 tok/s across three passes
   vs **19.6 without it**: `top2_cov` plateaus at ~0.51 (the working set keeps

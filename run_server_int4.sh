@@ -33,6 +33,17 @@ KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
 # parsers expect). Override CHAT_TEMPLATE= to disable.
 CHAT_TEMPLATE=${CHAT_TEMPLATE:-$REPO/chat_template.jinja}
 
+# GPU expert placement. `uniform` spreads the budget evenly across layers but
+# then fills each layer with experts 0..N-1 BY INDEX, so top-2 coverage is only
+# N/256. `hotcore` gives each layer its own hottest-N from the committed routing
+# ranking -- 12.7% -> 56.8% coverage at N=30, +8.2% decode on 2xL40. Output is
+# identical (placement never changes which experts are selected), and it falls
+# back to uniform if the ranking does not match the model. PLACEMENT=uniform
+# restores the old behaviour.
+PLACEMENT=${PLACEMENT:-hotcore}
+KT_HOTCORE_RANKING_PT=${KT_HOTCORE_RANKING_PT:-$REPO/experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt}
+export KT_HOTCORE_RANKING_PT
+
 source "$VENV/bin/activate"
 
 # --- runtime env -----------------------------------------------------------
@@ -177,7 +188,7 @@ python -m sglang.launch_server \
   --kt-method "$KT_METHOD" \
   --kt-gpu-prefill-token-threshold "${KT_GPU_PREFILL_THRESHOLD:-2048}" \
   $DYN_FLAG \
-  --kt-expert-placement-strategy "${PLACEMENT:-uniform}" \
+  --kt-expert-placement-strategy "$PLACEMENT" \
   --tp-size "${TP_SIZE:-2}" \
   --trust-remote-code \
   --host 0.0.0.0 \
