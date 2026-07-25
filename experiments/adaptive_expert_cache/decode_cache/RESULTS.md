@@ -169,3 +169,49 @@ useful: N=8 (~23 GiB/card, coverage just 0.26) still holds ~27 tok/s because
 safe2 keeps genuine top-2 (CPU round-trip) and MTP-d3 amortizes it — the CPU
 expert path degrades gracefully rather than falling off a cliff. (N=4, N=0 runs
 were cut short.)
+
+## Low-VRAM regime — COMPLETE ladder + small-GPU caveat (2026-07-25)
+
+Full footprint sweep (warm-start, MAX_TOTAL_TOKENS=4096, MEM_FRACTION=0.60),
+measured VRAM/card via nvidia-smi + diverse held-out tok/s:
+
+| N/layer | VRAM/card | coverage | held-out tok/s (2×H100) |
+|---|---|---|---|
+| 0  | — | — | **BOOT_FAIL**: empty resident set → top-2 substitution `max()` on numel-0. N=0 is unsupported; need ≥1 resident expert. |
+| 4  | 19.9 GiB | 0.16 | 19.4 |
+| 8  | 23.1 GiB | 0.26 | 27.1 |
+| 16 | 28.7 GiB | 0.43 | 30.3 |
+| 32 | 40.1 GiB | 0.61 | 32.3 |
+| 96 | 54.0 GiB | 0.89 | 38.7 |
+
+Base floor confirmed at **~17.5 GiB/card** (N=4 → 19.9 GiB, minus 4×78×9.45 MiB
+experts ≈ 17.0 GiB residual). This is the dense trunk sharded across TP2 — it
+cannot shrink with the expert budget, so **12 GiB/card is unreachable** for
+GLM-5.2 on 2 cards without re-quantizing the dense trunk or adding TP shards.
+
+### ⚠️ Compute caveat (user-flagged, IMPORTANT)
+
+These tok/s only shrank the VRAM **footprint** — every decode step still ran on
+full 2×H100 compute (SMs, HBM bandwidth, tensor cores). Real small-GPU silicon
+is far weaker, so the numbers above are an **upper bound**, not small-GPU speed.
+We could not lock GPU clocks to emulate weaker cards (`nvidia-smi -lgc` needs
+sudo, password-gated). Instead, a first-order **bandwidth re-pricing** (batch=1
+decode is HBM-BW-bound; `small_gpu_projection.py`, f_gpu=0.70):
+
+| card (×2, TP2) | HBM GB/s | N=8 | N=16 | N=32 |
+|---|---|---|---|---|
+| 2×H100 (measured) | 3350 | 27.1 | 30.3 | 32.3 |
+| 2× RTX 4090 | 1008 | 10.3 | 11.5 | 12.3 |
+| 2× A10 | 600 | 6.4 | 7.2 | 7.7 |
+| 2× L4 | 300 | 3.3 | 3.7 | 4.0 |
+
+Even these are optimistic (BW-only; ignores SM-count/L2 limits and a likely
+weaker host CPU on a budget box, which drags the CPU-expert path down too). Also
+note the ~17.5 GiB base is **per card under TP2**, so "small GPU" here means a
+PAIR of such cards — a single 24 GiB card can't hold the whole dense trunk.
+Rule of thumb: on real 2×24 GiB silicon expect **~1/3 of the H100 tok/s**
+(~10–12 for a 4090-class pair). The VRAM footprint numbers are
+hardware-independent and stand as-is.
+
+Figure: `figs/fig5_low_vram.png` (left = measured footprint sweep; right = the
+bandwidth haircut onto real cards).
