@@ -7,6 +7,7 @@ source "$REPO/config.sh"
 PYTHON="${PYTHON:-python3.12}"
 KT_REPO="${KT_REPO:-https://github.com/U4AR/ktransformers.git}"
 KT_BRANCH="${KT_BRANCH:-glm5.2-2xh100-stable}"
+KT_COMMIT="${KT_COMMIT:-512802b9025d149681401f1c63519afa8caa34ea}"
 INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-0}"
 
 command -v "$PYTHON" >/dev/null || {
@@ -35,6 +36,14 @@ fi
 
 if [ ! -d "$REPO/ktransformers/.git" ]; then
   git clone --recursive --branch "$KT_BRANCH" "$KT_REPO" "$REPO/ktransformers"
+fi
+git -C "$REPO/ktransformers" fetch origin "$KT_BRANCH"
+if ! git -C "$REPO/ktransformers" cat-file -e "$KT_COMMIT^{commit}" 2>/dev/null ||
+   ! git -C "$REPO/ktransformers" merge-base --is-ancestor \
+     "$KT_COMMIT" HEAD; then
+  echo "KTransformers HEAD must contain validated commit $KT_COMMIT." >&2
+  echo "Preserving the existing checkout; update it with git pull --ff-only." >&2
+  exit 1
 fi
 git -C "$REPO/ktransformers" submodule update --init --recursive
 
@@ -71,7 +80,7 @@ python -m pip install -r "$REPO/requirements-lock.txt"
 
 ACTIVATE="$VENV/bin/activate"
 grep -q 'RUNGLM venv libraries' "$ACTIVATE" || {
-  printf '\\n# RUNGLM venv libraries\\nexport LD_LIBRARY_PATH="$VIRTUAL_ENV/lib:${LD_LIBRARY_PATH:-}"\\n' >> "$ACTIVATE"
+  printf '\n# RUNGLM venv libraries\nexport LD_LIBRARY_PATH="$VIRTUAL_ENV/lib:${LD_LIBRARY_PATH:-}"\n' >> "$ACTIVATE"
 }
 kt doctor
 echo "Setup complete. Next: python int4_scripts/download_w4afp8.py"

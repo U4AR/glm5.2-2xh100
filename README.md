@@ -8,7 +8,8 @@ performance reference remains 2× H100 NVL. For a fresh machine:
 git clone --branch experiment/adaptive-decode-cache --single-branch \
   https://github.com/U4AR/glm5.2-2xh100.git RunGLM
 cd RunGLM
-./setup.sh
+export RUNGLM_ALLOW_AVX2=1   # required only on AVX2-only hosts such as this L40 pod
+INSTALL_SYSTEM_DEPS=1 ./setup.sh
 python int4_scripts/download_w4afp8.py
 ./run_adaptive.sh
 ```
@@ -244,7 +245,7 @@ above). So setup is: install KTransformers into a venv, then overlay this repo's
 
 For a **bit-exact** rebuild, the validated component versions are: Python **3.12.9**,
 torch **2.9.1+cu128**, transformers **5.12.1**, CUDA **12.8**, `kt-kernel` **0.6.2.post3**,
-KTransformers branch **`U4AR/ktransformers` `glm5.2-2xh100-stable` (commit `8d83454`)**
+KTransformers branch **`U4AR/ktransformers` `glm5.2-2xh100-stable` (commit `512802b`)**
 with the SGLang submodule pinned to **kvcache-ai/sglang @ `51032b712`**. The full freeze
 is in [`requirements-lock.txt`](requirements-lock.txt). (The "Phala" you may have seen is
 the *weights* — `PhalaCloud/GLM-5.2-W4AFP8` — not the SGLang code.)
@@ -263,9 +264,10 @@ export REPO=$(pwd)            # used in the examples below
 git clone --recursive -b glm5.2-2xh100-stable \
   https://github.com/U4AR/ktransformers.git ktransformers
 cd ktransformers && git submodule update --init --recursive && cd "$REPO"
-#    glm5.2-2xh100-stable = commit 8d83454, the shipped packed-INT4 + GPU-prefill
-#    state (13.5+ tok/s). Do NOT use failed-be/* branches — those are abandoned
-#    streaming experiments.
+#    glm5.2-2xh100-stable contains commit 512802b9025d149681401f1c63519afa8caa34ea,
+#    adding the packed AVX2 RAWINT4 backend. The validated AVX-512/H100 path is
+#    unchanged. Do NOT use failed-be/* branches — those are abandoned streaming
+#    experiments.
 
 # 3. Create the Python 3.12 venv the launchers expect at ./.venv
 python3.12 -m venv .venv

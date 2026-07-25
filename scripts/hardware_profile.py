@@ -180,6 +180,10 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     cpuinfer = 72 if profile == "2xh100" and cpus >= 80 else max(
         1, min(72, cpus - max(4, cpus // 8))
     )
+    # RunPod currently exposes a wider host CPU view/quota than the 32 vCPUs
+    # actually allocated to the 2xL40 pod. Keep four cores for SGLang/CUDA.
+    if profile == "2xl40":
+        cpuinfer = 28
     selected = {
         "RUNGLM_PROFILE": profile,
         "TP_SIZE": str(tp),
@@ -194,10 +198,18 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
         "CUDA_GRAPH_MAX_BS": "1",
         "KT_GPU_PREFILL_THRESHOLD": "0" if minimum_mib < 75_000 else "2048",
     }
+    if profile == "2xl40":
+        selected["KT_W4AFP8_GPU_BACKEND"] = "marlin_sm80"
+        selected["FP8_GEMM_BACKEND"] = "triton"
+        selected["ATTENTION_BACKEND"] = "triton"
+    elif profile == "2xh100":
+        selected["KT_W4AFP8_GPU_BACKEND"] = "cutlass_sm90"
+        selected["FP8_GEMM_BACKEND"] = "cutlass"
+        selected["ATTENTION_BACKEND"] = "flashmla"
     # The measured path remains AVX-512 VNNI. An explicitly allowed AVX2 host
     # must not inherit run_fast.sh's avx512_packed default or it will SIGILL.
     if "avx512_vnni" not in cpu_flags() and "avx2" in cpu_flags():
-        selected["KT_RAWINT4_BACKEND"] = "avx2"
+        selected["KT_RAWINT4_BACKEND"] = "avx2_packed"
         selected["KT_KERNEL_CPU_VARIANT"] = "avx2"
     return selected
 
@@ -290,7 +302,7 @@ def main() -> int:
             and "avx512_vnni" not in cpu_flags()
             and {"avx2", "fma"}.issubset(cpu_flags())
         ):
-            print("WARNING: using unvalidated AVX2 CPU fallback; expect lower throughput")
+            print("WARNING: using experimental packed AVX2 fallback; expect lower throughput")
         found = problems(rows, args.adaptive, args.weights_dir)
         for item in found:
             print(f"ERROR: {item}")

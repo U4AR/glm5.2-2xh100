@@ -25,9 +25,11 @@ ktransformers/
 # ---- baseline Python overlays + legacy reference kernel -------------------
 # (force-added with `git add -f`; listed here as documentation)
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/quantization/w4afp8.py
+!.venv/lib/python3.12/site-packages/sglang/srt/server_args.py
 !.venv/lib/python3.12/site-packages/sglang/srt/models/deepseek_v2.py
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/attention/nsa_backend.py
 !.venv/lib/python3.12/site-packages/sglang/srt/layers/moe/kt_ep_wrapper.py
+!.venv/lib/python3.12/site-packages/kt_kernel/utils/amx.py
 # setup.sh always deletes/rebuilds this legacy reference extension on a new
 # machine; it must never be used as the portable runtime binary.
 !.venv/lib/python3.12/site-packages/kt_kernel/kt_kernel_ext.cpython-312-x86_64-linux-gnu.so

@@ -198,7 +198,7 @@ python -m sglang.launch_server \
   --attention-backend "$ATTENTION_BACKEND" \
   $NSA_FLAG \
   $CHAT_TEMPLATE_FLAG \
-  --fp8-gemm-backend cutlass \
+  --fp8-gemm-backend "${FP8_GEMM_BACKEND:-cutlass}" \
   --disable-shared-experts-fusion \
   --tool-call-parser glm47 \
   --reasoning-parser glm45 \

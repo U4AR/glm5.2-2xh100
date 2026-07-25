@@ -58,7 +58,9 @@ else
   export PLACEMENT=uniform
 fi
 export KT_METHOD=RAWINT4
-export KT_RAWINT4_BACKEND=avx512_packed
+# Preserve the hardware-profile or caller override. AVX-512 remains the H100
+# default; AVX2-only hosts select the separate packed AVX2 backend.
+export KT_RAWINT4_BACKEND=${KT_RAWINT4_BACKEND:-avx512_packed}
 export TRITON_CACHE_DIR
 # --- adaptive cache ---
 export KT_ADAPTIVE_DECODE=1

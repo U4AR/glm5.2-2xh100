@@ -1,9 +1,9 @@
 """
-Drive the REAL sglang W4AFp8MoEMethod GPU cutlass path on ONE GLM-5.2 MoE layer
-(experts 0..NE-1, all GPU) and compare to a reference dequant+SwiGLU matmul.
+Drive the real SGLang W4AFP8 GPU path on one GLM-5.2 MoE layer (experts
+0..NE-1, all GPU) and compare to a reference dequant+SwiGLU matmul.
 
-Mirrors W4AFp8MoEMethod.apply(): create_weights -> load real W4AFP8 tensors ->
-process_weights_after_loading (interleave scales, max input_scale) -> cutlass_w4a8_moe.
+SM90+ defaults to the existing CUTLASS W4A8 method. SM80-SM89 defaults to the
+portable Marlin W4A16 method. KT_W4AFP8_GPU_BACKEND can force either backend.
 
 If cos(kernel, ref) is high here but the full server garbages, the bug is in the
 kt_ep_wrapper integration (weight loading / expert index mapping), not the kernel.
@@ -12,15 +12,24 @@ If cos is low/NaN here, the format/scale handling of OUR W4AFP8 weights is wrong
 env: LAYER (default 3), NE (default 8), DUMP=1 to print intermediate stats.
 """
 import os, json, numpy as np, torch
+from types import SimpleNamespace
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 from safetensors import safe_open
 
 # --- avoid needing a real distributed/parallel init ---
 import sglang.srt.layers.moe.cutlass_w4a8_moe as cwm
 cwm.get_moe_expert_parallel_world_size = lambda: 1  # monkeypatch: single rank
+from sglang.srt.server_args import set_global_server_args_for_scheduler
 
-from sglang.srt.layers.quantization.w4afp8 import W4AFp8Config, W4AFp8MoEMethod
-from sglang.srt.layers.moe.cutlass_w4a8_moe import cutlass_w4a8_moe
+set_global_server_args_for_scheduler(
+    SimpleNamespace(enable_deterministic_inference=False)
+)
+
+from sglang.srt.layers.quantization.w4afp8 import (
+    W4AFp8Config,
+    W4AFp8MarlinMoEMethod,
+    W4AFp8MoEMethod,
+)
 from _paths import W4  # repo-relative; see int4_scripts/_paths.py
 
 LAYER = int(os.getenv("LAYER", "3"))
@@ -48,7 +57,20 @@ def get(name):
 
 # ---------------- build the layer + method ----------------
 quant = W4AFp8Config.from_config({"quant_method": "w4afp8"})
-method = W4AFp8MoEMethod(quant)
+gpu_backend = os.getenv("KT_W4AFP8_GPU_BACKEND", "auto").strip().lower()
+capability = torch.cuda.get_device_capability()
+use_marlin = gpu_backend in ("marlin", "marlin_sm80", "sm89") or (
+    gpu_backend == "auto" and capability[0] < 9
+)
+method = (
+    W4AFp8MarlinMoEMethod(quant)
+    if use_marlin
+    else W4AFp8MoEMethod(quant)
+)
+print(
+    f"GPU backend: {type(method).__name__} on "
+    f"SM{capability[0]}{capability[1]}"
+)
 layer = torch.nn.Module().to(DEV)
 layer.to(DEV)
 
@@ -121,23 +143,23 @@ if os.getenv("SKIP_INTERLEAVE") == "1":
 else:
     method.process_weights_after_loading(layer)
 
-# ---------------- run cutlass ----------------
+# ---------------- run selected GPU backend ----------------
 torch.manual_seed(0)
 x = (torch.randn(1, HID, dtype=torch.bfloat16, device=DEV) * 0.1)
 topk_ids = torch.arange(K, dtype=torch.int32, device=DEV).view(1, K)
 topk_w = torch.full((1, K), 1.0 / K, dtype=torch.float32, device=DEV)
-
-out = cutlass_w4a8_moe(
-    x, layer.w13_weight, layer.w2_weight,
-    layer.w13_weight_scale_inv, layer.w2_weight_scale_inv,
-    topk_w, topk_ids,
-    method.a_strides1, method.b_strides1, method.c_strides1,
-    method.a_strides2, method.b_strides2, method.c_strides2,
-    method.s_strides13, method.s_strides2,
-    method.expert_offsets, method.problem_sizes1, method.problem_sizes2,
-    layer.w13_input_scale, layer.w2_input_scale,
-    routed_scaling_factor=1.0,
+method.create_moe_runner(
+    layer, SimpleNamespace(activation="silu", routed_scaling_factor=1.0)
 )
+dispatch = SimpleNamespace(
+    hidden_states=x,
+    topk_output=(
+        topk_w,
+        topk_ids,
+        torch.zeros((1, NE), dtype=torch.float32, device=DEV),
+    ),
+)
+out = method.apply(layer, dispatch).hidden_states
 torch.cuda.synchronize()
 out = out.float().cpu()[0]
 

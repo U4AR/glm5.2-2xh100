@@ -11,12 +11,14 @@ from kt_kernel.utils.amx import NativeMoEWrapper
 from _paths import W4  # repo-relative; see int4_scripts/_paths.py
 
 L, HID, MOE, NE, K = 3, 6144, 2048, 256, 8
+CPUINFER = int(os.getenv("CPUINFER", "28"))
+KT_THREADPOOL_COUNT = int(os.getenv("KT_THREADPOOL_COUNT", "2"))
 
 mask = torch.zeros(NE, dtype=torch.bool)  # all experts on CPU
 w = NativeMoEWrapper(
     layer_idx=L, num_experts=NE, num_experts_per_tok=K,
     hidden_size=HID, moe_intermediate_size=MOE,
-    gpu_experts_mask=mask, cpuinfer_threads=64, threadpool_count=2,
+    gpu_experts_mask=mask, cpuinfer_threads=CPUINFER, threadpool_count=KT_THREADPOOL_COUNT,
     weight_path=W4, chunked_prefill_size=2048, method="RAWINT4", numa_nodes=[0, 1],
 )
 w.load_weights(torch.arange(NE, dtype=torch.long))

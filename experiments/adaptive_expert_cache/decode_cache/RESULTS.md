@@ -247,3 +247,42 @@ hardware-independent and stand as-is.
 
 Figure: `figs/fig5_low_vram.png` (left = measured footprint sweep; right = the
 bandwidth haircut onto real cards).
+
+## 2×L40 SM89 + packed AVX2 validation (2026-07-25)
+
+This is a separate real-machine measurement, not a projection from H100.
+Hardware: 2× L40 46 GiB (SM89), EPYC 7773X AVX2+FMA/no AVX-512, 28 CPU
+workers, two NUMA/thread pools, driver 550.127.08, CUDA 12.8 toolkit,
+`GPU_EXPERTS=24`.
+
+The CPU backend was `AVX2RawInt4Packed_MOE`
+(`KT_RAWINT4_BACKEND=avx2_packed`). The GPU expert backend was packed-INT4
+Marlin W4A16 (`KT_W4AFP8_GPU_BACKEND=marlin_sm80`); dense FP8 and attention
+used Triton. The existing H100 dispatch remains
+`AVX512RawInt4Packed_MOE` + CUTLASS W4A8 + FlashMLA.
+
+Correctness gates all passed:
+
+| gate | result |
+|---|---|
+| AVX2 scalar/SIMD + synthetic MoE | 6/6 passed (qlen 1 and 16) |
+| real W4AFP8 CPU | cosine 0.99992; norms 0.0861041 / 0.0861022; finite |
+| real W4AFP8 GPU | cosine 0.99999; norms 0.1802889 / 0.1802457; finite |
+| TP2/threadpool2 server | booted; all target and NEXTN CUDA graphs captured |
+| smoke | coherent after adaptive-cache warm-up; no NaN/repetition garbage |
+
+Exact `decbench.py 300 5` results:
+
+| pass | individual tok/s | median | min | max |
+|---|---|---:|---:|---:|
+| first | 13.13, 12.85, 10.48, 12.48, 11.75 | 12.48 | 10.48 | 13.13 |
+| warmed | 11.92, 13.35, 13.14, 13.95, 13.48 | 13.35 | 11.92 | 13.95 |
+
+Peak allocation was 40,243 MiB on GPU 0 and 40,109 MiB on GPU 1. Host use was
+approximately 464 GiB, including about 374 GiB RSS in the primary scheduler.
+Adaptive swaps occurred. The final run emitted no PTX/driver warnings.
+
+Hopper-only attempts failed before this dispatch was added: CUTLASS W4A8
+reported TMA descriptor error 801 and FlashMLA reported no kernel image for
+SM89. These were GPU-architecture failures, distinct from the passing AVX2
+CPU kernel. No near-30 tok/s claim is made for L40.
