@@ -114,6 +114,21 @@ Note `decbench.py`'s technical‑essay prompt is the **worst case** for MTP
 acceptance (2.63 vs 3.58 on structured output), so it understates real
 coding‑agent throughput by ~30%. Cross‑check with a code or JSON prompt.
 
+Two levers that do **not** pay off at 2×L40, both measured — don't re‑litigate:
+
+* **Raising `GPU_EXPERTS` is nearly exhausted.** Under `safe2` only the genuine
+  top‑2 reach the CPU, so CPU traffic scales as `2 × (1 − residency)`. Going
+  24 → 30 moves that just 1.81 → 1.77 experts/token: +3% (18.9 → 19.6 tok/s).
+  `32 @ mem_fraction 0.91` OOMs during CUDA‑graph capture. Mattering would need
+  residency near H100's 40% (104/256), which 46 GB cards cannot hold.
+* **`./run_adaptive.sh` (decode‑time expert cache) is net‑negative here.** On a
+  diverse 9‑prompt suite it scored 18.2 / 18.2 / 19.0 tok/s across three passes
+  vs **19.6 without it**: `top2_cov` plateaus at ~0.51 (the working set keeps
+  moving) while 122 layer swaps × 395 ms burned 48 s, ~16% of wall time. Its
+  earlier "+13%" was measured against a slower 170 ms step *and* on `decbench`'s
+  single repeated prompt — the best case for a cache. It may still help a
+  long single‑task session; it hurts mixed traffic.
+
 **Quality benchmark (LiveBench reasoning, 200 Qs, one at a time):** with the
 server running, one portable command scores the top‑2 tier end‑to‑end (dataset
 auto‑pulled from HuggingFace, so it works on a fresh box):

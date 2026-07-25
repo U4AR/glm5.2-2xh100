@@ -154,7 +154,12 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     context_length = str(max_tokens)
 
     if count == 2 and ("l40" in names or "6000 ada" in names) and minimum_mib >= 45_000:
-        profile, gpu_experts = "2xl40", 24
+        # 30 experts/layer at mem_fraction 0.88 leaves ~7.7 GB/card free and is
+        # the largest validated point: 32 @ 0.91 OOMs during CUDA-graph capture
+        # (fills 44.29 of 44.31 GiB). Note this is a weak lever under safe2
+        # routing -- CPU traffic scales as 2*(1-residency), so 24 -> 30 only cuts
+        # it 1.81 -> 1.77 experts/token, worth ~3% (18.9 -> 19.6 tok/s).
+        profile, gpu_experts, mem_fraction = "2xl40", 30, "0.88"
     elif count == 2 and "h100" in names and minimum_mib >= 75_000:
         profile = "2xh100"
         gpu_experts = 96 if adaptive or minimum_mib < 90_000 else 104
