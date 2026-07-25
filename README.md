@@ -137,12 +137,20 @@ expert round trips from 1.75 to 0.86 per token.
 
 `PLACEMENT=hotcore` (now the default in `run_server_int4.sh`) slices each layer's
 hottest‑N at boot from the committed, N‑agnostic ranking
-`experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt`. Measured on
-the 9‑prompt suite over four runs — 21.26, 21.26, 21.23, 20.66 tok/s (mean
-**21.10**) — against a **19.6** baseline: **+7.6%**, accept unchanged at ~3.1.
+`experiments/adaptive_expert_cache/decode_cache/hot_core_ranking.pt`.
+
+**The measured win is small — about +2%, not the +8% first reported here.** In the
+only controlled comparison (both arms booted back‑to‑back in one sweep, same
+machine state) it is **19.64 → 20.11 tok/s, +2.4%**, accept unchanged at ~3.1.
+An earlier figure of +7.6% came from comparing runs booted hours apart and was
+mostly **cross‑boot drift**: repeated hotcore boots alone span 20.11–21.26 tok/s,
+a spread larger than the effect being measured. Never A/B this box across
+separate boots; interleave the arms.
+
 **Output is identical** — under `safe2` the genuine top‑2 always compute, so
 placement changes only *where*, never *which* (accept lengths matched
-prompt‑for‑prompt across placements).
+prompt‑for‑prompt across placements). It is kept on because it is free and
+strictly better on paper; just don't expect it to show up as a big number.
 
 It is safe to leave on everywhere: if the ranking file is missing or its shape
 does not match the model, it logs a warning and falls back to `uniform`
@@ -150,11 +158,38 @@ does not match the model, it logs a warning and falls back to `uniform`
 restores the old behaviour. Rebuild the ranking for another workload with
 `experiments/adaptive_expert_cache/decode_cache/build_hot_core.py`.
 
-Note the ceiling, though: coverage rose 4.5× but throughput only 8%. That
-reproduces the H100 finding in `experiments/expert_footprint_top2_vs_top8/ORACLE_CEILING.md`
-— per‑layer cost is `max(cpu_time, gpu_time)` and the kt worker pays a fixed
-`submit_forward + sync` per layer whether or not any expert misses GPU. Placement
-is worth a single‑digit‑percent win, not a multiple.
+### Why placement barely moves the needle: decode is no longer CPU‑expert‑bound
+
+A budget sweep under `hotcore` (all four points on the 9‑prompt suite) shows
+throughput is **nearly flat in CPU expert traffic**:
+
+| config | coverage | CPU trips/token | tok/s | ms/token |
+|---|---:|---:|---:|---:|
+| hotcore N=8 | 29.1% | 1.42 | 18.19 | 54.98 |
+| hotcore N=16 | 42.1% | 1.16 | 20.33 | 49.19 |
+| hotcore N=30 | 56.8% | 0.86 | 20.11 | 49.73 |
+| uniform N=30 | 12.7% | 1.75 | 19.64 | 50.92 |
+
+Over a **2× range in CPU trips/token (0.86 → 1.75), ms/token moves only
+49.7 → 50.9**. N=16 and N=30 are indistinguishable. (N=8 is the outlier and is
+confounded: with only 8 resident experts the six substituted slots come from a
+much poorer pool, so it generates different text at a lower accept length —
+don't read it as a traffic effect.)
+
+The `[kt-time]` stage breakdown agrees: per MoE layer, `cpu_wait` is **0.04 ms of
+a 0.95 ms layer** — the CPU expert work is almost entirely hidden behind GPU
+compute. The layer cost is instead `submit 0.18 / mask 0.17 / gpu 0.50 /
+sync 0.08 / merge 0.03`, i.e. ~0.45 ms/layer of **fixed host overhead that no
+placement can remove** — roughly 34 ms/step across 75 MoE layers. (Caveat: those
+samples come from graph‑capture/prefill contexts, because the hooks sit in the
+Python `apply()` which CUDA‑graph replay bypasses entirely — there is currently
+**no steady‑state intra‑step attribution** available in the graphs‑on regime.)
+
+So this reverses the earlier H100‑era assumption. On that box the CPU path cost
+3.73× and dominated decode; here, after the fp8‑KV and CPUINFER fixes, the CPU
+expert path is a small and largely overlapped term. Better masks cannot pay much
+— the remaining time is attention, GPU MoE, fixed per‑layer host overhead and MTP
+verify. Target those next, not placement.
 
 Two levers that do **not** pay off at 2×L40, both measured — don't re‑litigate:
 
