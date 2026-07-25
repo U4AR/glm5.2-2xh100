@@ -110,6 +110,20 @@ _MOE_LAYERS = 75
 _KV_MIB_PER_TOKEN = 44.0 / 1024.0
 
 
+def valid_tp(count: int) -> int:
+    """Largest tensor-parallel size that is actually launchable for this model.
+
+    GLM-5.2 has 64 attention heads, so TP must be a power of two (1/2/4/8/...);
+    an odd or non-power-of-two GPU count (3, 5, 6, 7) would make sglang abort at
+    startup. For complete adaptability we clamp DOWN to the largest usable power
+    of two and leave the surplus card(s) idle rather than fail to launch.
+    """
+    tp = 1
+    while tp * 2 <= max(1, count):
+        tp *= 2
+    return tp
+
+
 def fit_gpu_experts(minimum_mib: int, tp: int, mem_fraction: float, max_tokens: int) -> int:
     """Largest per-layer resident expert count that fits one card's VRAM budget.
 
@@ -134,7 +148,7 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     minimum_mib = min((memory for _, memory in rows), default=0)
     names = " ".join(name.lower() for name, _ in rows)
     cpus = available_cpus()
-    tp = max(1, count)
+    tp = valid_tp(count)
     profile, gpu_experts, mem_fraction, max_tokens = f"generic-tp{tp}", 16, "0.85", 8192
     max_running = "1"
     context_length = str(max_tokens)
@@ -168,7 +182,7 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     )
     selected = {
         "RUNGLM_PROFILE": profile,
-        "TP_SIZE": str(max(1, count)),
+        "TP_SIZE": str(tp),
         "GPU_EXPERTS": str(gpu_experts),
         "MEM_FRACTION": mem_fraction,
         "MAX_TOTAL_TOKENS": str(max_tokens),
@@ -193,7 +207,7 @@ def problems(rows: list[tuple[str, int]], adaptive: bool, weights_dir: Path | No
     memory = mem_gib()
     count = len(rows)
     minimum_mib = min((value for _, value in rows), default=0)
-    tp = max(1, count)
+    tp = valid_tp(count)
     if count == 0:
         found.append("no NVIDIA GPUs detected")
     else:
@@ -258,6 +272,13 @@ def main() -> int:
         print("Defaults:", " ".join(f"{k}={v}" for k, v in profile.items() if k != "RUNGLM_PROFILE"))
 
     if args.check:
+        tp = valid_tp(len(rows))
+        if tp < len(rows):
+            print(
+                f"WARNING: {len(rows)} GPUs detected but tensor-parallel size must"
+                f" divide 64 attention heads; using TP={tp} and leaving"
+                f" {len(rows) - tp} card(s) idle."
+            )
         if len(rows) != 2:
             print(
                 f"WARNING: {len(rows)} GPU(s) detected; the measured reference is 2x"
