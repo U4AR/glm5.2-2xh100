@@ -73,6 +73,20 @@ The KTransformers AVX2 fallback can broaden compatibility later, but it is not
 expected to preserve the H100/Zen4 throughput. The preflight therefore reports
 missing AVX-512 VNNI as an error for the performance-oriented path.
 
+For a one-off measurement on an AVX2+FMA host, explicitly opt into the slower
+fallback for setup, launch, and any restart:
+
+```bash
+export RUNGLM_ALLOW_AVX2=1
+INSTALL_SYSTEM_DEPS=1 ./setup.sh
+HF_MAX_WORKERS=16 python int4_scripts/download_w4afp8.py
+./run_adaptive.sh
+```
+
+The hardware profile then selects `KT_RAWINT4_BACKEND=avx2` and
+`KT_KERNEL_CPU_VARIANT=avx2`. This is an experimental compatibility path, not a
+near-30 tok/s promise.
+
 ## Profile policy
 
 Automatic profiles select safe capacity settings, not promised performance.

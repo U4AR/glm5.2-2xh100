@@ -64,6 +64,10 @@ def cpu_flags() -> set[str]:
     return set(match.group(1).split()) if match else set()
 
 
+def env_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def gpu_rows() -> list[tuple[str, int]]:
     text = command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits")
     rows = []
@@ -107,7 +111,7 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     cpuinfer = 72 if profile == "2xh100" and cpus >= 80 else max(
         1, min(72, cpus - max(4, cpus // 8))
     )
-    return {
+    selected = {
         "RUNGLM_PROFILE": profile,
         "TP_SIZE": str(max(1, count)),
         "GPU_EXPERTS": str(gpu_experts),
@@ -121,6 +125,12 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
         "CUDA_GRAPH_MAX_BS": "1",
         "KT_GPU_PREFILL_THRESHOLD": "0" if minimum_mib < 75_000 else "2048",
     }
+    # The measured path remains AVX-512 VNNI. An explicitly allowed AVX2 host
+    # must not inherit run_fast.sh's avx512_packed default or it will SIGILL.
+    if "avx512_vnni" not in cpu_flags() and "avx2" in cpu_flags():
+        selected["KT_RAWINT4_BACKEND"] = "avx2"
+        selected["KT_KERNEL_CPU_VARIANT"] = "avx2"
+    return selected
 
 
 def problems(rows: list[tuple[str, int]], adaptive: bool, weights_dir: Path | None) -> list[str]:
@@ -130,8 +140,15 @@ def problems(rows: list[tuple[str, int]], adaptive: bool, weights_dir: Path | No
         found.append(f"expected 2 NVIDIA GPUs for the supported path; detected {len(rows)}")
     if rows and min(value for _, value in rows) < 22_000:
         found.append("less than 22 GiB VRAM/card is below the measured TP2 floor")
-    if "avx512_vnni" not in cpu_flags():
-        found.append("CPU lacks AVX-512 VNNI; the AVX2 fallback will be slower")
+    flags = cpu_flags()
+    if "avx512_vnni" not in flags:
+        if not env_enabled("RUNGLM_ALLOW_AVX2"):
+            found.append(
+                "CPU lacks AVX-512 VNNI; set RUNGLM_ALLOW_AVX2=1 to explicitly "
+                "try the slower AVX2 fallback"
+            )
+        elif not {"avx2", "fma"}.issubset(flags):
+            found.append("AVX2 fallback requested, but the CPU lacks AVX2 and FMA")
     selected = choose_profile(rows, adaptive)
     # All-CPU-backed INT4 is roughly 400 GiB. Static placement avoids retaining
     # about 1.38 GiB of host weights per GPU expert/layer under TP2.
@@ -172,6 +189,12 @@ def main() -> int:
         print("Defaults:", " ".join(f"{k}={v}" for k, v in profile.items() if k != "RUNGLM_PROFILE"))
 
     if args.check:
+        if (
+            env_enabled("RUNGLM_ALLOW_AVX2")
+            and "avx512_vnni" not in cpu_flags()
+            and {"avx2", "fma"}.issubset(cpu_flags())
+        ):
+            print("WARNING: using unvalidated AVX2 CPU fallback; expect lower throughput")
         found = problems(rows, args.adaptive, args.weights_dir)
         for item in found:
             print(f"ERROR: {item}")
