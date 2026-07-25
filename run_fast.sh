@@ -41,18 +41,6 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
-source "$(dirname "$0")/config.sh"
-mkdir -p "$RUNTIME_DIR"
-
-if [ "${AUTO_PROFILE:-1}" = "1" ]; then
-  while IFS='=' read -r key value; do
-    [ -n "$key" ] || continue
-    if [ -z "${!key:-}" ]; then
-      export "$key=$value"
-    fi
-  done < <(python3 "$REPO/scripts/hardware_profile.py" --shell)
-fi
-python3 "$REPO/scripts/hardware_profile.py" --check --weights-dir "$W4AFP8_MODEL"
 
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
 MODE=${MODE:-sub}               # sub = substitute the tail; off = baseline
@@ -60,24 +48,25 @@ MTP=${MTP:-1}                   # 1 = NEXTN/MTP speculative decode (depth-3); DE
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then
-  rm -f "$KT_TOPK_MODE_FILE" "$KT_SKIP_CPU_FILE"
+  rm -f /tmp/kt_topk_mode /tmp/kt_skip_cpu
   echo "[run_fast] substitution DISABLED (plain baseline)."
 else
-  printf 'sub%s' "$KEEP" > "$KT_TOPK_MODE_FILE"
-  echo "[run_fast] top-K substitution ENABLED: keep genuine top-$KEEP, substitute the rest ($KT_TOPK_MODE_FILE=sub$KEEP)."
+  printf 'sub%s' "$KEEP" > /tmp/kt_topk_mode
+  echo "[run_fast] top-K substitution ENABLED: keep genuine top-$KEEP, substitute the rest (/tmp/kt_topk_mode=sub$KEEP)."
   # The CPU-path skip (extra ~1.2x) is ONLY correct when every routed expert is
   # GPU-resident, i.e. KEEP=0. Enabling it with KEEP>0 drops the kept CPU experts
   # = the dominant signal = garbage, so we only arm it for KEEP=0.
   if [ "$KEEP" = "0" ]; then
-    touch "$KT_SKIP_CPU_FILE"
-    echo "[run_fast] KEEP=0 -> CPU submit/sync skip ARMED ($KT_SKIP_CPU_FILE). Max speed, expect quality drift."
+    touch /tmp/kt_skip_cpu
+    echo "[run_fast] KEEP=0 -> CPU submit/sync skip ARMED (/tmp/kt_skip_cpu). Max speed, expect quality drift."
   else
-    rm -f "$KT_SKIP_CPU_FILE"
+    rm -f /tmp/kt_skip_cpu
   fi
 fi
 
 # --- the winning INT4 recipe (see README) ----------------------------------
 # Paths come from config.sh (the one place to edit them); all env-overridable.
+source "$(dirname "$0")/config.sh"
 export MODEL=${MODEL:-$W4AFP8_MODEL}
 export KT_METHOD=${KT_METHOD:-RAWINT4}
 export KT_WEIGHT_PATH=${KT_WEIGHT_PATH:-$MODEL}
