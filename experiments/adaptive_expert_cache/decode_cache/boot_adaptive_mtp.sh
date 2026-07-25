@@ -7,6 +7,12 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
 source "$REPO/config.sh"
+# Scheduler workers intentionally receive a scrubbed environment, so the
+# routing control files must retain their historical /tmp defaults.
+RUNTIME_DIR="${RUNTIME_DIR:-/tmp}"
+KT_TOPK_MODE_FILE="${KT_TOPK_MODE_FILE:-/tmp/kt_topk_mode}"
+KT_SKIP_CPU_FILE="${KT_SKIP_CPU_FILE:-/tmp/kt_skip_cpu}"
+TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$REPO/.triton-cache}"
 mkdir -p "$RUNTIME_DIR" "$TRITON_CACHE_DIR"
 rm -f "$KT_SKIP_CPU_FILE"
 echo "safe2" > "$KT_TOPK_MODE_FILE"
