@@ -91,6 +91,102 @@ bash    bench/decode_bench.sh 6 256          # ~33 tok/s — folds one‑time pr
                                              # short run, so it reads lower; not a regression
 ```
 
+## Experiments: running GLM‑5.2 on far less host RAM
+
+Two experiment branches cut host RAM by putting most experts on disk. Both are
+off by default on `master`; check out the branch and use its launcher.
+
+**Machine these were measured on:** 2× NVIDIA H100 NVL (94 GiB each) · AMD EPYC
+9V84 96‑Core, 80 vCPU, 2 NUMA nodes · 629 GB RAM · weights on `/data`
+(SATA‑class, **1.8 GB/s** measured) with NVMe available at `/cache/nvme0`
+(**3.2 GB/s**). `GPU_EXPERTS=96`, `MEM_FRACTION=0.85`, safe2 + MTP depth‑3,
+per‑request tier `top2`.
+
+### Experiment 1 — three‑tier expert store (`experiment/expert-tiering-ssd`)
+
+Each expert lives in exactly one tier: GPU VRAM, host RAM (the kt CPU store),
+or **NVMe only**. An SSD‑tier expert is never fetched on the critical path —
+when routed it is substituted with the best GPU‑resident expert, exactly as the
+top‑N tail already is.
+
+```bash
+git checkout experiment/expert-tiering-ssd
+# GPU_EXPERTS + KT_RAM_EXPERTS per layer; the remaining 256-N-M stay on disk
+GPU_EXPERTS=96 KT_RAM_EXPERTS=32 bash experiments/expert_tiering_ssd/boot_tiered.sh
+```
+
+| RAM/layer | on disk | host RSS | boot | decode |
+|---:|---:|---:|---:|---:|
+| 160 (nothing on disk) | 0 | 243.7 GB | 176 s | 28.3 tok/s |
+| 64 | 96 | 111.2 GB | 131 s | not re‑measured |
+| **32** | **128** | **67.3 GB** | **132 s** | **43.35 tok/s** |
+| 16 | 144 | 45.0 GB | 126 s | not re‑measured |
+| 8 | 152 | **33.6 GB** | 127 s | not re‑measured |
+
+**244 GB → 33.6 GB of host RAM (7.3×)**, and boot drops from ~25 min to ~2 min
+because the loader only reads the experts it will stage instead of the whole
+373 GB checkpoint. Cost is ~1.38 GB of host RAM per expert‑slot on a ~22 GB base.
+
+The `KT_RAM_EXPERTS=32` point measures **43.35 tok/s** (`decbench.py`, median of
+4×300 tok, 43.26–43.58) — *faster* than the 40.5 headline above, because an
+expert that is only on disk gets substituted rather than fetched, which removes
+a CPU round‑trip. The trade is accuracy: on a 16‑question short‑answer set the
+full‑coverage control scores 16/16 with no failures, and `KT_RAM_EXPERTS=32`
+scores 9/16 — the failure mode being **reasoning loops** (the model burns its
+whole budget thinking and emits no answer), not vaguer answers.
+
+⚠️ `KT_RAM_EXPERTS=160` (nothing on disk) currently reads **28.3 tok/s**, below
+the 40.5 baseline. That is the launcher leaving the count‑based adaptive tick
+running with 149 ms full‑layer restages plus a per‑tick counter dump — not the
+tiering. Untriaged; use `run_fast.sh` if you want the plain baseline.
+
+### Experiment 2 — energy‑driven placement (`experiment/expert-energy-tiering`)
+
+Adds a demand model that decides which tier each expert belongs in, from the
+router distribution over **all** experts (not just the routed top‑8):
+
+```
+E_slow ← Ls·E_slow + p                                   persistent demand
+E_fast ← Lf(e)·E_fast + p·idf                            transient surge
+idf     = c/(rate_slow + c)                              rarity bonus
+Lf(e)   = Lmin + (Lmax−Lmin)·(p/(p+k·mean(p)))^β         sticky decay
+E       = rate_slow + α·rate_fast
+```
+
+One firing lifts a cold expert above the GPU bar in a single step; the decay
+then carries it down through the GPU bar and later the RAM bar, so it slides
+GPU → RAM → disk from one decay against two thresholds. `α` is solved from the
+requested hold (`KT_ENERGY_HOLD_STEPS`, default 4) rather than tuned.
+
+```bash
+git checkout experiment/expert-energy-tiering
+GPU_EXPERTS=96 KT_RAM_EXPERTS=32 KT_ENERGY=1 \
+  bash experiments/expert_tiering_ssd/boot_tiered.sh
+# KT_ENERGY_GPU=1 additionally lets it restage the GPU tier (much more expensive)
+```
+
+Measured cost of movement, and why "resident on the next token" is only partly
+reachable:
+
+| | measured |
+|---|---|
+| one expert | 18.56 MiB (3×6 MiB int4 + 3×0.19 MiB bf16 scales) |
+| one move (evict + stage) | **4.9 ms** = 8 % of a 60.7 ms decode step |
+| promotion delay, RAM tier | 65–85 steps |
+| promotion delay, GPU tier | 476 steps |
+| held ≥4 steps once promoted | 88 % |
+
+The delay is **queueing, not bandwidth** — the executor sat pinned at its
+move cap for a whole run (1800 promotions / 450 ticks) because the swap gate
+was missing, so the budget went to churn. Promoting one expert per token is
+affordable; promoting in *every* layer at once would need 24.1 GB/s (13× this
+box's `/data`), so it is not.
+
+Disk reads are done on a background thread so they overlap generation; only the
+buffer write is on the forward thread. `experiments/expert_tiering_ssd/RESULTS.md`
+carries the full measurements, including which ones two measurement faults
+invalidated.
+
 ### 2×L40 (non‑Hopper) — and the fp8‑KV / MTP pitfall
 
 Measured 2026‑07‑25 on 2×L40 46 GB + dual EPYC 7773X (AVX2, no AVX‑512), plain
