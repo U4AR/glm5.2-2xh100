@@ -24,6 +24,9 @@ import os
 import sys
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bench_lock import exclusive_bench  # noqa: E402
+
 BASE = os.environ.get("TIER_BENCH_BASE", "http://127.0.0.1:8000")
 MODEL = os.environ.get("TIER_BENCH_MODEL", "GLM5.2-top2")
 
@@ -202,4 +205,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with exclusive_bench("accuracy_eval"):
+        main()

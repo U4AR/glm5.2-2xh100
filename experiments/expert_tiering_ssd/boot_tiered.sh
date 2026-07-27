@@ -12,8 +12,9 @@
 # needs. Boot is also much faster: only the staged experts are read off disk.
 #
 # Knobs specific to this experiment:
-#   KT_TIER_FILL_POOL  resident (default) | gpu   -- who may stand in for an
-#                      SSD-tier expert
+#   KT_TIER_FILL_POOL  gpu (default) | resident -- who may stand in for a
+#                      substituted slot. `gpu` is the shipped contract: a
+#                      substituted slot must never reach the CPU expert path.
 #   KT_TIER_COUNT_MODE top2 (default) | top8 | top8w -- which routed experts
 #                      vote in the cache-update counters
 set -euo pipefail
@@ -48,7 +49,7 @@ export MAX_TOTAL_TOKENS="${MAX_TOTAL_TOKENS:-4096}"
 
 # --- tier sizes ---
 export KT_RAM_EXPERTS="${KT_RAM_EXPERTS:-32}"
-export KT_TIER_FILL_POOL="${KT_TIER_FILL_POOL:-resident}"
+export KT_TIER_FILL_POOL="${KT_TIER_FILL_POOL:-gpu}"
 export KT_TIER_COUNT_MODE="${KT_TIER_COUNT_MODE:-top2}"
 
 # The RAM tier is seeded from the same committed per-layer ranking the GPU
@@ -87,6 +88,24 @@ export TRITON_CACHE_DIR
 export KT_ADAPTIVE_DECODE=1
 export KT_ADAPTIVE_PERIOD="${KT_ADAPTIVE_PERIOD:-32}"
 export KT_ADAPTIVE_COUNTS_DUMP_PT="${KT_ADAPTIVE_COUNTS_DUMP_PT:-$RUNTIME_DIR/kt_tier_counts.pt}"
+
+# --- dynamic placement -----------------------------------------------------
+# KT_TIER_DYNAMIC=1  count-based two-cut movement
+# KT_ENERGY=1        energy-driven movement (two timescales, rarity bonus,
+#                    sticky decay). Both need the rebuilt kt-kernel, which
+#                    supplies per-expert promote/evict.
+export KT_TIER_DYNAMIC="${KT_TIER_DYNAMIC:-0}"
+export KT_ENERGY="${KT_ENERGY:-0}"
+export KT_ENERGY_PERIOD="${KT_ENERGY_PERIOD:-4}"
+export KT_ENERGY_HOLD_STEPS="${KT_ENERGY_HOLD_STEPS:-4}"
+export KT_ENERGY_MAX_MOVES="${KT_ENERGY_MAX_MOVES:-4}"
+export KT_ENERGY_GPU="${KT_ENERGY_GPU:-0}"
+export KT_ENERGY_REPORT_PT="${KT_ENERGY_REPORT_PT:-$RUNTIME_DIR/kt_energy_report.pt}"
+# Runtime promotion reads single experts off disk, so hold the safetensors
+# mmaps open rather than paying ~200ms to recreate the loader each time.
+if [ "${KT_TIER_DYNAMIC}" = "1" ] || [ "${KT_ENERGY}" = "1" ]; then
+  export KT_TIER_KEEP_LOADER=1
+fi
 
 echo "[tier] GPU=$GPU_EXPERTS RAM=$KT_RAM_EXPERTS SSD=$((256 - GPU_EXPERTS - KT_RAM_EXPERTS)) per layer"
 echo "[tier] fill_pool=$KT_TIER_FILL_POOL count_mode=$KT_TIER_COUNT_MODE mem_fraction=$MEM_FRACTION"

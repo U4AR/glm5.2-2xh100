@@ -22,6 +22,9 @@ import sys
 import time
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bench_lock import exclusive_bench  # noqa: E402
+
 BASE = os.environ.get("TIER_BENCH_BASE", "http://127.0.0.1:8000")
 
 PROMPTS = {
@@ -181,10 +184,18 @@ def main():
         "label": label,
         "gpu_experts": int(os.environ.get("GPU_EXPERTS", "-1")),
         "ram_experts": int(os.environ.get("KT_RAM_EXPERTS", "-1")),
-        "fill_pool": os.environ.get("KT_TIER_FILL_POOL", "resident"),
+        "fill_pool": os.environ.get("KT_TIER_FILL_POOL", "gpu"),
         "count_mode": os.environ.get("KT_TIER_COUNT_MODE", "top2"),
+        # Headline is the LAST pass (the converged one once placement is
+        # adaptive), but the spread is recorded too: a wide spread means
+        # something perturbed the run and the headline should not be trusted
+        # on its own.
         "tok_s": round(last["tok_s"], 2),
         "tok_s_all": [round(r["tok_s"], 2) for r in results],
+        "tok_s_max": round(max(r["tok_s"] for r in results), 2),
+        "tok_s_spread": round(
+            max(r["tok_s"] for r in results) - min(r["tok_s"] for r in results), 2
+        ),
         "accept_len": round(last["accept_len"], 3),
         "tp0_rss_gb": round(rss, 1) if rss else None,
         "coverage": {k: round(v, 4) for k, v in cov.items()} if cov and "error" not in cov else cov,
@@ -199,4 +210,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Exclusive: a concurrent request breaks the CUDA-graph batch size and the
+    # timing silently becomes meaningless.
+    with exclusive_bench("tier_bench"):
+        main()
