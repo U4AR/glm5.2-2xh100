@@ -128,17 +128,33 @@ because the loader only reads the experts it will stage instead of the whole
 373 GB checkpoint. Cost is ~1.38 GB of host RAM per expert‑slot on a ~22 GB base.
 
 The `KT_RAM_EXPERTS=32` point measures **43.35 tok/s** (`decbench.py`, median of
-4×300 tok, 43.26–43.58) — *faster* than the 40.5 headline above, because an
-expert that is only on disk gets substituted rather than fetched, which removes
-a CPU round‑trip. The trade is accuracy: on a 16‑question short‑answer set the
-full‑coverage control scores 16/16 with no failures, and `KT_RAM_EXPERTS=32`
-scores 9/16 — the failure mode being **reasoning loops** (the model burns its
-whole budget thinking and emits no answer), not vaguer answers.
+4×300 tok, 43.26–43.58), because an expert that is only on disk gets substituted
+rather than fetched, which removes a CPU round‑trip.
 
-⚠️ `KT_RAM_EXPERTS=160` (nothing on disk) currently reads **28.3 tok/s**, below
-the 40.5 baseline. That is the launcher leaving the count‑based adaptive tick
-running with 149 ms full‑layer restages plus a per‑tick counter dump — not the
-tiering. Untriaged; use `run_fast.sh` if you want the plain baseline.
+⚠️ **This speed has no matching quality measurement yet, and should not be
+quoted as a result until it does.** Every accuracy row in `RESULTS.md` §3 was
+taken under the *superseded* `fill=resident` default. Under the shipped
+`fill=gpu` default there is one data point — `KT_RAM_EXPERTS=32` scores 9/16 on
+a 16‑question short‑answer set, the failure mode being **reasoning loops** (the
+model burns its whole budget thinking and emits no answer) rather than vaguer
+answers — and its 16/16 full‑coverage control was measured under the *old*
+default, so the two are not strictly comparable. RAM=64/16/8 have neither a
+speed nor an accuracy number. See
+[`TODO_NEXT.md`](experiments/expert_tiering_ssd/TODO_NEXT.md).
+
+⚠️ `KT_RAM_EXPERTS=160` (nothing on disk) reads **28.3 tok/s** against the 40.5
+headline, but the two runs are **not the same configuration** — the headline is
+`sub2` routing at `GPU_EXPERTS=104`, this row is `safe2` at 96 with the adaptive
+tick on. `safe2` sends every non‑resident genuine top‑K expert down the CPU
+path, so a *full* RAM tier maximises CPU round‑trips while `sub2` minimises
+them; that alone may account for the whole gap, in which case nothing regressed.
+Untriaged — the matched‑knob A/B is TODO 2 in `TODO_NEXT.md`. Use `run_fast.sh`
+if you want the plain baseline.
+
+The same mechanism is why RAM=32 reads *faster* than RAM=160 under identical
+code: shrinking the RAM tier shrinks the CPU‑resident set, so `safe2`
+degenerates toward `sub2`. That predicts the low‑RAM speed is bought with
+substitution, which is exactly what the pending accuracy sweep tests.
 
 ### Experiment 2 — energy‑driven placement (`experiment/expert-energy-tiering`)
 
