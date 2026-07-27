@@ -40,7 +40,12 @@ for RAM_N in $RAM_LIST; do
     if curl -s -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1; then
       READY=1; break
     fi
-    pgrep -f "sglang.launch_server" >/dev/null || { echo "[ladder] $TAG process died"; break; }
+    # Liveness must track the BOOT SCRIPT too, not just the server process:
+    # boot_tiered.sh spends its first minute building the warm-start mask and
+    # sourcing config before it ever execs launch_server, so watching only for
+    # "sglang.launch_server" declares every point dead on the first iteration.
+    pgrep -f "boot_tiered.sh|sglang.launch_server" >/dev/null \
+      || { echo "[ladder] $TAG process died"; break; }
     sleep 5
   done
   BOOT_S=$(( $(date +%s) - BOOT_START ))
