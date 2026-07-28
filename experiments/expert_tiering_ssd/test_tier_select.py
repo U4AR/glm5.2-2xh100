@@ -121,3 +121,23 @@ assert after > before, f"GPU coverage did not improve after a demand shift ({bef
 print(f"ok  tracks a demand shift: GPU-covered mass {before:.0f} -> {after:.0f}")
 
 print("\nall tier-movement invariants hold")
+
+# The masks arrive from method.gpu_experts_mask, which is CUDA-resident at
+# runtime even though its assignment site is annotated "on CPU", while `counts`
+# is always a CPU buffer. Indexing one with the other raises, and the caller
+# swallows the exception as "[kt-tier] selection failed; keeping current
+# tiers" -- so the whole three-tier movement degrades to a silent no-op with
+# no failure visible above log level INFO. That is exactly how the GPU-tier
+# selector was broken (fixed in 4093c48); this pins the tier selector against
+# the same defect. Every mask/counter combination must be accepted.
+if torch.cuda.is_available():
+    counts_cpu, g_cpu, r_cpu = make_state(11)
+    ref_g, ref_r = _kt_tier_select(counts_cpu, g_cpu, r_cpu, N_GPU, N_RAM)
+    dev_g, dev_r = _kt_tier_select(
+        counts_cpu, g_cpu.cuda(), r_cpu.cuda(), N_GPU, N_RAM
+    )
+    assert torch.equal(ref_g, dev_g.cpu()), "CUDA gpu_mask changed the decision"
+    assert torch.equal(ref_r, dev_r.cpu()), "CUDA ram_mask changed the decision"
+    print("ok  accepts CUDA-resident masks against CPU counts (same decision)")
+else:
+    print("skip CUDA mask test (no GPU visible)")
