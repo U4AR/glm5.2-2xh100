@@ -203,6 +203,23 @@ def main():
     with open(out, "a") as f:
         f.write(json.dumps(summary) + "\n")
 
+    # Persist the RAW run too, not just the summary against whichever anchor
+    # happened to be current. Each of these costs a server boot, and an anchor
+    # can turn out to be the wrong control later -- the SSD=0 reference used on
+    # 07-28 differed from the tier rows in two variables (SSD tier AND adaptive
+    # state), so its prefix-agreement numbers bound the damage rather than
+    # attributing it. With the raw run on disk, `diff` re-anchors any pair
+    # offline instead of re-measuring the model.
+    if mode != "diff":
+        raw_dir = os.environ.get(
+            "TIER_RAW_DIR", "experiments/expert_tiering_ssd/runs"
+        )
+        os.makedirs(raw_dir, exist_ok=True)
+        raw_path = os.path.join(raw_dir, f"raw_{label}.json")
+        with open(raw_path, "w") as f:
+            json.dump(res, f)
+        print(f"raw run saved to {raw_path}")
+
 
 if __name__ == "__main__":
     with exclusive_bench("accuracy_eval"):
