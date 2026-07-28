@@ -44,6 +44,42 @@ repo's own history (commit `ea0f485`): `bench/perf_probe/decbench.py` (raw
 chat-streaming harness, so **its numbers are not comparable to the 40.5
 headline** — only to each other.
 
+**Fault C — the accuracy set was too small to rank anything.** 16 questions
+means one item is worth 0.0625 and the 95% (Wilson) interval on 12/16 is
+±0.20 — wider than the entire quality range being ranked. Every interesting
+comparison ("0.75 vs 0.75", "0.9375 vs 0.875") was a one- or two-item
+difference reported as a result. The set is now 66 items (±0.10), each accuracy
+prints its own interval, and the original 16 are scored separately so earlier
+numbers stay comparable.
+
+Extending it exposed a real bug in `accuracy_eval.py compare`: reference and
+result were paired **by list position**. A 16-item reference against a 66-item
+run would have scored the first 16 pairs, divided by the reference length, and
+reported what looked like full agreement across a quarter of the set. Now
+paired by question text, with the overlap size printed.
+
+**Fault D — "blocked % of wall time" had the wrong denominator.** It summed the
+`took=` field and divided by the span between the first and last `[kt-tier]`
+log line. That span includes prefill, idle and the gaps between benchmarks,
+none of which can contain a tick, so the denominator was too large and the
+number too small. This is the likely source of the "4.5% blocked should give
+~38.8 tok/s, measured 33.45" gap that was previously recorded as unexplained —
+the 4.5% was an underestimate, not a mystery. Replaced by
+`token_latency.py`, which times token arrivals so the denominator is decode and
+nothing else, and reports the tail (a 300 ms stall is a visible hitch that a
+median hides).
+
+**Fault E — there was no noise floor.** Repeat boots of one config in §2 span
+31.16–38.67, which is wider than most differences being called results, and
+nobody had separated boot-to-boot from within-boot variation. Nine consecutive
+median-of-12 blocks on one unchanged server: mean 33.86, **sd 0.57**. So within
+a boot, differences above ~1.2 tok/s are real and smaller ones are not; the
+large spread is boot-to-boot, and any comparison across boots must be repeated
+in both orders or not made. The same nine blocks double as a drift test —
+throughput was flat (33.87 → 33.79) across ~20 minutes of continuous expert
+movement, which rules out progressive degradation from accumulated NUMA/page
+churn.
+
 ## 1. Memory footprint and boot time — unaffected by either fault
 
 | RAM/layer | SSD/layer | host RSS | boot |
@@ -110,7 +146,57 @@ The 3.22 recorded in `run_thresh0.log` is the same effect: that run used `sub2`,
 which substitutes even non-resident top-K experts. So a *drop* in accept length
 from 3.4 to 2.58 accompanied the model getting better, not worse.
 
-## 4. Open
+## 4. What movement actually does
+
+**It never converges.** Every configuration moves exactly its budget on every
+visit, from the first quarter of a run to the last:
+
+| config | budget | Q1 | Q2 | Q3 | Q4 |
+|---|---|---|---|---|---|
+| RAM=72 dynamic | gpu 2 | 2.00 | 2.00 | 2.00 | 2.00 |
+| RAM=32 nogpu | ram 4 | 4.00 | 4.00 | 3.94 | 3.91 |
+| RAM=32 fast | ram 1 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+An adaptive store is supposed to find the working set and settle. This one runs
+at maximum rate indefinitely, which is why the per-visit cost never amortises.
+
+**It is not a bad signal, and not a gate that fails to bind.** That was the
+obvious hypothesis and it is wrong, on two independent counts. `tier_gate_sim.py`
+drives the real selector under Poisson-sampled demand at a realistic vote rate:
+the shipped gate largely quiesces (tail 0.66 of a budget of 4) and does not
+reproduce the saturation at all. And the server's own ROI accounting finds
+**87–89% of promoted experts are called** before the next decision, with only
+0.2–1.1% demoted again — noise churn would promote experts nothing asks for.
+(`test_tier_quiesce.py` separately confirms the pair rule is correct: on exact
+counts from a warm start it moves nothing, as it should.)
+
+What is left is capacity: the working set is larger than the RAM tier, so there
+is always another genuinely-warm expert outside it and the selector never runs
+out of legitimate work. No gate can fix a capacity limit — and it explains the
+otherwise puzzling result that quadrupling the tick rate (promotion latency
+84 s → 21 s at RAM=72, 79 s → 20 s at RAM=32) changed accuracy by nothing.
+
+**Coverage bought, per run:** unreachable (SSD-tier) demand falls 3.47% → 3.02%
+at RAM=72 over 326 visits, and 9.90% → 8.97% at RAM=32. Under a percentage
+point, for a throughput cost of ~25%.
+
+**A GPU swap is never just a GPU copy.** Each demoted expert enters the RAM tier
+and must be staged into the kt CPU store — a disk read plus a NUMA repack. The
+coupled config therefore performs 5.96 RAM promotions per visit rather than 4,
+and the extra ~2 are dragged in by the GPU cycle.
+
+**Accept length: a confound, not a clean signal.** Frozen-vs-dynamic accept
+length differs (RAM=72: 2.912 → 2.680; RAM=32: 3.173 → 2.811), and since
+tok/s = accept_len / step_time it is tempting to read that as a throughput cost
+invisible to `took=` accounting. For RAM=32 that reading is **wrong**: §3 above
+established that accept length is an *inverse* quality signal here, rising with
+the loop rate because looping text is trivially predictable, and frozen RAM=32
+loops on 43.75% of questions against dynamic's 18.75%. Its higher accept length
+is largely that artifact. The RAM=72 pair is not explained away this way — both
+sides loop at 6.25% — so an ~8% drop there remains a live question. Do not cite
+the RAM=32 figure as a movement cost.
+
+## 5. Open
 
 - Re-measure RAM=64/16/8 under `fill=gpu` for both speed and accuracy.
 - Confirm RAM=160 `fill=gpu` reproduces the ~40.5 headline on `decbench.py`
