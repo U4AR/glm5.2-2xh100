@@ -85,9 +85,12 @@ export TRITON_CACHE_DIR
 # Counters stay on: they are the demand signal, dumped per tick for the Phase 1
 # promotion policy. The residency tick itself early-returns while KT_RAM_EXPERTS
 # is set (static tiers in Phase 0).
-export KT_ADAPTIVE_DECODE=1
+# Both are overridable so an A/B can turn the tick off entirely. Note the
+# no-colon form on the dump path: KT_ADAPTIVE_COUNTS_DUMP_PT= (explicitly
+# empty) must survive as empty, which ${VAR:-default} would silently replace.
+export KT_ADAPTIVE_DECODE="${KT_ADAPTIVE_DECODE:-1}"
 export KT_ADAPTIVE_PERIOD="${KT_ADAPTIVE_PERIOD:-32}"
-export KT_ADAPTIVE_COUNTS_DUMP_PT="${KT_ADAPTIVE_COUNTS_DUMP_PT:-$RUNTIME_DIR/kt_tier_counts.pt}"
+export KT_ADAPTIVE_COUNTS_DUMP_PT="${KT_ADAPTIVE_COUNTS_DUMP_PT-$RUNTIME_DIR/kt_tier_counts.pt}"
 
 # --- dynamic placement -----------------------------------------------------
 # KT_TIER_DYNAMIC=1  count-based two-cut movement

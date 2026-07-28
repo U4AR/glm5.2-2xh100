@@ -57,14 +57,21 @@ python3 "$REPO/scripts/hardware_profile.py" --check --weights-dir "$W4AFP8_MODEL
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
 MTP=${MTP:-1}                   # 1 = NEXTN/MTP speculative decode (depth-3); DEFAULT ON
 
-# Default routing mode comes from the hardware profile, NOT a hardcoded `sub`.
-# `sub2` substitutes the six non-kept slots with GPU-resident experts, so its
-# coherence depends on the resident set being good: validated at 96-104
-# experts/layer (2xH100), measured INCOHERENT at 24-30 (2xL40). The profile
-# emits RUNGLM_TOPK_MODE=safe2 for any host that cannot hold enough experts;
-# safe2 routes a non-resident genuine expert to the CPU instead, so it is always
-# correct. Explicit MODE= still wins.
-MODE=${MODE:-$([ "${RUNGLM_TOPK_MODE:-sub2}" = "safe2" ] && echo safe || echo sub)}
+# Default routing is `safe`: the genuine top-K is ALWAYS kept, and a non-resident
+# member takes a CPU round-trip rather than being replaced. Only the tail (ranks
+# K..E-1) is substituted.
+#
+# `sub` additionally drops a genuine top-K expert that is not GPU-resident and
+# substitutes it too. That is faster -- the layer routes nothing to the CPU --
+# but the top-K identity is lost exactly on the novel prompts where the resident
+# set does not already hold the right experts. It must never be the default.
+#
+# History, because the headline numbers depend on it: until 3e39132 (07-07)
+# `sub` had no residency filter and therefore *was* today's `safe`. The ~40.5
+# tok/s figure was measured 06-30 under those semantics, i.e. it is a SAFE
+# number. The filter landed on 07-07 and silently redefined the default while
+# the old headline stayed attached to it. Explicit MODE= still wins.
+MODE=${MODE:-$([ "${RUNGLM_TOPK_MODE:-safe2}" = "sub2" ] && echo sub || echo safe)}
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then
