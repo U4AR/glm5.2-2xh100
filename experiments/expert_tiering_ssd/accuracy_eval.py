@@ -32,7 +32,17 @@ MODEL = os.environ.get("TIER_BENCH_MODEL", "GLM5.2-top2")
 
 # Short-answer set. Answers are matched case-insensitively as substrings of the
 # FINAL content (reasoning is excluded), so phrasing is free but the fact is not.
-QA = [
+#
+# LEGACY_QA is the original 16 items, kept verbatim and in order so that runs
+# saved before the set was extended still compare item-for-item. Sixteen items
+# turned out to be too coarse for what it was being asked to do: one item is
+# worth 0.0625, so every interesting comparison on the board ("0.75 vs 0.75",
+# "0.9375 vs 0.875") was a one- or two-item difference with no way to tell it
+# from sampling noise. The binomial 95% CI on 12/16 is roughly +/-0.21 -- wider
+# than the entire quality range being ranked. EXTRA_QA takes the set to 66,
+# which brings that to about +/-0.10: still coarse, but no longer wider than
+# the effect. Legacy accuracy is reported separately for continuity.
+LEGACY_QA = [
     ("What is 17 * 23? Reply with only the number.", ["391"]),
     ("What is 144 divided by 12? Reply with only the number.", ["12"]),
     ("What is the capital city of Australia? Reply with only the city name.", ["canberra"]),
@@ -52,6 +62,88 @@ QA = [
     ("What is the time complexity of binary search on a sorted array of n elements? "
      "Reply with only the big-O expression.", ["o(log n)", "log n"]),
 ]
+
+# Fifty more of the same kind, spread across arithmetic, physical science,
+# biology, geography, history, literature and CS so that a degradation
+# concentrated in one region of the expert space still shows up. Answers stay
+# short and unambiguous; where a fact is genuinely disputed (longest river,
+# most populous country) every defensible answer is accepted, because the
+# signal being measured is degradation, not trivia knowledge.
+EXTRA_QA = [
+    ("What is 25 * 4? Reply with only the number.", ["100"]),
+    ("What is 7 factorial? Reply with only the number.", ["5040"]),
+    ("What is 15% of 200? Reply with only the number.", ["30"]),
+    ("What is the sum of the interior angles of a triangle in degrees? "
+     "Reply with only the number.", ["180"]),
+    ("What is the next prime number after 13? Reply with only the number.", ["17"]),
+    ("What is 1000 minus 379? Reply with only the number.", ["621"]),
+    ("What is the cube root of 27? Reply with only the number.", ["3"]),
+    ("How many bits are in a byte? Reply with only the number.", ["8", "eight"]),
+    ("What is the atomic number of carbon? Reply with only the number.", ["6", "six"]),
+    ("How many chromosomes are in a normal human somatic cell? "
+     "Reply with only the number.", ["46"]),
+    ("Approximately how many kilometers per second does light travel in a vacuum? "
+     "Reply with only the number.", ["300,000", "300000", "299,792", "299792", "3x10", "3 x 10"]),
+    ("Which organelle is known as the powerhouse of the cell? "
+     "Reply with only the name.", ["mitochondri"]),
+    ("What is the hardest naturally occurring mineral? Reply with only the name.", ["diamond"]),
+    ("How many planets are in our solar system? Reply with only the number.", ["8", "eight"]),
+    ("What is the pH of pure water at 25 degrees Celsius? Reply with only the number.", ["7"]),
+    ("Which blood type is the universal donor? Reply with only the type.", ["o negative", "o-"]),
+    ("What is the boiling point of water at sea level in Celsius? "
+     "Reply with only the number.", ["100"]),
+    ("Which planet is known as the Red Planet? Reply with only the name.", ["mars"]),
+    ("What force keeps the planets in orbit around the Sun? "
+     "Reply with only the name of the force.", ["gravit"]),
+    ("What is the most abundant gas in Earth's atmosphere? "
+     "Reply with only the gas name.", ["nitrogen"]),
+    ("What is the capital of Japan? Reply with only the city name.", ["tokyo"]),
+    ("What is the longest river in the world? Reply with only the name.", ["nile", "amazon"]),
+    ("What is the tallest mountain above sea level? Reply with only the name.", ["everest"]),
+    ("On which continent is the Sahara Desert? Reply with only the continent.", ["africa"]),
+    ("What is the capital of Canada? Reply with only the city name.", ["ottawa"]),
+    ("How many continents are there? Reply with only the number.", ["7", "seven"]),
+    ("Which country has the largest population? Reply with only the country name.",
+     ["india", "china"]),
+    ("What is the smallest country in the world by area? Reply with only the name.",
+     ["vatican"]),
+    ("In what year did World War II end? Reply with only the year.", ["1945"]),
+    ("Who was the first person to walk on the Moon? Reply with only the name.", ["armstrong"]),
+    ("In what year did the Titanic sink? Reply with only the year.", ["1912"]),
+    ("Who was the first President of the United States? Reply with only the name.",
+     ["washington"]),
+    ("In what year did the French Revolution begin? Reply with only the year.", ["1789"]),
+    ("Julius Caesar was a leader of which ancient civilization? "
+     "Reply with only the name.", ["roman", "rome"]),
+    ("Who wrote 'Pride and Prejudice'? Reply with only the name.", ["austen"]),
+    ("Who wrote 'One Hundred Years of Solitude'? Reply with only the name.",
+     ["marquez", "márquez"]),
+    ("How many letters are in the English alphabet? Reply with only the number.", ["26"]),
+    ("What is the plural of the animal 'mouse'? Reply with only the word.", ["mice"]),
+    ("In which language was the New Testament originally written? "
+     "Reply with only the language.", ["greek"]),
+    ("Who wrote 'On the Origin of Species'? Reply with only the name.", ["darwin"]),
+    ("What does HTTP stand for? Reply with only the expansion.",
+     ["hypertext transfer protocol"]),
+    ("What does RAM stand for? Reply with only the expansion.", ["random access memory"]),
+    ("In Python, what does 7 // 2 evaluate to? Reply with only the number.", ["3"]),
+    ("What is the decimal value of the binary number 1011? Reply with only the number.",
+     ["11"]),
+    ("What is the worst-case time complexity of quicksort? "
+     "Reply with only the big-O expression.", ["o(n^2)", "o(n²)", "n^2", "n²", "n*n"]),
+    ("Which data structure operates on a last-in, first-out basis? "
+     "Reply with only the name.", ["stack"]),
+    ("In Python, what type does the expression 3 / 2 return? "
+     "Reply with only the type name.", ["float"]),
+    ("What does SQL stand for? Reply with only the expansion.",
+     ["structured query language"]),
+    ("How many bytes are in a kibibyte? Reply with only the number.", ["1024"]),
+    ("What does GPU stand for? Reply with only the expansion.",
+     ["graphics processing unit"]),
+]
+
+QA = LEGACY_QA + EXTRA_QA
+LEGACY_QUESTIONS = frozenset(q for q, _ in LEGACY_QA)
 
 # Open-ended prompts for greedy agreement. Deterministic, moderate length.
 GEN = [
@@ -102,6 +194,24 @@ def call(prompt, max_tokens):
     return "".join(content), "".join(reasoning)
 
 
+def wilson_halfwidth(hits, n, z=1.96):
+    """Half-width of the Wilson 95% interval on the accuracy.
+
+    Printed alongside every accuracy so a reader can see immediately whether a
+    gap is resolvable at this sample size. Wilson rather than the normal
+    approximation because accuracies here sit near 1.0, where the normal
+    interval is badly wrong (and can exceed 1).
+    """
+    if n <= 0:
+        return 0.0
+    p = hits / n
+    denom = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    lo, hi = max(0.0, centre - half), min(1.0, centre + half)
+    return (hi - lo) / 2.0
+
+
 def run_all(qa_tokens=1024, gen_tokens=200):
     """qa_tokens covers the reasoning trace as well as the answer — this is a
     thinking model. Producing no `content` inside the budget is scored as a
@@ -131,6 +241,14 @@ def run_all(qa_tokens=1024, gen_tokens=200):
     out["qa_mean_reasoning_chars"] = sum(
         x["reasoning_chars"] for x in out["qa"]
     ) / len(QA)
+    # The original 16, scored on their own, so numbers recorded before the set
+    # was extended stay comparable instead of silently changing meaning.
+    leg = [x for x in out["qa"] if x["q"] in LEGACY_QUESTIONS]
+    if leg:
+        out["qa_accuracy_legacy16"] = sum(int(x["ok"]) for x in leg) / len(leg)
+        out["qa_loop_rate_legacy16"] = sum(int(x["no_answer"]) for x in leg) / len(leg)
+    out["qa_n"] = len(QA)
+    out["qa_ci95"] = round(wilson_halfwidth(hits, len(QA)), 4)
     for i, p in enumerate(GEN):
         content, reasoning = call(p, gen_tokens)
         out["gen"].append({"p": p, "text": reasoning + content})
@@ -178,9 +296,21 @@ def main():
         fr = prefix_agreement(r["text"], c["text"])
         fracs.append(fr)
         identical += int(r["text"] == c["text"])
-    qa_agree = sum(
-        int(r["ok"] == c["ok"]) for r, c in zip(ref["qa"], res["qa"])
-    ) / len(ref["qa"])
+    # Align on the QUESTION, not on list position. A reference saved before the
+    # set was extended has 16 entries against today's 66, and zip() would
+    # quietly score the first 16 pairs and divide by the reference length --
+    # reporting a number that looks like full agreement but covers a quarter of
+    # the set. Pair by text and say how many actually matched.
+    ref_by_q = {r["q"]: r for r in ref["qa"]}
+    pairs = [(ref_by_q[c["q"]], c) for c in res["qa"] if c["q"] in ref_by_q]
+    qa_agree = (
+        sum(int(r["ok"] == c["ok"]) for r, c in pairs) / len(pairs) if pairs else 0.0
+    )
+    if len(pairs) != len(res["qa"]):
+        print(
+            f"\nNOTE: reference covers {len(pairs)} of {len(res['qa'])} questions; "
+            "verdict agreement is over the overlap only."
+        )
 
     summary = {
         "label": label,
@@ -188,10 +318,17 @@ def main():
         "ram_experts": int(os.environ.get("KT_RAM_EXPERTS", "-1")),
         "fill_pool": os.environ.get("KT_TIER_FILL_POOL", "resident"),
         "count_mode": os.environ.get("KT_TIER_COUNT_MODE", "top2"),
+        "qa_n": res.get("qa_n", len(res["qa"])),
         "qa_accuracy": round(res["qa_accuracy"], 4),
+        "qa_ci95": res.get("qa_ci95"),
         "qa_loop_rate": round(res.get("qa_loop_rate", 0.0), 4),
+        "qa_accuracy_legacy16": (
+            round(res["qa_accuracy_legacy16"], 4)
+            if "qa_accuracy_legacy16" in res else None
+        ),
         "qa_accuracy_reference": round(ref["qa_accuracy"], 4),
         "qa_verdict_agreement": round(qa_agree, 4),
+        "qa_verdict_agreement_n": len(pairs),
         "gen_identical": f"{identical}/{len(fracs)}",
         "gen_prefix_agreement": round(sum(fracs) / len(fracs), 4),
         "gen_prefix_agreement_each": [round(x, 3) for x in fracs],
