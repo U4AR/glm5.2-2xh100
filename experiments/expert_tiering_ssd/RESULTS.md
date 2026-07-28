@@ -196,7 +196,70 @@ is largely that artifact. The RAM=72 pair is not explained away this way — bot
 sides loop at 6.25% — so an ~8% drop there remains a live question. Do not cite
 the RAM=32 figure as a movement cost.
 
-## 5. Open
+## 5. Where the cost actually is (decomposition ladder)
+
+Each rung adds exactly one mechanism to the rung below it, so the drop between
+adjacent rungs is that mechanism's price. RAM=72 / SSD=80 / GPU=104, safe2 +
+MTP-d3, three median-of-12 blocks after warm-up, run twice in opposite order.
+
+| rung | adds | pass 1 | pass 2 |
+|---|---|---|---|
+| A frozen | nothing | 40.53 | 40.4x |
+| B count | per-step in-graph demand counters | 40.59 | — |
+| C decide | full selection every 32 steps, zero moves | 40.56 | — |
+| D ram | RAM<->SSD movement | 34.01 | 33.x |
+| D0 | D with prefetch lookahead OFF | 32.87 | — |
+| **E gpu-incr** | **GPU cycle, stable-slot swap** | **35.58** | **35.15** |
+| F gpu-full | GPU cycle, full restage | 28.73 | 29.59 |
+
+**Counting is free. Deciding is free. Only moving costs anything.** The entire
+price of an "adaptive" store is the physical movement — nothing in the
+observation or decision machinery is worth optimising.
+
+**Elapsed time in a phase does not predict its throughput cost.** Per-visit
+phase means (rung D): `d2h`=29.6 ms, `promote`=16.4 ms, `evict`=2.3 ms,
+everything else under 0.5 ms. The 29.6 ms `d2h` — a device sync to copy a few
+hundred bytes of counters — costs **zero** throughput, because the Python
+thread was waiting on the GPU anyway. The ~19 ms of promote+evict costs 16%,
+because `load_expert`'s NUMA repack runs on the *same CPUInfer thread pool as
+the MoE forward*, and CPU is the decode pole. What matters is which resource a
+phase consumes, not how long it takes. This invalidates every "blocked % of
+wall time" figure in this document as a cost predictor — rung D reports
+`blocked 4.5%` against a true cost of 16.1%.
+
+**The prefetch lookahead (7cc7ea0) is dead.** `promote` costs 16.4 ms with the
+prefetch running at a 94-98% hit rate and 15.7 ms with it disabled entirely.
+Identical. The disk read was never the cost; the repack is, and it stayed on
+the critical pool. Throughput A/B is a wash (34.01 vs 32.87, inside noise).
+Remove it — it buys nothing and adds a background thread plus GPU->CPU syncs.
+
+**The GPU cycle changes sign once a swap costs what it moves.** This corrects
+the earlier finding that "the GPU cycle costs 250 ms and buys nothing", which
+measured an implementation artifact rather than the cycle:
+
+| | full restage (F) | stable-slot swap (E) |
+|---|---|---|
+| GPU apply | 144.0 ms | **2.9 ms** |
+| RAM promote | 103.9 ms | **21.3 ms** |
+| total visit | 280.8 ms | **56.8 ms** |
+| blocked | 22.0% | 5.3% |
+| throughput | 29.02 | **35.58** |
+
+The GPU apply drops ~50x, as designed. The *promotions* also drop 5x for the
+same work — the full restage streams all 152 non-resident experts through the
+CPU store and everything after it in the same visit runs slower (plausibly
+cache/bandwidth, not established). So the restage costs far more than its own
+144 ms. Net: the GPU cycle goes from **-5.28 tok/s** (a liability, which is why
+freezing it looked like a win) to **+1.57 tok/s** — promoting hot experts to
+VRAM removes CPU expert work, which is the bottleneck. Do **not** ship
+`KT_TIER_MAX_PROMOTE=0`; that was a workaround for a bug that is now fixed.
+
+Validation of the swap itself: coherent on real W4AFP8 weights, **0 declines
+across 336 swaps**, narrow build `stream=1.4 ms` / `post+overlay=0.4 ms` — so
+the whole-layer post-processing does not dominate, which was the open question
+that would have sunk the approach.
+
+## 6. Open
 
 - Re-measure RAM=64/16/8 under `fill=gpu` for both speed and accuracy.
 - Confirm RAM=160 `fill=gpu` reproduces the ~40.5 headline on `decbench.py`
