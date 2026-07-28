@@ -98,6 +98,32 @@ export KT_ADAPTIVE_COUNTS_DUMP_PT="${KT_ADAPTIVE_COUNTS_DUMP_PT-$RUNTIME_DIR/kt_
 #                    sticky decay). Both need the rebuilt kt-kernel, which
 #                    supplies per-expert promote/evict.
 export KT_TIER_DYNAMIC="${KT_TIER_DYNAMIC:-0}"
+
+# STATIC tiers and the adaptive GPU cache are INCOMPATIBLE, and the combination
+# used to be this script's default (adaptive on, dynamic off). Measured at
+# GPU=104/SSD=0: frozen 30.98 tok/s vs adaptive-on-static-tiers 28.38, despite
+# the latter producing BETTER drafts (accept 2.678 vs 2.141) -- i.e. every step
+# got more expensive.
+#
+# Two independent reasons, both from the adaptive tick moving GPU residency
+# without telling the tier bookkeeping:
+#   1. It never calls update_kt_wrapper_masks, so the kt CPU store still counts
+#      a promoted expert as RAM-tier and keeps computing it on the CPU -- the
+#      critical path -- while the GPU computes it too.
+#   2. Without a RAM cap the loader stages ALL 256 experts precisely so that
+#      "every expert has CPU weights to fall back to" (see kt_ep_wrapper
+#      ~L3477). With a RAM cap it stages only the RAM tier, so a DEMOTED expert
+#      has weights nowhere and is stranded permanently; 1791 demotions
+#      accumulated in one 15-minute run.
+# The dynamic tick is what repairs both: it restages into the RAM tier and
+# refreshes the wrapper masks. So if the cache may move experts, tier movement
+# is not optional.
+if [ "${KT_TIER_DYNAMIC}" != "1" ] && [ "${KT_ADAPTIVE_DECODE:-1}" = "1" ]; then
+  echo "[boot_tiered] adaptive cache + STATIC tiers stranded experts and taxed" \
+       "the CPU path; enabling KT_TIER_DYNAMIC=1. Set KT_ADAPTIVE_DECODE=0 for" \
+       "genuinely frozen tiers."
+  export KT_TIER_DYNAMIC=1
+fi
 export KT_ENERGY="${KT_ENERGY:-0}"
 export KT_ENERGY_PERIOD="${KT_ENERGY_PERIOD:-4}"
 export KT_ENERGY_HOLD_STEPS="${KT_ENERGY_HOLD_STEPS:-4}"
