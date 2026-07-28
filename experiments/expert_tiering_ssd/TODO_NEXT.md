@@ -14,7 +14,38 @@ restage. Movement never converges, because the working set is larger than the
 RAM tier — a capacity limit, not a signal-quality or latency problem. Full
 ladder, phase profiles and the corrections: `RESULTS.md` §0, §4, §5.
 
-## 1. Get the NUMA repack off the shared CPUInfer pool ← the only real lever left
+## 0. Why does movement cost ACCEPT LENGTH? ← the actual top priority
+
+`tok/s = accept_len x steps/s`. Splitting them (RESULTS.md §5) shows movement
+barely slows the steps — it makes each step deliver fewer tokens:
+
+| rung | Δ steps/s | Δ accept |
+|---|---|---|
+| D ram | −2.5% | **−13.9%** |
+| E gpu-incr | −0.9% | −11.4% |
+| F gpu-full | −18.0% | −12.7% |
+
+~85% of the cost of movement is accept length, and making swaps cheap does NOT
+recover it (E still pays 11.4%). Only F's restage costs real time.
+
+Two candidates, not separated:
+1. Movement genuinely disrupts draft/target agreement. Note the arithmetic
+   constraint: at period=32 x 2 layers only ~3% of steps contain a swap, so a
+   "swap lands between draft and verify" story cannot produce a 14% average
+   drop on its own — the effect has to be persistent, not per-swap. Check
+   whether the MTP/NEXTN draft layer (78) participates in tiering at all.
+2. Movement slightly IMPROVES quality, and accept length is an inverse quality
+   signal here (RESULTS.md §3 — looping text is trivially predictable). Then
+   part of the "loss" is the metric, not the model.
+
+To separate: run the 66-item eval on rungs A/D/E and compare loop rates. If
+dynamic loops less, hypothesis 2 is doing real work. The rung logs already
+carry per-step accept means; `summarize_decompose.py` parses them.
+
+This matters because it re-prices everything below: item 1 is worth ~2.5%, not
+16%.
+
+## 1. Get the NUMA repack off the shared CPUInfer pool (worth ~2.5%, not 16%)
 
 `promote` is now the single largest genuine cost: 16.4 ms/visit RAM-only,
 21.3 ms with the GPU cycle. It is **not** disk — proved: 16.4 ms with the

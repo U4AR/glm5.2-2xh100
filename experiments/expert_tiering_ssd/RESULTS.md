@@ -216,6 +216,34 @@ MTP-d3, three median-of-12 blocks after warm-up, run twice in opposite order.
 price of an "adaptive" store is the physical movement — nothing in the
 observation or decision machinery is worth optimising.
 
+**Movement costs tokens per step, not time per step.** `tok/s = accept_len x
+steps/s`, and splitting the two is the single most important line in this
+section:
+
+| rung | tok/s | accept | steps/s | Δ steps/s | Δ accept |
+|---|---|---|---|---|---|
+| A frozen | 40.53 | 2.693 | 15.05 | 0.0% | 0.0% |
+| B count | 40.59 | 2.693 | 15.07 | +0.2% | −0.0% |
+| C decide | 40.42 | 2.693 | 15.01 | −0.3% | −0.0% |
+| **D ram** | 34.01 | 2.318 | 14.67 | **−2.5%** | **−13.9%** |
+| D0 nopf | 32.87 | 2.317 | 14.18 | −5.8% | −14.0% |
+| **E gpu-incr** | 35.58 | 2.386 | 14.91 | **−0.9%** | −11.4% |
+| **F gpu-full** | 29.02 | 2.351 | 12.34 | **−18.0%** | −12.7% |
+
+So the CPU-contention reading of rung D is **wrong as a mechanism**: movement
+barely slows the steps (−2.5%), it makes each step deliver fewer tokens
+(−13.9%). About 85% of D's loss is degraded MTP draft acceptance. Only rung F
+loses real time (−18% step rate, the restage), and the stable-slot swap removes
+essentially all of it (E: −0.9%).
+
+**The accept-length cost is not removed by making swaps cheap** — every moving
+rung pays 11-14% of it. Two candidate explanations, not yet separated:
+1. movement genuinely disrupts draft/target agreement; or
+2. movement slightly *improves* quality and accept length is an inverse quality
+   signal here (§3), so part of the "loss" is an artifact of the metric.
+Distinguishing them needs the 66-item eval run on these rungs. Until then, do
+not claim movement costs 16% of throughput *through blocking* — it does not.
+
 **Elapsed time in a phase does not predict its throughput cost.** Per-visit
 phase means (rung D): `d2h`=29.6 ms, `promote`=16.4 ms, `evict`=2.3 ms,
 everything else under 0.5 ms. The 29.6 ms `d2h` — a device sync to copy a few
