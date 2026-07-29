@@ -35,6 +35,22 @@ if [ "$INSTALL_SYSTEM_DEPS" = "1" ]; then
   "${APT[@]}" install -y git git-lfs pkg-config libhwloc-dev libnuma-dev build-essential
 fi
 
+# --- start the 373 GB checkpoint download NOW, in parallel with the build ----
+# The download is network/disk bound and the kt-kernel build is CPU bound, so
+# running them end to end wastes whichever resource is idle. Started here, after
+# the apt block (which may install python3-venv) and before the build, which is
+# the long pole. It runs in its own venv so setup's pip installs cannot disturb
+# it -- see scripts/download_weights.sh. DOWNLOAD_WEIGHTS=0 skips it, e.g. when
+# the checkpoint is already on a mounted volume.
+DOWNLOAD_WEIGHTS="${DOWNLOAD_WEIGHTS:-1}"
+DL_PID=""
+if [ "$DOWNLOAD_WEIGHTS" = "1" ]; then
+  mkdir -p "$REPO/logs"
+  "$REPO/scripts/download_weights.sh" > "$REPO/logs/download_weights.log" 2>&1 &
+  DL_PID=$!
+  echo "[setup] weights download started in background (pid $DL_PID); progress: tail -f $REPO/logs/download_weights.log"
+fi
+
 if [ ! -d "$REPO/ktransformers/.git" ]; then
   git clone --recursive --branch "$KT_BRANCH" "$KT_REPO" "$REPO/ktransformers"
 fi
@@ -94,4 +110,21 @@ grep -q 'RUNGLM venv libraries' "$ACTIVATE" || {
   printf '\n# RUNGLM venv libraries\nexport LD_LIBRARY_PATH="$VIRTUAL_ENV/lib:${LD_LIBRARY_PATH:-}"\n' >> "$ACTIVATE"
 }
 kt doctor
-echo "Setup complete. Next: python int4_scripts/download_w4afp8.py"
+
+# --- rejoin the background download -----------------------------------------
+# `wait` is guarded because set -e would otherwise abort here on a failed
+# download and lose the "the build succeeded" half of the result, which is the
+# expensive half and is worth reporting even when the fetch needs a retry.
+if [ -n "${DL_PID:-}" ]; then
+  echo "[setup] build finished; waiting for the weights download (pid $DL_PID)"
+  DL_RC=0
+  wait "$DL_PID" || DL_RC=$?
+  if [ "$DL_RC" != "0" ]; then
+    echo "Build OK, but the weights download failed (exit $DL_RC)." >&2
+    echo "See $REPO/logs/download_weights.log; rerun ./scripts/download_weights.sh to resume." >&2
+    exit "$DL_RC"
+  fi
+  echo "Setup complete (build + weights). Next: ./run_adaptive.sh"
+else
+  echo "Setup complete. Next: ./scripts/download_weights.sh, then ./run_adaptive.sh"
+fi

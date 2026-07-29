@@ -5,6 +5,7 @@
 /weights
 .venv/
 .hf/
+.dl-venv/
 .pipcache/
 tmp/
 scratch/

@@ -68,19 +68,22 @@ def env_enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def gpu_rows() -> list[tuple[str, int]]:
+def _gpu_query() -> list[tuple[str, str, int, float]]:
+    """(index, name, MiB, compute capability) for every visible GPU."""
     text = command(
-        "nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.total,compute_cap",
+        "--format=csv,noheader,nounits",
     )
     rows = []
     for line in text.splitlines():
         parts = line.split(",")
-        if len(parts) < 3:
+        if len(parts) < 4:
             continue
         index = parts[0].strip()
-        name = ",".join(parts[1:-1]).strip()
+        name = ",".join(parts[1:-2]).strip()
         try:
-            rows.append((index, name, int(parts[-1].strip())))
+            rows.append((index, name, int(parts[-2].strip()), float(parts[-1].strip())))
         except ValueError:
             pass
     # Honor CUDA_VISIBLE_DEVICES so a masked single-card run (e.g. exporting
@@ -94,7 +97,20 @@ def gpu_rows() -> list[tuple[str, int]]:
             selected = [row for row in rows if row[0] in wanted]
             if selected:
                 rows = selected
-    return [(name, memory) for _, name, memory in rows]
+    return rows
+
+
+def gpu_rows() -> list[tuple[str, int]]:
+    return [(name, memory) for _, name, memory, _ in _gpu_query()]
+
+
+def min_compute_cap() -> float:
+    """Lowest SM version present; 0.0 when no GPU is visible.
+
+    The MINIMUM matters, not the maximum: every rank must run the same kernels,
+    so a mixed host is limited by its oldest card.
+    """
+    return min((cap for _, _, _, cap in _gpu_query()), default=0.0)
 
 
 # --- calibrated per-card VRAM footprint model (measured on 2xH100, TP2) -------
@@ -108,6 +124,23 @@ _TRUNK_TOTAL_MIB = 35_000.0
 _EXPERT_FULL_MIB = 18.9
 _MOE_LAYERS = 75
 _KV_MIB_PER_TOKEN = 44.0 / 1024.0
+_HEADROOM_MIB = 12_000.0  # cuda graphs + draft(MTP) + prefill scratch + slack
+# The smallest resident expert count this repo has ever booted. N=0 is not
+# "no GPU experts", it is an empty-resident crash, and the measured low-VRAM
+# ladder starts at 4. A host that cannot hold 4 cannot run the model, so the
+# preflight must say so rather than recommend a count nothing has ever run.
+_MIN_GPU_EXPERTS = 4
+
+
+def card_floor_mib(tp: int, mem_fraction: float, max_tokens: int) -> float:
+    """Per-card VRAM a host must have before it can run this model at all."""
+    tp = max(1, tp)
+    return (
+        _TRUNK_TOTAL_MIB / tp
+        + max_tokens * _KV_MIB_PER_TOKEN
+        + _HEADROOM_MIB
+        + _MIN_GPU_EXPERTS * _MOE_LAYERS * _EXPERT_FULL_MIB / tp
+    )
 
 
 def valid_tp(count: int) -> int:
@@ -135,12 +168,14 @@ def fit_gpu_experts(minimum_mib: int, tp: int, mem_fraction: float, max_tokens: 
     budget = minimum_mib * mem_fraction
     trunk = _TRUNK_TOTAL_MIB / tp
     kv = max_tokens * _KV_MIB_PER_TOKEN
-    headroom = 12_000.0  # cuda graphs + draft(MTP) + prefill scratch + slack
-    avail = budget - trunk - kv - headroom
+    avail = budget - trunk - kv - _HEADROOM_MIB
     per_n = _MOE_LAYERS * _EXPERT_FULL_MIB / tp
     if avail <= 0 or per_n <= 0:
-        return 1
-    return max(1, min(256, int(avail / per_n)))
+        # Floor at the smallest count that has ever booted rather than at 1.
+        # This value is only reached on a host the preflight rejects anyway, and
+        # returning a never-run 1 made the failure look like a tuning problem.
+        return _MIN_GPU_EXPERTS
+    return max(_MIN_GPU_EXPERTS, min(256, int(avail / per_n)))
 
 
 def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[str, str]:
@@ -210,14 +245,27 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
         "CUDA_GRAPH_MAX_BS": "1",
         "KT_GPU_PREFILL_THRESHOLD": "0" if minimum_mib < 75_000 else "2048",
     }
-    if profile == "2xl40":
-        selected["KT_W4AFP8_GPU_BACKEND"] = "marlin_sm80"
-        selected["FP8_GEMM_BACKEND"] = "triton"
-        selected["ATTENTION_BACKEND"] = "triton"
-    elif profile == "2xh100":
+    # GPU kernel backends are chosen by COMPUTE CAPABILITY, not by the two-card
+    # profile table. Kernel availability is an architecture property: FlashMLA
+    # and the CUTLASS W4A8 MoE are Hopper-only, and on Ada they fail as "no
+    # kernel image for SM89" and TMA descriptor error 801 respectively.
+    #
+    # Keying this off the profile name left every host that fell through to the
+    # generic branch -- notably ANY single-GPU host, which is the common
+    # small-machine case -- with no backend pinned at all, so run_server_int4.sh
+    # applied its Hopper defaults and a single L40/A6000 would boot straight
+    # into those two failures. Selecting on SM fixes that class of host without
+    # changing either validated profile: L40 is SM 8.9 -> the same marlin/triton
+    # trio the 2xl40 table pinned, H100 is SM 9.0 -> the same cutlass/flashmla.
+    cap = min_compute_cap()
+    if cap >= 9.0:
         selected["KT_W4AFP8_GPU_BACKEND"] = "cutlass_sm90"
         selected["FP8_GEMM_BACKEND"] = "cutlass"
         selected["ATTENTION_BACKEND"] = "flashmla"
+    elif cap >= 8.0:
+        selected["KT_W4AFP8_GPU_BACKEND"] = "marlin_sm80"
+        selected["FP8_GEMM_BACKEND"] = "triton"
+        selected["ATTENTION_BACKEND"] = "triton"
     # fp8 KV cache is only validated on the flashmla path. On every other
     # attention backend (the Triton fallback that non-Hopper cards land on) an
     # fp8_e4m3 KV cache measurably degrades MTP/NEXTN acceptance, because the
@@ -269,14 +317,31 @@ def problems(rows: list[tuple[str, int]], adaptive: bool, weights_dir: Path | No
         # The dense trunk (~35 GiB unsharded) is TP-sharded across the cards and
         # is not optional. A card whose budget cannot hold its trunk shard plus a
         # little room for KV/graphs/>=1 expert cannot run this model at all.
-        selected_mem = choose_profile(rows, adaptive)["MEM_FRACTION"] or "0.85"
-        trunk_shard = _TRUNK_TOTAL_MIB / tp
+        chosen = choose_profile(rows, adaptive)
+        selected_mem = chosen["MEM_FRACTION"] or "0.85"
         budget = minimum_mib * float(selected_mem)
-        if budget < trunk_shard + 2_000:
+        # The old check only required the dense trunk plus 2 GiB, which passed
+        # hosts that then died at warm-up: a 46 GiB card clears trunk+2 GiB but
+        # has nothing left for the CUDA-graph pool, the MTP draft model, prefill
+        # scratch AND a usable resident expert set. Require the whole floor.
+        floor = card_floor_mib(tp, float(selected_mem), int(chosen["MAX_TOTAL_TOKENS"]))
+        if budget < floor:
             found.append(
                 f"per-card budget ~{budget:.0f} MiB (VRAM {minimum_mib} MiB x "
-                f"mem_fraction {selected_mem}) cannot hold the dense-trunk shard "
-                f"~{trunk_shard:.0f} MiB at TP={tp}; use a bigger card or more GPUs"
+                f"mem_fraction {selected_mem}) is below the ~{floor:.0f} MiB floor "
+                f"at TP={tp} (dense trunk {_TRUNK_TOTAL_MIB / tp:.0f} + KV + "
+                f"{_HEADROOM_MIB:.0f} runtime headroom + {_MIN_GPU_EXPERTS} resident "
+                "experts); use a bigger card or more GPUs"
+            )
+        # Below Ampere there is no INT4 GPU expert path at all: the Marlin
+        # W4A16 kernel is the oldest one this repo carries and it requires
+        # SM80+. Say so here rather than letting the launch die inside a kernel
+        # dispatch with an unrelated-looking error.
+        cap = min_compute_cap()
+        if 0.0 < cap < 8.0:
+            found.append(
+                f"oldest GPU is compute capability {cap:.1f}; the INT4 expert "
+                "path needs SM 8.0+ (Ampere or newer)"
             )
     flags = cpu_flags()
     if "avx512_vnni" not in flags:
