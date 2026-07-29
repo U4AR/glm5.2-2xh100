@@ -42,7 +42,15 @@ kill_server() {
   for p in $(pgrep -f "[s]glang.launch_server"); do kill $p 2>/dev/null; done
   for i in $(seq 1 40); do pgrep -f "[s]glang.launch_server" >/dev/null || break; sleep 3; done
   for p in $(pgrep -f "[s]glang"); do kill -9 $p 2>/dev/null; done
-  sleep 8
+  # Process exit != VRAM released. Wait for the card to actually drain, or the
+  # next boot lands on top of the dying server and OOMs (that is exactly what
+  # killed rungs H and I: two servers, 47.9 GiB still held by the old one).
+  for i in $(seq 1 60); do
+    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+    [ "${used:-9999}" -lt 2000 ] && break
+    sleep 5
+  done
+  sleep 5
 }
 
 wait_ready() {
