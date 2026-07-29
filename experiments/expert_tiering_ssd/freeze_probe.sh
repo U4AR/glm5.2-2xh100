@@ -72,21 +72,31 @@ warm() {
   done
 }
 
-# Accept length and visit count for the phase that just ran, taken from the
-# tail of the server log rather than the whole file, so each phase is scored on
-# its own steps.
-phase() {  # NAME  start_line
+# Accept length and visit count for the phase that just ran, selected by the
+# log line's own TIMESTAMP rather than by line offset.
+#
+# Line offsets race the server's buffered writes: the first run of this probe
+# sampled `wc -l` immediately after freezing, but ~16 pre-freeze visits had not
+# been flushed yet, so they landed past that offset and were charged to the
+# frozen phase. The phase looked 87% frozen instead of 100% and tripped this
+# script's own "must be ~0" guard. Timestamps are written by the logger at
+# event time, so they do not move when the buffer does.
+phase() {  # NAME  start_epoch
   local NAME=$1 START=$2
   .venv/bin/python - "$L" "$START" "$NAME" <<'PY' | tee -a "$M"
-import re, statistics, sys
-path, start, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+import datetime, re, statistics, sys
+path, start, name = sys.argv[1], float(sys.argv[2]), sys.argv[3]
+t_start = datetime.datetime.fromtimestamp(start)
 acc, visits = [], 0
-for i, line in enumerate(open(path, errors="ignore")):
-    if i < start:
+for line in open(path, errors="ignore"):
+    m = re.search(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)', line)
+    if not m:
         continue
-    m = re.search(r'accept len: ([\d.]+)', line)
-    if m:
-        acc.append(float(m.group(1)))
+    if datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") < t_start:
+        continue
+    a = re.search(r'accept len: ([\d.]+)', line)
+    if a:
+        acc.append(float(a.group(1)))
     if '[kt-tier] layer=' in line:
         visits += 1
 if acc:
@@ -99,21 +109,21 @@ PY
 
 # --- phase A: moving -------------------------------------------------------
 warm
-A0=$(wc -l < "$L")
+A0=$(date +%s)
 say "   A  moving   $(.venv/bin/python bench/perf_probe/decbench.py 300 12 2>&1 | tail -1)"
 phase "A moving" "$A0"
 
 # --- phase B: freeze movement, residency stays where it drifted ------------
 touch "$FRZ"
 sleep 20   # let any in-flight tick finish and the freeze take effect
-B0=$(wc -l < "$L")
+B0=$(date +%s)
 say "   B  frozen   $(.venv/bin/python bench/perf_probe/decbench.py 300 12 2>&1 | tail -1)"
 phase "B frozen" "$B0"
 
 # --- phase A': resume, to prove B was the freeze and not drift/warm-up -----
 rm -f "$FRZ"
 sleep 20
-C0=$(wc -l < "$L")
+C0=$(date +%s)
 say "   A' moving  $(.venv/bin/python bench/perf_probe/decbench.py 300 12 2>&1 | tail -1)"
 phase "A' moving" "$C0"
 

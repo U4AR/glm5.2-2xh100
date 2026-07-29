@@ -60,19 +60,30 @@ wait_ready() {  # LOGFILE
   return 1
 }
 
-# Visits and accept length for the phase that just ran, from the tail of the
-# server log, so each arm is scored only on its own steps.
-phase() {  # LOG START NAME
+# Visits and accept length for the arm that just ran, selected by the log line's
+# own TIMESTAMP (epoch seconds) rather than by line offset.
+#
+# Line offsets race the server's buffered writes. The freeze probe hit this: it
+# sampled `wc -l` right after freezing, ~16 pre-freeze visits had not flushed
+# yet, and they landed past that offset and were charged to the frozen phase --
+# which then looked 87% frozen and tripped the "must be 0" guard even though a
+# 147 s window with zero visits proved the freeze was total. Timestamps are
+# stamped at event time and do not move when the buffer does.
+phase() {  # LOG START_EPOCH NAME
   .venv/bin/python - "$1" "$2" "$3" <<'PY' | tee -a "$M"
-import re, statistics, sys
-path, start, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+import datetime, re, statistics, sys
+path, start, name = sys.argv[1], float(sys.argv[2]), sys.argv[3]
+t_start = datetime.datetime.fromtimestamp(start)
 acc, visits = [], 0
-for i, line in enumerate(open(path, errors="ignore")):
-    if i < start:
+for line in open(path, errors="ignore"):
+    m = re.search(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)', line)
+    if not m:
         continue
-    m = re.search(r'accept len: ([\d.]+)', line)
-    if m:
-        acc.append(float(m.group(1)))
+    if datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") < t_start:
+        continue
+    a = re.search(r'accept len: ([\d.]+)', line)
+    if a:
+        acc.append(float(a.group(1)))
     if '[kt-tier] layer=' in line:
         visits += 1
 a = f"{statistics.mean(acc):.3f}" if acc else "n/a"
@@ -129,7 +140,7 @@ row() {  # RAM
 
   # -- arm 1: FROZEN at warm-start residency
   warm
-  local P0=$(wc -l < "$L")
+  local P0=$(date +%s)
   say "   frozen  $(.venv/bin/python bench/perf_probe/decbench.py 300 12 2>&1 | tail -1)"
   phase "$L" "$P0" "frozen"
   GPU_EXPERTS=104 KT_RAM_EXPERTS=$RAM KT_TIER_FILL_POOL=gpu TIER_BENCH_MODEL=GLM5.2-top2 \
@@ -139,7 +150,7 @@ row() {  # RAM
   # -- arm 2: release the freeze, let residency drift, then measure
   rm -f "$FRZ"
   warm; warm                       # drift under real traffic before measuring
-  local P1=$(wc -l < "$L")
+  local P1=$(date +%s)
   say "   move    $(.venv/bin/python bench/perf_probe/decbench.py 300 12 2>&1 | tail -1)"
   phase "$L" "$P1" "move"
   GPU_EXPERTS=104 KT_RAM_EXPERTS=$RAM KT_TIER_FILL_POOL=gpu TIER_BENCH_MODEL=GLM5.2-top2 \
