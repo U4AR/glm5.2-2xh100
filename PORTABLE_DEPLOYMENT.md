@@ -73,9 +73,26 @@ if ram_mask is not None:
 mode you selected is not the mode you get once experts stop being reachable.
 
 **Practical floor for coherent serving:** size host RAM so that
-`GPU_EXPERTS + KT_RAM_EXPERTS = 256`. At the measured ~1.05 GB per RAM-tier slot
-on a ~49 GB fixed floor, that is roughly **290–320 GB of host RAM**. Below it you
-are trading answer quality, not tokens per second, and the trade gets steep fast.
+`GPU_EXPERTS + KT_RAM_EXPERTS = 256`.
+
+Two measured points on one machine give the cost of a RAM-tier slot (TP1,
+GPU_EXPERTS=25, movement off):
+
+| KT_RAM_EXPERTS | host RSS |
+|---|---|
+| 64 | 118 GB |
+| 84 | 146 GB |
+
+28 GB for 20 slots = **1.4 GB per slot** on a **~28 GB fixed floor**, consistent
+with the documented 1.38 GiB per expert-slot. Do not derive this from a single
+RSS reading divided by an assumed floor — one point cannot separate slope from
+intercept, and doing so understated the slot cost by 25%.
+
+So full reachability at `GPU_EXPERTS=25` needs `28 + 231 × 1.4` ≈ **350 GB of
+host RAM**. Below that you are trading answer quality, not tokens per second, and
+the trade gets steep fast. A 140 GB host tops out near `KT_RAM_EXPERTS=79`, i.e.
+104/256 reachable — squarely in the 0.56-accuracy / 44%-loop region of the table
+above.
 
 ## Clone to serving
 
