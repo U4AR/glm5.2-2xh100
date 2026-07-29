@@ -27,11 +27,55 @@ SSD, which is what lowers this: measured **107 GB** at `KT_RAM_EXPERTS=48` and
 **86 GB** at 32, both with movement enabled. Below that the fixed ~40-45 GiB
 overhead dominates and there is no configuration left to trade away.
 
-So the smallest host that runs this model at all is around **96 GB of RAM**, and
-that is with the tiered build and its accuracy cost. Storage and swap do not
-substitute: the preflight deliberately refuses to count them, because an expert
-fetched from disk on the decode critical path is not a slower expert, it is a
-stall long enough to dominate the step.
+So the smallest host that **boots** this model is around **96 GB of RAM**. That
+is not the same as the smallest host that runs it *well* — see the next section,
+which is the one to read before buying anything.
+
+Storage and swap do not substitute for RAM, but not for the reason you might
+expect. An SSD-tier expert is never fetched on the decode critical path; it is
+silently **substituted** with the nearest resident expert
+(`kt_ep_wrapper.py`, "An SSD-tier expert is NEVER fetched on the critical
+path"). So a short RAM budget does not cost you latency. It costs you the model.
+
+### RAM is an accuracy budget, not a speed budget
+
+This is the least intuitive property of the whole system and the easiest way to
+deploy something that looks fine on a benchmark and is broken in use.
+
+Measured, 66-item QA against a full-coverage reference (`runs/*.json`):
+
+| reachable experts/layer | accuracy | responses that loop |
+|---|---|---|
+| 256 / 256 (no SSD tier)  | **1.00** | 0% |
+| 160 / 256                | 0.81 | 19% |
+| 128 / 256                | 0.63 | 31% |
+| 104 / 256                | 0.56 | 44% |
+| 89 / 256                 | **0.35** | **56%** |
+
+"Reachable" = `GPU_EXPERTS + KT_RAM_EXPERTS`. Everything else lives on SSD and
+gets substituted on every token that routes to it.
+
+Both 1.00 rows are the configurations with **no SSD tier at all**, and one of
+them is a single GPU. That is the line to design to: one card is fine, a short
+RAM budget is not.
+
+**`safe2` does not protect you here.** It is accuracy-safe only while every
+expert is reachable. With a three-tier store the reach filter runs in both
+modes and at every K —
+
+```python
+if ram_mask is not None:
+    keep_mask = keep_mask & reach_vec[ids.long()]
+```
+
+— so a genuine top-2 expert sitting on SSD is dropped and substituted even under
+`safe2`, which is exactly the `sub2` behaviour that is banned as a default. The
+mode you selected is not the mode you get once experts stop being reachable.
+
+**Practical floor for coherent serving:** size host RAM so that
+`GPU_EXPERTS + KT_RAM_EXPERTS = 256`. At the measured ~1.05 GB per RAM-tier slot
+on a ~49 GB fixed floor, that is roughly **290–320 GB of host RAM**. Below it you
+are trading answer quality, not tokens per second, and the trade gets steep fast.
 
 ## Clone to serving
 
