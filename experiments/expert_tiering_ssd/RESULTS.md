@@ -331,10 +331,48 @@ Frozen quality degrades smoothly with RAM rather than falling off a cliff —
 0.5606 (32), 0.7121 (48), 0.9375 (72), 1.0000 (152) — and the failure mode is
 reasoning loops, not wrong answers.
 
-⚠️ Accept length is NOT usable as a movement cost at these rungs: frozen loops
-on 42.4 % (RAM=32) and 28.8 % (RAM=48), and looping text inflates accept length
-(§3). Only the RAM=72 pair, where both arms loop at 6.25 %, supports that
-reading.
+### Accept length measures FIDELITY, and the sign was misread twice
+
+Measured on one fixed workload (the `decbench.py` essay prompt) so the configs
+are comparable at all:
+
+| config | accuracy | accept |
+|---|---|---|
+| RAM=152 full coverage | 1.0000 | **2.181** |
+| RAM=48 + move | 0.9697 | 2.249 |
+| RAM=32 + move | 0.9394 | 2.461 |
+| RAM=48 frozen | 0.7121 | 2.604 |
+| RAM=32 frozen | 0.5606 | 2.762 |
+
+**Spearman −1.000, Pearson −0.944.** Accept length ranks these configs by
+accuracy perfectly, and full coverage — the best model available on this box —
+has the LOWEST accept length of anything measured.
+
+So the accept-length drop under movement is not damage. **Movement pushes accept
+DOWN TOWARD the full-coverage reference** (RAM=72: 2.68 frozen → 2.22 moving,
+landing within 0.04 of the true model's 2.18). Frozen substitution pushes it UP,
+above the reference. The moving configs are converging on the true model, not
+diverging from it.
+
+The mechanism: **speculative decoding pays for predictability, not correctness.**
+A substituted model is confined to fewer experts, so its output is more
+stereotyped, so the draft head guesses it easily and each step yields more
+tokens. Restore expressiveness — by full coverage or by moving the right experts
+in — and the model becomes harder to draft for. This is why full coverage is the
+best model and the slowest (30.98 tok/s), while RAM=32 frozen is the worst and
+the fastest (42.55): one axis, not a coincidence.
+
+⚠️ **Two corrections, recorded because both were committed as findings.**
+(1) §5 frames the accept drop as movement's *cost*, "degraded MTP draft
+acceptance". The throughput arithmetic there is right and still stands; the
+word "degraded" is wrong. It is the price of fidelity, and it cannot be
+optimised away without making the model worse.
+(2) An earlier reading claimed the moving configs sat BELOW the reference and
+therefore could not be a quality gain. That compared the reference's *QA-eval*
+accept (2.585, short factual answers draft easily) against the ladder's *essay*
+accept. Different workloads. Accept length varies more with workload than with
+config — 2.18 essay vs 3.1 QA on the very same server — so it is only ever
+comparable within one fixed prompt set.
 
 ## 7. Open
 
