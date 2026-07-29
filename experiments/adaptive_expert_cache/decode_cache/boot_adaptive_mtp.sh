@@ -23,7 +23,7 @@ export SPEC_DRAFT_TOKENS=4
 export SPEC_DRAFT_ATTN=triton
 export SGLANG_ENABLE_SPEC_V2=True
 export DISABLE_CUDA_GRAPH=0
-export CUDA_GRAPH_MAX_BS=1
+export CUDA_GRAPH_MAX_BS="${CUDA_GRAPH_MAX_BS:-1}"   # override to capture batched graphs
 export KT_HIT_STATS=0
 export KT_GPU_PREFILL_THRESHOLD="${KT_GPU_PREFILL_THRESHOLD:-0}"
 # Overridable so the hardware profiler / a single-GPU run can lower it; the

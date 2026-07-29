@@ -257,8 +257,16 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     # into those two failures. Selecting on SM fixes that class of host without
     # changing either validated profile: L40 is SM 8.9 -> the same marlin/triton
     # trio the 2xl40 table pinned, H100 is SM 9.0 -> the same cutlass/flashmla.
+    # The Hopper window is BOUNDED ABOVE as well as below. FlashMLA is built for
+    # sm90a and the CUTLASS W4A8 MoE uses Hopper TMA/wgmma; neither is forward
+    # compatible with Blackwell (sm100 datacenter, sm120 RTX PRO / GeForce).
+    # An open-ended `cap >= 9.0` would hand a Blackwell card the Hopper kernels
+    # and reproduce the Ada failures one architecture later -- exactly the bug
+    # this SM-keying was added to prevent. Anything newer than Hopper falls back
+    # to the architecture-agnostic Marlin/Triton pair until its kernels are
+    # actually validated here.
     cap = min_compute_cap()
-    if cap >= 9.0:
+    if 9.0 <= cap < 10.0:
         selected["KT_W4AFP8_GPU_BACKEND"] = "cutlass_sm90"
         selected["FP8_GEMM_BACKEND"] = "cutlass"
         selected["ATTENTION_BACKEND"] = "flashmla"

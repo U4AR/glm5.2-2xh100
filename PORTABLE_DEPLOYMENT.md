@@ -72,37 +72,58 @@ above. `run_fast.sh` and `run_adaptive.sh` size themselves from what they find;
 there is nothing to configure.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 ./run_fast.sh    # auto: TP1, safe2, MTP depth 3
+CUDA_VISIBLE_DEVICES=0 ./run_adaptive.sh   # 29.9 tok/s -- use this
+CUDA_VISIBLE_DEVICES=0 ./run_fast.sh       # 23.7 tok/s, static placement
 ```
 
 ### Measured single-GPU result
 
-1× H100 NVL (95 GiB, SM 9.0), `GPU_EXPERTS=24`, TP1, `safe2` routing, MTP
-depth 3, greedy, 8 runs of 300 tokens:
+1× H100 NVL (95 GiB, SM 9.0), `GPU_EXPERTS=24`, TP1, `safe2`, MTP depth 3:
 
-- decode **23.74 tok/s** median (min 23.57, max 23.77 — spread 0.8%);
-- MTP accept length 2.435;
-- 63.3 GiB VRAM on the single card; 352 GB host RSS;
-- boot to serving 2 min 45 s;
-- 66-item QA eval: **66/66 correct (±0.028), 0% repetition loops**, verdict
-  agreement 1.00 on all 66 items against the two-GPU full-coverage reference.
+| launcher | placement | tok/s | VRAM | host RSS |
+|---|---|---|---|---|
+| `run_adaptive.sh` | adaptive cache, warm start, **converged** | **29.9** | 68.7 GiB | 385 GB |
+| `run_fast.sh` | static hotcore | 23.7 | 63.3 GiB | 352 GB |
 
-Quality is not a tradeoff here, and it should not be: `safe2` keeps the genuine
-top-2 and sends a non-resident member down the CPU path rather than substituting
-it, so a smaller resident set costs time, never correctness. Token-level
-divergence from the reference is nonetheless large (prefix agreement 0.08),
-which is expected and not a defect — TP1 reduces in a different order than TP2,
-so greedy decoding parts company after a few tokens. Judge these configurations
-on task accuracy, not on matching token streams.
+Accuracy at `GPU_EXPERTS=24`: **66/66 on the QA eval (±0.028), 0% repetition
+loops**, verdict agreement 1.00 against the two-GPU full-coverage reference.
+`safe2` keeps the genuine top-2 and sends a non-resident member down the CPU
+path rather than substituting it, so a smaller resident set costs time, never
+correctness. Token-level divergence is nonetheless large (prefix agreement 0.08)
+and is not a defect: TP1 reduces in a different order than TP2, so greedy
+decoding parts company after a few tokens. Judge on task accuracy, never on
+matching token streams.
 
-The interesting part is the ratio: the same box at TP2 with `GPU_EXPERTS=104`
-and the same routing contract runs ~30.5 tok/s, so **one card retains about 78%
-of the two-card throughput while holding a quarter of the resident experts**.
-That is not a small-model effect. Decode here is bound by the CPU expert path,
-and TP2's second rank spends most of its time in NCCL all-reduce spin-wait
-rather than on work; removing it costs less than the residency loss suggests.
-Halving the cards does not halve the speed, but it does roughly double host RAM
-demand, because every expert that is not resident moves to the CPU store.
+**One card retains ~91% of two-card throughput.** Measured as a paired ladder,
+one variable at a time, same harness within each pair:
+
+| | tok/s | vs. |
+|---|---|---|
+| TP1 N=24 static | 23.74 | — |
+| TP2 N=24 static | 26.77 | +12.8% for the 2nd card |
+| TP1 N=24 adaptive, converged | 29.9 | — |
+| TP2 N=24 adaptive, converged | 32.8 | +9.7% for the 2nd card |
+| TP2 N=96 adaptive, converged | 39.1 | +19% for 24→96 experts |
+
+The second GPU is worth about 10%, not the ~30% a naive residency argument
+predicts, because decode is bound by the CPU expert path and TP2's second rank
+spends most of its time in NCCL all-reduce spin-wait rather than on work.
+
+Two traps this ladder exposed, both of which produce numbers that look real:
+
+- **Never compare across launchers.** `run_fast.sh` uses static placement;
+  `run_adaptive.sh` adds the decode-time cache, warm start and counter prior,
+  and is worth roughly +25% at the same expert count. A single-GPU figure from
+  one and a two-GPU figure from the other says nothing about GPU count.
+- **Never report an unconverged adaptive number.** The cache is worthless until
+  it converges: the TP2 N=96 rung starts at **23.5 tok/s cold and settles at
+  39.1**, a 66% swing with no configuration change at all. The published
+  protocol is 12–14 convergence passes, then measure.
+
+Note also that host RAM runs *backwards* against GPU count: fewer resident
+experts means more of them served from the CPU store, so the single-GPU config
+is the memory-hungry one (352 GB at N=24 vs 250 GB at N=104). Going to one card
+does not save host RAM; it costs about 100 GB more.
 
 ## RunPod: 2× L40, 500 GB RAM
 
