@@ -287,7 +287,56 @@ across 336 swaps**, narrow build `stream=1.4 ms` / `post+overlay=0.4 ms` — so
 the whole-layer post-processing does not dominate, which was the open question
 that would have sunk the approach.
 
-## 6. Open
+## 6. The capacity crossover — and why "movement is a tax" was the wrong frame
+
+Measured PAIRED: both arms inside ONE boot, frozen first (warm-start residency,
+which only exists before any drift) then the freeze released via
+`KT_TIER_FREEZE_FILE`. Boot-to-boot spread is 31–38 tok/s while within-boot sd
+is 0.57, so running the arms as separate boots buried the signal under the
+larger noise term. Every frozen arm asserts `tier_visits=0`; a row where the
+freeze failed to take is discarded, not read. `move` = the shipped config, RAM
+cycle *and* GPU cycle, the latter via the stable-slot swap.
+
+| config | host RSS | tok/s | accuracy (66 items) | loops |
+|---|---|---|---|---|
+| RAM=152 reference, full coverage | ~230 GB | 30.98 | **1.0000** ±0.028 | 0 % |
+| **RAM=48 + move** | **107 GB** | **35.19** | **0.9697** ±0.048 | 1.5 % |
+| RAM=48 frozen | 107 GB | 38.89 | 0.7121 ±0.107 | 28.8 % |
+| **RAM=32 + move** | **86 GB** | 36.84 | 0.9394 ±0.061 | 6.1 % |
+| RAM=32 frozen | 86 GB | 42.55 | 0.5606 ±0.116 | 42.4 % |
+
+**RAM=48 + move beats full coverage on both axes at once**: +13.6 % throughput
+at quality whose interval overlaps the reference's, on 2.1× less host RAM.
+
+This corrects the "movement is insurance, not speed" reading in §4. That came
+from comparing frozen against move **at fixed RAM**, where movement always looks
+like a 10–16 % tax. Compared at fixed **quality** the sign flips: full coverage
+is slow *because* it is complete — every expert kept in RAM is one the router
+can reach and pay a CPU round-trip for. Movement buys back memory and
+throughput together.
+
+There is no crossover in this range. Even at RAM=72, frozen's 0.9375 is beaten
+by RAM=48+move's 0.9697 on less memory. Pareto frontier: RAM=72 frozen
+(40.53 / 0.9375 / 141 GB) — RAM=32 move (36.84 / 0.9394 / 86 GB) — RAM=48 move
+(35.19 / 0.9697 / 107 GB) — RAM=152 (30.98 / 1.0000 / ~230 GB). Every frozen
+config below RAM=72 is off the frontier: 42.55 tok/s is worthless at 0.56.
+
+**The GPU cycle's real value is accuracy, not speed.** Every earlier RAM=32
+"dynamic" row froze it (`KT_TIER_MAX_PROMOTE=0`) to dodge the 250 ms restage,
+and repaired quality only to 0.75. With the stable-slot swap making that cycle
+affordable it repairs to **0.9394**. The "+1.57 tok/s" in §5 understated its
+worth by measuring the wrong axis.
+
+Frozen quality degrades smoothly with RAM rather than falling off a cliff —
+0.5606 (32), 0.7121 (48), 0.9375 (72), 1.0000 (152) — and the failure mode is
+reasoning loops, not wrong answers.
+
+⚠️ Accept length is NOT usable as a movement cost at these rungs: frozen loops
+on 42.4 % (RAM=32) and 28.8 % (RAM=48), and looping text inflates accept length
+(§3). Only the RAM=72 pair, where both arms loop at 6.25 %, supports that
+reading.
+
+## 7. Open
 
 - Re-measure RAM=64/16/8 under `fill=gpu` for both speed and accuracy.
 - Confirm RAM=160 `fill=gpu` reproduces the ~40.5 headline on `decbench.py`
