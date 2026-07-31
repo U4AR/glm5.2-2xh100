@@ -102,6 +102,8 @@ PAGE = r"""<!doctype html>
   button { background:#238636; color:#fff; border:0; border-radius:8px; padding:0 18px; height:44px;
            font:inherit; font-weight:600; cursor:pointer; }
   button.sec { background:#21262d; color:#c9d1d9; height:28px; padding:0 12px; font-size:12px; font-weight:500; }
+  button.danger { background:#8b2c2c; }
+  .note { font-size:12px; color:#d29922; margin-top:6px; }
   button:disabled { background:#30363d; color:#7d8590; cursor:not-allowed; }
   .ctrls { max-width:900px; margin:6px auto 0; display:flex; gap:14px; font-size:12px; color:#7d8590;
            align-items:center; flex-wrap:wrap; }
@@ -124,6 +126,7 @@ PAGE = r"""<!doctype html>
     <div class="row">
       <textarea id="inp" placeholder="Ask about the document…  (Enter to send, Shift+Enter for newline)"></textarea>
       <button id="send">Ask</button>
+      <button id="stop" class="danger" style="display:none">Stop</button>
     </div>
     <div class="ctrls">
       <!-- Reasoning is billed against this too, and on a 533k context the model
@@ -137,6 +140,9 @@ PAGE = r"""<!doctype html>
           <option value="2">top-2 · fast</option>
         </select>
       </label>
+      <label title="Applies a mild frequency penalty and stops generation if the output starts repeating itself">
+        <input type="checkbox" id="guard" checked> repetition guard
+      </label>
       <span id="stat" class="stat"></span>
     </div>
   </footer>
@@ -144,9 +150,45 @@ PAGE = r"""<!doctype html>
 const log = document.getElementById('log');
 const inp = document.getElementById('inp');
 const sendBtn = document.getElementById('send');
+const stopBtn = document.getElementById('stop');
 const cachePill = document.getElementById('cache');
 const stat = document.getElementById('stat');
 let history = [];
+
+// In-flight request: the AbortController drops our end of the stream, and `rid`
+// lets the server actually cancel the generation instead of leaving it running
+// on the GPU with nobody reading it.
+let inflight = null;
+
+async function cancelInflight(reason){
+  if(!inflight) return;
+  const {rid, controller} = inflight;
+  inflight = null;
+  try { controller.abort(); } catch(e){}
+  try {
+    await fetch('/api/stop', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({rid: rid})
+    });
+  } catch(e){}
+  if(reason) stat.textContent = reason;
+}
+
+// Degenerate output is a tail that is literally the same span over and over --
+// "0,0,0,..." at greedy decoding, or a reasoning step restated verbatim. Look for
+// a unit that repeats three times back to back at the very end of the stream.
+// Requiring three exact consecutive repeats keeps legitimately repetitive text
+// (page citations, table rows) from tripping it.
+function detectLoop(s){
+  const t = s.slice(-800);
+  for(let u = 8; u <= 240; u++){
+    if(t.length < u*3) break;
+    const unit = t.slice(-u);
+    if(unit.trim().length < 4) continue;   // whitespace runs are not loops
+    if(t.endsWith(unit.repeat(3))) return unit;
+  }
+  return null;
+}
 
 fetch('/api/status').then(r=>r.json()).then(j=>{
   document.getElementById('title').textContent = j.model || 'GLM-5.2';
@@ -177,18 +219,32 @@ function setCache(state, text){
 // first real question is not the one that waits.
 async function run(text, warm){
   sendBtn.disabled = true;
+  stopBtn.style.display = '';
   const am = warm ? null : addMsg('assistant');
   if(!warm) stat.textContent = 'thinking…';
 
   const t0 = performance.now();
   let content='', reasoning='', usage=null, firstTokT=null;
+  let stoppedFor = null;
+
+  const guard = document.getElementById('guard').checked;
+  const rid = 'ui-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random());
+  const controller = new AbortController();
+  inflight = {rid: rid, controller: controller};
 
   try{
     const resp = await fetch('/api/ask', {
       method:'POST', headers:{'Content-Type':'application/json'},
+      signal: controller.signal,
       body: JSON.stringify({
         history: history,
         warm: !!warm,
+        rid: rid,
+        // Penalising tokens the model has already emitted discourages loops
+        // before they start. sglang accumulates this over output tokens only
+        // (BatchedFrequencyPenalizer._cumulate_output_tokens), so the 533k-token
+        // prompt does not feed into it.
+        frequency_penalty: guard ? 0.3 : 0.0,
         tier: document.getElementById('tier').value,
         temperature: +document.getElementById('temp').value,
         max_tokens: warm ? 1 : Math.max(1, Math.min(8000, +document.getElementById('maxtok').value || 1200))
@@ -229,6 +285,16 @@ async function run(text, warm){
         }
         log.scrollTop = log.scrollHeight;
       }
+
+      if(guard && !warm && !stoppedFor){
+        // Check the stream the model is actually producing right now.
+        const unit = detectLoop(content || reasoning);
+        if(unit){
+          stoppedFor = unit.trim().slice(0, 40);
+          await cancelInflight(null);
+          break;
+        }
+      }
     }
 
     const ttft = firstTokT ? (firstTokT - t0)/1000 : (performance.now()-t0)/1000;
@@ -243,12 +309,29 @@ async function run(text, warm){
     // reliable readout of whether the document KV survived.
     setCache(ttft < 60 ? 'warm' : 'cold', ttft < 60 ? 'warm' : 'cold (' + ttft.toFixed(0) + 's prefill)');
 
+    if(stoppedFor && am){
+      const n = el('note');
+      n.textContent = '⚠ Stopped: the model began repeating "' + stoppedFor +
+                      '…". Try a lower tier, a higher temperature, or rephrase.';
+      am.appendChild(n);
+    }
+
     if(!warm && content) history.push({role:'assistant', content: content});
   } catch(e){
-    const msg = String(e);
-    if(am) am._b.innerHTML = '<span class="err">'+msg+'</span>'; else stat.innerHTML='<span class="err">'+msg+'</span>';
+    // An abort is a deliberate stop, not a failure.
+    if(e && e.name === 'AbortError'){
+      if(am && !content && !reasoning) am._b.textContent = '(stopped)';
+      if(!stoppedFor) stat.textContent = 'stopped';
+      if(!warm && content) history.push({role:'assistant', content: content});
+    } else {
+      const msg = String(e);
+      if(am) am._b.innerHTML = '<span class="err">'+msg+'</span>';
+      else stat.innerHTML = '<span class="err">'+msg+'</span>';
+    }
   } finally {
+    inflight = null;
     sendBtn.disabled = false;
+    stopBtn.style.display = 'none';
     inp.focus();
   }
 }
@@ -263,8 +346,10 @@ async function send(){
 }
 
 sendBtn.onclick = send;
+stopBtn.onclick = ()=> cancelInflight('stopped');
 inp.addEventListener('keydown', e=>{
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+  if(e.key==='Escape') cancelInflight('stopped');
 });
 document.getElementById('warm').onclick = ()=>{
   setCache('cold','warming…');
@@ -316,8 +401,23 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, b"not found", "text/plain")
 
+    def _abort_upstream(self, rid):
+        """Cancel a generation server-side. Dropping the socket is not enough --
+        without this the model keeps decoding into a stream nobody is reading."""
+        if not rid:
+            return
+        try:
+            req = urllib.request.Request(
+                f"{MODEL_BASE}/abort_request",
+                data=json.dumps({"rid": rid}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=5).close()
+        except Exception:
+            pass
+
     def do_POST(self):
-        if self.path != "/api/ask":
+        if self.path not in ("/api/ask", "/api/stop"):
             self._send(404, b"not found", "text/plain")
             return
 
@@ -325,6 +425,11 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         except Exception as exc:
             self._send(400, json.dumps({"error": str(exc)}))
+            return
+
+        if self.path == "/api/stop":
+            self._abort_upstream(body.get("rid"))
+            self._send(200, json.dumps({"stopped": True}))
             return
 
         model = "GLM5.2"
@@ -347,6 +452,11 @@ class Handler(BaseHTTPRequestHandler):
         else:
             messages.extend(body.get("history", []))
 
+        # A caller-supplied rid is what makes /abort_request usable: sglang's own
+        # chatcmpl- id is not the rid (serving_base._generate_request_id_base
+        # returns None), so without this there is no handle to cancel by.
+        rid = body.get("rid")
+
         payload = json.dumps({
             "model": model,
             "messages": messages,
@@ -354,6 +464,8 @@ class Handler(BaseHTTPRequestHandler):
             "stream_options": {"include_usage": True},
             "temperature": body.get("temperature", 0.2),
             "max_tokens": body.get("max_tokens", 1200),
+            "frequency_penalty": body.get("frequency_penalty", 0.0),
+            **({"rid": rid} if rid else {}),
         }).encode()
 
         req = urllib.request.Request(
@@ -378,14 +490,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
+        client_gone = False
         try:
             for chunk in upstream:
                 self.wfile.write(chunk)
                 self.wfile.flush()
         except Exception:
-            pass
+            # Browser hung up (Stop, tab closed, tunnel dropped).
+            client_gone = True
         finally:
             upstream.close()
+            if client_gone:
+                self._abort_upstream(rid)
 
 
 if __name__ == "__main__":
