@@ -48,3 +48,6 @@ test.js
 
 # LiveBench benchmark output
 livebench_results.json
+
+# Source document for the whole-document QA setup (data, not code)
+unlimited_ocr.txt

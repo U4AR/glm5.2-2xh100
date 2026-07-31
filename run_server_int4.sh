@@ -149,20 +149,30 @@ CONTEXT_LENGTH_FLAG=""
 RANDOM_SEED_FLAG=""
 [ -n "$RANDOM_SEED" ] && RANDOM_SEED_FLAG="--random-seed $RANDOM_SEED"
 
-# --- NSA (Native Sparse Attention) long-context fix --------------------------
+# --- NSA (Native Sparse Attention) -------------------------------------------
 # GLM-5.2 uses DeepSeek Sparse Attention: a lightning indexer selects the top
-# `index_topk` (=2048) tokens per query once the sequence exceeds 2048. This
-# sglang build runs EVERY layer through that sparse path (no per-layer Full/Sparse
-# `index_topk_pattern` support, which newer sglang has), and the sparse path
-# produces GARBAGE beyond 2048 tokens (hard cliff: 2041 ok, 2061 gibberish). The
-# topk kernels also hard-assert topk==2048, so widening the dense window is not
-# possible. The documented + optimal fix for our box: disable NSA entirely and run
-# full DENSE MLA attention. is_deepseek_nsa() is gated on `index_topk is not None`
-# (model_config.py), so overriding index_topk=null turns NSA off cleanly -> plain
-# MLA. Dense attention is the most ACCURATE (sparse only approximates it) and
-# costs us ~nothing: we are CPU-MoE bound (~13 tok/s, GPUs ~50% idle), so the
-# extra attention FLOPs are hidden. DISABLE_NSA=1 (default) also forces a dense
-# MLA attention backend. Set DISABLE_NSA=0 to restore native NSA (buggy >2048).
+# `index_topk` (=2048) tokens per query once the sequence exceeds 2048.
+#
+# NSA used to produce garbage past 2048 here, and this block used to disable it
+# outright. That diagnosis was wrong. It blamed a "topk kernels hard-assert
+# topk==2048" -- those are *shape* asserts and our index_topk IS 2048, so they
+# always passed. The real cause: GLM-5.2 trains with IndexShare, where one
+# indexer is shared by each group of 4 layers, so only 21 of 78 layers ship
+# indexer weights (`indexer_types`, `index_topk_freq=4`). This sglang build had
+# no notion of that and ran all 78 layers through their own indexer, 57 of them
+# scoring with never-initialised weights. It looked fine below 2048 only because
+# the topk kernel emits the trivial [0..L-1] selection there.
+#
+# That is now fixed in-tree (see the IndexShare patch in
+# .venv/.../sglang/srt/{configs/model_config,models/deepseek_v2,mem_cache/memory_pool}.py),
+# and NSA is coherent -- verified by needle-retrieval at 6k/16k/27k tokens.
+# Sparse attention is what makes the 1M context window usable: it takes attention
+# from O(L^2) to O(L*2048), and Shared layers also stop needing an index-k cache,
+# which is ~4 GB/card at half-a-million tokens.
+#
+# The default is still dense MLA, because the dense path is the one this box has
+# years of tuning behind and NSA has not yet been exercised against the top-K
+# substitution routing. Set DISABLE_NSA=0 for long context.
 DISABLE_NSA=${DISABLE_NSA:-1}
 MODEL_OVERRIDE_FLAG=""
 if [ "$DISABLE_NSA" = "1" ]; then

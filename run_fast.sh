@@ -44,6 +44,15 @@ cd "$(dirname "$0")"
 source "$(dirname "$0")/config.sh"
 mkdir -p "$RUNTIME_DIR"
 
+# The hardware profile emits ATTENTION_BACKEND=flashmla, and the profile loop
+# below fills in anything the caller left unset. That silently beats
+# run_server_int4.sh's `${ATTENTION_BACKEND:-nsa}`, so asking for DISABLE_NSA=0
+# would quietly still run dense MLA. Claim the variable first so the profile
+# cannot win the tie.
+if [ "${DISABLE_NSA:-1}" = "0" ]; then
+  export ATTENTION_BACKEND="${ATTENTION_BACKEND:-nsa}"
+fi
+
 if [ "${AUTO_PROFILE:-1}" = "1" ]; then
   while IFS='=' read -r key value; do
     [ -n "$key" ] || continue
