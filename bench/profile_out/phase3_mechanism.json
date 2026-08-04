@@ -1,0 +1,36 @@
+{
+ "A": {
+  "mechanism": "A: UVA gather kernel in-graph",
+  "correct_after_index_change": true,
+  "k": 4,
+  "ms_median": 0.787468000453373,
+  "ms_per_expert": 0.19686700011334324,
+  "gbs": 51.66525620923818,
+  "window_experts": 48,
+  "window_gb": 0.488216832
+ },
+ "B": {
+  "mechanism": "B: host staging (8 threads) + captured H2D",
+  "k": 4,
+  "host_stage_ms": 1.0823274997164845,
+  "h2d_ms": 1.4327870003398857,
+  "ms_median": 2.51511450005637,
+  "ms_per_expert": 0.6287786250140925,
+  "gbs": 16.17610172383331
+ },
+ "register": {
+  "registered": true,
+  "correct": true,
+  "gb_registered": 3.997275312,
+  "register_s": 0.5005035200010752,
+  "register_gbs": 7.986507891076196,
+  "ms_median": 0.7915129999673809,
+  "ms_per_expert": 0.19787824999184522,
+  "gbs": 51.40122272366551
+ },
+ "repack": {
+  "op": "GPU repack (worst-case full random permutation of one expert)",
+  "ms_median": 0.03744999958144035,
+  "note": "a real interleave is far more regular than a random gather, so this is an upper bound"
+ }
+}

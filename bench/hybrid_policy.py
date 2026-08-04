@@ -96,32 +96,51 @@ def predict_step(c: Constants, n_layers: int, step_ms: float) -> dict:
     """Turn the per-layer decision into a predicted step time and speedup."""
     base = cost_at(c, 0)
     best = choose_k(c)
-    saved = (base.layer_ms - best.layer_ms) * n_layers
-    new_step = step_ms - saved
+    path_ms = base.layer_ms * n_layers          # what the CPU experts cost now
+    rest_ms = step_ms - path_ms                 # attention, dense trunk, MTP, launch
+    # A step cannot be shorter than its own expert path. If it is, the caller
+    # paired a per-layer pole with a step time from a different configuration,
+    # and the honest response is to say so -- the alternative is reporting a
+    # 1e11x speedup off inconsistent inputs.
+    consistent = rest_ms >= 0
+    new_step = max(rest_ms, 0.0) + best.layer_ms * n_layers
     return {
         "k": best.k,
         "layer_ms_before": base.layer_ms,
         "layer_ms_after": best.layer_ms,
-        "saved_ms_per_step": saved,
+        "saved_ms_per_step": (base.layer_ms - best.layer_ms) * n_layers,
         "step_ms_before": step_ms,
         "step_ms_after": new_step,
         "speedup": step_ms / new_step if new_step > 0 else float("inf"),
         "bound_by": "link" if best.link_ms >= best.cpu_ms else "cpu",
+        "inputs_consistent": consistent,
     }
 
 
-def break_even_cpu_ms_per_layer(c: Constants) -> float:
+def break_even_cpu_ms_per_layer(c: Constants, hi: float = 1e4) -> float:
     """Least CPU work a layer must have before streaming one expert can pay.
 
-    Streaming is worth starting only when removing `reuse` units of CPU work
-    saves more than one expert's transfer costs. Below this the answer is k=0
-    no matter how the rest is tuned -- which is the situation at safe2 on this
-    box, and the number to check first on any new machine.
+    Derived by bisection on `choose_k` itself rather than by a second closed
+    form. A parallel derivation is how the two drift apart: the obvious formula
+    ("one transfer must save more CPU time than it costs") ignores that CPU and
+    link OVERLAP, so it demanded 2.85 ms/layer on this box while the optimizer
+    was correctly streaming at 1.26. Whatever the model becomes, this stays
+    consistent with the decision the runtime actually makes.
+
+    Returns inf when no amount of CPU work makes streaming worthwhile (a link
+    so slow that one transfer costs more than the work it can ever displace).
     """
-    gb = c.bytes_per_expert_gb
-    one_transfer = gb / c.link_gbs * 1000.0 + gb * c.contention_ms_per_gb + c.gpu_ms_per_expert
-    # Removing k=1 leaves (U - reuse) units; it pays when the old pole exceeds
-    # the new max(cpu, link) + extra.
-    if c.reuse <= 0 or c.units_per_layer <= 0:
+    from dataclasses import replace
+
+    if c.link_gbs <= 0 or c.distinct_per_layer <= 0 or c.units_per_layer <= 0:
         return float("inf")
-    return one_transfer * c.units_per_layer / c.reuse
+    if choose_k(replace(c, cpu_ms_per_layer=hi)).k == 0:
+        return float("inf")
+    lo = 0.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if choose_k(replace(c, cpu_ms_per_layer=mid)).k > 0:
+            hi = mid
+        else:
+            lo = mid
+    return hi

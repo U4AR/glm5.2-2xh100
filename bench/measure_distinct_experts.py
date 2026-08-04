@@ -96,9 +96,53 @@ def analyse(dump_path: Path, window: int, tiers: list[int]) -> dict:
     return out
 
 
+def window_coverage(dump_path: Path, tier: int, sizes: list[int]) -> dict:
+    """How big must the PINNED window be, and how often does it hold the expert?
+
+    The in-graph gather can only read page-locked host memory, and kt's
+    non-resident store is far too large to register (152 experts x 75 layers x
+    19.46 MB = 222 GB here). So streaming needs a window: the W hottest
+    non-resident experts per layer, pinned, refreshed in the background. An
+    expert outside the window simply takes the existing CPU path, so coverage is
+    not a correctness question -- it is the fraction of the predicted speedup
+    that survives.
+    """
+    records = torch.load(dump_path, map_location="cpu", weights_only=False)
+    masks = torch.load(dump_path.with_suffix(".masks.pt"), map_location="cpu",
+                       weights_only=False)
+    by_layer: dict[int, list[torch.Tensor]] = {}
+    for rec in records:
+        layer, ids = rec[0], rec[1]
+        if ids.dim() == 2:
+            by_layer.setdefault(int(layer), []).append(ids.long())
+
+    out = {}
+    for W in sizes:
+        hits = total = 0
+        for layer, chunks in by_layer.items():
+            mask = masks.get(layer)
+            if mask is None:
+                continue
+            resident = mask.bool()
+            ids = torch.cat(chunks, dim=0)[:, :tier]
+            sel = ids[~resident[ids]]
+            if sel.numel() == 0:
+                continue
+            # Rank non-resident experts by demand; the window keeps the top W.
+            counts = torch.bincount(sel, minlength=resident.numel())
+            window = set(torch.topk(counts, min(W, int((counts > 0).sum()))).indices.tolist())
+            hits += sum(int(counts[e]) for e in window)
+            total += int(counts.sum())
+        gb = W * 75 * 9.7 / 1024.0 * 2  # both cards, TP-sharded halves
+        out[W] = {"coverage": hits / total if total else 0.0, "pinned_gb": gb}
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dump", default="bench/profile_out/routing/phase2D.pt")
+    ap.add_argument("--window-sizes", default="8,16,32,64,128",
+                    help="pinned experts per layer to evaluate")
     ap.add_argument("--window", type=int, default=4,
                     help="tokens per step (MTP draft tokens)")
     ap.add_argument("--tiers", default="2,4,6,8")
@@ -119,9 +163,17 @@ def main() -> int:
 
     print("\nreuse is the multiplier streaming gets for free: one transfer, "
           "`reuse` tokens of CPU work removed.")
+
+    sizes = [int(x) for x in args.window_sizes.split(",") if x.strip()]
+    cov = window_coverage(Path(args.dump), max(tiers), sizes)
+    print(f"\npinned window needed to feed the gather (tier {max(tiers)}):")
+    print(f"{'experts/layer':>14} {'pinned RAM':>12} {'demand covered':>15}")
+    for W, c in sorted(cov.items()):
+        print(f"{W:>14} {c['pinned_gb']:>10.1f} GB {c['coverage'] * 100:>14.1f}%")
     Path(args.out).write_text(json.dumps(
         {"window": args.window, "dump": args.dump,
-         "per_tier": {str(k): v for k, v in res.items()}}, indent=1))
+         "per_tier": {str(k): v for k, v in res.items()},
+         "pinned_window": {str(k): v for k, v in cov.items()}}, indent=1))
     print(f"wrote {args.out}")
     return 0
 

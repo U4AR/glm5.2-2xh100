@@ -120,6 +120,8 @@ def main() -> int:
                     help="output of bench/measure_distinct_experts.py")
     ap.add_argument("--contention", default="bench/profile_out/phase1b_safe_qd1.json",
                     help="output of bench/pcie_contention.py at queue depth 1")
+    ap.add_argument("--mechanism", default="bench/profile_out/phase3_mechanism.json",
+                    help="output of bench/stream_mechanism_spike.py")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
@@ -165,9 +167,23 @@ def main() -> int:
             "  .venv/bin/python bench/measure_distinct_experts.py")
     dj = json.loads(dpath.read_text())["per_tier"]
 
+    # The chosen mechanism's own costs, measured rather than assumed: the
+    # in-graph gather achieves slightly less than a raw DMA, and the streamed
+    # bytes still need a GPU-side repack into the cutlass layout.
+    gpu_ms_per_expert, mech_note = 0.0, "not measured"
+    mpath = Path(args.mechanism)
+    if mpath.is_file():
+        mj = json.loads(mpath.read_text())
+        gpu_ms_per_expert = float(mj.get("repack", {}).get("ms_median", 0.0))
+        a = mj.get("A") or {}
+        if a.get("gbs"):
+            link_gbs = min(link_gbs, float(a["gbs"]))
+            mech_note = (f"gather {a['ms_per_expert']:.3f} ms/expert, "
+                         f"repack {gpu_ms_per_expert:.3f} ms/expert")
+
     bytes_gb = args.expert_mb / 1024.0
     print(f"\nlink {link_gbs:.1f} GB/s per card, contention {contention:.2f} ms/GB, "
-          f"expert {args.expert_mb:.1f} MB = {bytes_gb * 1000:.1f} MB")
+          f"expert {args.expert_mb:.1f} MB; mechanism: {mech_note}")
 
     # ---- what it implies, per tier ----------------------------------------
     print(f"\n{'tier':>5} {'CPU ms/layer':>13} {'D':>6} {'reuse':>6} {'stream k':>9} "
@@ -184,6 +200,7 @@ def main() -> int:
             bytes_per_expert_gb=bytes_gb,
             link_gbs=link_gbs,
             contention_ms_per_gb=contention,
+            gpu_ms_per_expert=gpu_ms_per_expert,
         )
         p = predict_step(c, args.n_layers, curve[t]["ms_per_step"])
         be = break_even_cpu_ms_per_layer(c)
@@ -206,6 +223,8 @@ def main() -> int:
         "bytes_per_expert_per_card_gb": bytes_gb,
         "link_gbs_per_card": link_gbs,
         "contention_ms_per_gb": contention,
+        "gpu_ms_per_expert": gpu_ms_per_expert,
+        "mechanism": mech_note,
         "cpu_curve": {str(k): v for k, v in curve.items()},
         "floor_ms_per_step": floor["ms_per_step"],
         "routing": dj,
