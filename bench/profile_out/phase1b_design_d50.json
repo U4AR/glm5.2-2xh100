@@ -1,0 +1,175 @@
+{
+ "ts": 1785837509.4114218,
+ "args": {
+  "worker": false,
+  "gpu": 0,
+  "start_at": 0.0,
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "2",
+  "seconds": 10.0,
+  "chunk_mb": 9.7,
+  "round_mb": 9.7,
+  "buf_mb": 512.0,
+  "gpus": "0,1",
+  "load_tokens": 600,
+  "repeats": 3,
+  "duty": 0.5,
+  "spin_only": false,
+  "skip_idle": true,
+  "out": "bench/profile_out/phase1b_design_d50.json"
+ },
+ "numa": {
+  "0": 0,
+  "1": 1
+ },
+ "idle": [],
+ "loaded": {
+  "2": [
+   {
+    "h2d": [
+     {
+      "gpu": 0,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 21245,
+      "gbs_effective": 21.608447115724946,
+      "gbs_median": 50.13178201246692,
+      "gbs_mean": 50.3791431538784,
+      "gbs_min": 8.485783160110142,
+      "gbs_max": 54.47614750916991,
+      "bytes_moved_gb": 216.086867815,
+      "seconds": 10.000110913002572
+     },
+     {
+      "gpu": 1,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 21834,
+      "gbs_effective": 22.207334294363903,
+      "gbs_median": 52.26446174039406,
+      "gbs_mean": 52.18192154011177,
+      "gbs_min": 2.9027053635036864,
+      "gbs_max": 54.58431707789394,
+      "bytes_moved_gb": 222.077696958,
+      "seconds": 10.000196061999304
+     }
+    ],
+    "aggregate_gbs": 43.815781410088846,
+    "busy_gbs": 102.39624375286098,
+    "decode_ms_per_step": 73.46896799936076,
+    "decode_steps_in_window": 162,
+    "decode_covered_window": false
+   },
+   {
+    "h2d": [
+     {
+      "gpu": 0,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 21002,
+      "gbs_effective": 21.361182195687096,
+      "gbs_median": 49.7906637070698,
+      "gbs_mean": 50.10751795981212,
+      "gbs_min": 15.55041903014031,
+      "gbs_max": 54.48198294846932,
+      "bytes_moved_gb": 213.615269374,
+      "seconds": 10.000161387000844
+     },
+     {
+      "gpu": 1,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 22132,
+      "gbs_effective": 22.510713083707415,
+      "gbs_median": 52.67070384423602,
+      "gbs_mean": 52.54134507034577,
+      "gbs_min": 11.408341814794845,
+      "gbs_max": 54.60482941291711,
+      "bytes_moved_gb": 225.108710684,
+      "seconds": 10.000070182002673
+     }
+    ],
+    "aggregate_gbs": 43.87189527939451,
+    "busy_gbs": 102.46136755130581,
+    "decode_ms_per_step": 72.87316350084438,
+    "decode_steps_in_window": 162,
+    "decode_covered_window": false
+   },
+   {
+    "h2d": [
+     {
+      "gpu": 0,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 20731,
+      "gbs_effective": 21.08547530828245,
+      "gbs_median": 49.80504861563207,
+      "gbs_mean": 49.94229264130063,
+      "gbs_min": 1.2321299316595733,
+      "gbs_max": 54.52579340982912,
+      "bytes_moved_gb": 210.858877697,
+      "seconds": 10.000195614000404
+     },
+     {
+      "gpu": 1,
+      "chunk_mb": 9.7,
+      "buf_mb": 504.3999900817871,
+      "duty": 0.5,
+      "round_mb": 9.7,
+      "spin_only": false,
+      "windows": 22234,
+      "gbs_effective": 22.614285562172977,
+      "gbs_median": 52.67056790491545,
+      "gbs_mean": 52.5867665728077,
+      "gbs_min": 2.3987539716900383,
+      "gbs_max": 54.56645370755949,
+      "bytes_moved_gb": 226.146171758,
+      "seconds": 10.000146639002196
+     }
+    ],
+    "aggregate_gbs": 43.69976087045543,
+    "busy_gbs": 102.47561652054752,
+    "decode_ms_per_step": 72.33805100077007,
+    "decode_steps_in_window": 162,
+    "decode_covered_window": false
+   }
+  ]
+ },
+ "decode_alone": {
+  "2": [
+   66.70935699730762,
+   66.20003600255586,
+   66.55154199688695
+  ]
+ },
+ "summary": {
+  "2": {
+   "idle_aggregate_gbs": NaN,
+   "loaded_aggregate_gbs": 43.815781410088846,
+   "loaded_busy_gbs": 102.46136755130581,
+   "pcie_retained_pct": NaN,
+   "decode_ms_alone": 66.55154199688695,
+   "decode_ms_loaded": 72.87316350084438,
+   "decode_slowdown_pct": 9.49883551045765,
+   "gb_moved_per_step": 3.1929946026146623,
+   "decode_ms_per_gb": 1.9798409614538075,
+   "expert_transfer_ms": 0.18933965516599
+  }
+ }
+}

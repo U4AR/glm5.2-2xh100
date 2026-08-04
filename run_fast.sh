@@ -66,42 +66,37 @@ python3 "$REPO/scripts/hardware_profile.py" --check --weights-dir "$W4AFP8_MODEL
 KEEP=${KEEP:-2}                 # number of genuine top experts to keep
 MTP=${MTP:-1}                   # 1 = NEXTN/MTP speculative decode (depth-3); DEFAULT ON
 
-# Default routing is `safe`: the genuine top-K is ALWAYS kept, and a non-resident
-# member takes a CPU round-trip rather than being replaced. Only the tail (ranks
-# K..E-1) is substituted.
+# Routing is `safe`: the genuine top-K is ALWAYS kept, and a non-resident member
+# takes a CPU round-trip rather than being replaced. Only the tail (ranks K..E-1)
+# is substituted, so the tail never hits the CPU.
 #
-# `sub` additionally drops a genuine top-K expert that is not GPU-resident and
-# substitutes it too. That is faster -- the layer routes nothing to the CPU --
-# but the top-K identity is lost exactly on the novel prompts where the resident
-# set does not already hold the right experts. It must never be the default.
+# The `sub` mode is GONE. It additionally dropped a genuine top-K expert that was
+# not GPU-resident and substituted that too, so the layer routed nothing to the
+# CPU and hit top0-class speed -- while losing the router's actual choice exactly
+# on the novel prompts where the resident set does not already hold the right
+# experts. It was removed rather than merely un-defaulted because it kept coming
+# back as one: until 3e39132 (07-07) `sub` had no residency filter and therefore
+# *was* today's `safe`, so the ~40.5 tok/s headline measured 06-30 is a SAFE
+# number; the filter landed on 07-07 and silently redefined the default while the
+# old headline stayed attached to it. It then returned a second time through
+# hardware_profile.py, which selected sub2 at >=96 experts/layer. Every
+# comparison it touched flattered itself.
 #
-# History, because the headline numbers depend on it: until 3e39132 (07-07)
-# `sub` had no residency filter and therefore *was* today's `safe`. The ~40.5
-# tok/s figure was measured 06-30 under those semantics, i.e. it is a SAFE
-# number. The filter landed on 07-07 and silently redefined the default while
-# the old headline stayed attached to it. Explicit MODE= still wins.
-MODE=${MODE:-$([ "${RUNGLM_TOPK_MODE:-safe2}" = "sub2" ] && echo sub || echo safe)}
+# MODE=off still disables top-K routing entirely (plain baseline).
+MODE=${MODE:-safe}
+if [ "$MODE" = "sub" ]; then
+  echo "[run_fast] MODE=sub was removed; using safe routing instead." >&2
+  MODE=safe
+fi
 
 # --- write the top-K sentinel the model worker reads at import -------------
 if [ "$MODE" = "off" ]; then
   rm -f "$KT_TOPK_MODE_FILE" "$KT_SKIP_CPU_FILE"
   echo "[run_fast] substitution DISABLED (plain baseline)."
-elif [ "$MODE" = "safe" ]; then
+else
   printf 'safe%s' "$KEEP" > "$KT_TOPK_MODE_FILE"
   rm -f "$KT_SKIP_CPU_FILE"
   echo "[run_fast] SAFE routing: genuine top-$KEEP always kept; non-resident ones go to the CPU path (always correct, this host cannot hold enough experts for coherent substitution)."
-else
-  printf 'sub%s' "$KEEP" > "$KT_TOPK_MODE_FILE"
-  echo "[run_fast] top-K substitution ENABLED: keep genuine top-$KEEP, substitute the rest ($KT_TOPK_MODE_FILE=sub$KEEP)."
-  # The CPU-path skip (extra ~1.2x) is ONLY correct when every routed expert is
-  # GPU-resident, i.e. KEEP=0. Enabling it with KEEP>0 drops the kept CPU experts
-  # = the dominant signal = garbage, so we only arm it for KEEP=0.
-  if [ "$KEEP" = "0" ]; then
-    touch "$KT_SKIP_CPU_FILE"
-    echo "[run_fast] KEEP=0 -> CPU submit/sync skip ARMED ($KT_SKIP_CPU_FILE). Max speed, expect quality drift."
-  else
-    rm -f "$KT_SKIP_CPU_FILE"
-  fi
 fi
 
 # --- the winning INT4 recipe (see README) ----------------------------------

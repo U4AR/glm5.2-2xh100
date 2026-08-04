@@ -294,16 +294,16 @@ def choose_profile(rows: list[tuple[str, int]], adaptive: bool = False) -> dict[
     # (it self-falls-back to uniform if the ranking does not match the model).
     selected["PLACEMENT"] = "hotcore"
 
-    # Top-K routing mode -- THE portability trap. `sub2` keeps the genuine top-2
-    # and substitutes the other six slots with GPU-RESIDENT experts, so its
-    # output quality depends entirely on how good the resident set is:
-    #   validated coherent at 96-104 experts/layer (2xH100, ~90% top-2 coverage)
-    #   measured INCOHERENT at 24-30 experts/layer (2xL40, ~41% coverage)
-    # `safe2` instead sends a non-resident genuine expert to the CPU, so it is
-    # always correct and only ever slower. Anything below the validated-coherent
-    # point therefore defaults to safe2; the 30..96 range is untested, and the
-    # conservative choice there is the correct-by-construction one.
-    selected["RUNGLM_TOPK_MODE"] = "sub2" if gpu_experts >= 96 else "safe2"
+    # Top-K routing mode. `safe2` keeps the genuine top-2 always and sends a
+    # non-resident member to the CPU, so it is correct on every host.
+    #
+    # This used to select `sub2` at >=96 experts/layer, which substituted a
+    # non-resident genuine top-2 expert instead of computing it -- fast, but its
+    # output quality depended entirely on the resident set (validated coherent at
+    # 96-104 experts/layer on 2xH100, measured INCOHERENT at 24-30 on 2xL40). The
+    # mode has been removed outright; the selection is kept only so an existing
+    # profile still emits a valid value.
+    selected["RUNGLM_TOPK_MODE"] = "safe2"
 
     # The measured path remains AVX-512 VNNI. An explicitly allowed AVX2 host
     # must not inherit run_fast.sh's avx512_packed default or it will SIGILL.

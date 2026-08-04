@@ -1,0 +1,213 @@
+{
+ "ts": 1785840550.689871,
+ "floor_ms": 73.87621299858438,
+ "a_active_ms": 0.025512464601729852,
+ "a_unit_ms": 0.07209032534023375,
+ "budgets": {
+  "1": {
+   "gb_per_step": 1.1003505161830356,
+   "link_ms": 17.95025311880972,
+   "duty": 0.24297744010177788
+  },
+  "2": {
+   "gb_per_step": 2.4171061197916663,
+   "link_ms": 39.4307686752311,
+   "duty": 0.533741065963772
+  },
+  "4": {
+   "gb_per_step": 6.462956542968749,
+   "link_ms": 105.43159123929445,
+   "duty": 1.427138546494184
+  },
+  "6": {
+   "gb_per_step": 11.2648828125,
+   "link_ms": 183.76644066068513,
+   "duty": 2.487491348050102
+  },
+  "8": {
+   "gb_per_step": 17.563251953124997,
+   "link_ms": 286.51308243270796,
+   "duty": 3.878285997662037
+  }
+ },
+ "window_tier": 2,
+ "worst_abs_err_pct": 0.3560166877165988,
+ "rows": [
+  {
+   "tier": 0,
+   "ms_per_step": 73.87621299858438,
+   "accept": 3.5714285714285716,
+   "n_steps": 70,
+   "tok_per_s": 48.34341700077409,
+   "active_layer_calls_per_step": 0.0,
+   "cpu_units_per_step": 0.0,
+   "distinct_per_step": 0.0,
+   "reuse": 0.0,
+   "routing_fidelity": 0.0,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.0,
+   "layer_calls_per_step": 76.171875,
+   "persistence": 0.0,
+   "counter_steps": 64,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.6435355392156863,
+    "2": 0.5466452205882353,
+    "4": 0.4391084558823529,
+    "8": 0.3043045343137255
+   }
+  },
+  {
+   "tier": 1,
+   "ms_per_step": 79.84648599995126,
+   "accept": 2.2522522522522523,
+   "n_steps": 111,
+   "tok_per_s": 28.207280809497703,
+   "active_layer_calls_per_step": 40.88392857142857,
+   "cpu_units_per_step": 72.0625,
+   "distinct_per_step": 58.080357142857146,
+   "reuse": 1.2407378939277478,
+   "routing_fidelity": 0.24726513567003597,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.7781168384879725,
+   "layer_calls_per_step": 75.66964285714286,
+   "persistence": 0.2870099923136049,
+   "counter_steps": 112,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.7692577030812325,
+    "2": 0.695859593837535,
+    "4": 0.6006506769374417,
+    "8": 0.4724702380952381
+   }
+  },
+  {
+   "tier": 2,
+   "ms_per_step": 87.04196649887308,
+   "accept": 2.808988764044944,
+   "n_steps": 89,
+   "tok_per_s": 32.27166017763755,
+   "active_layer_calls_per_step": 61.114583333333336,
+   "cpu_units_per_step": 164.88541666666666,
+   "distinct_per_step": 127.58333333333333,
+   "reuse": 1.2923742651861527,
+   "routing_fidelity": 0.4104981174302875,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.7493428345209818,
+   "layer_calls_per_step": 75.78125,
+   "persistence": 0.27073807968647945,
+   "counter_steps": 96,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.7523828976034859,
+    "2": 0.6739174836601307,
+    "4": 0.5727634803921569,
+    "8": 0.43368736383442263
+   }
+  },
+  {
+   "tier": 4,
+   "ms_per_step": 108.9188469995861,
+   "accept": 3.1645569620253164,
+   "n_steps": 79,
+   "tok_per_s": 29.054264245354545,
+   "active_layer_calls_per_step": 74.925,
+   "cpu_units_per_step": 456.5,
+   "distinct_per_step": 341.1375,
+   "reuse": 1.3381700927045546,
+   "routing_fidelity": 0.6556480941986169,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.6590102707749766,
+   "layer_calls_per_step": 75.9375,
+   "persistence": 0.29214759444505517,
+   "counter_steps": 80,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.756454248366013,
+    "2": 0.6735089869281046,
+    "4": 0.5726919934640523,
+    "8": 0.4332720588235294
+   }
+  },
+  {
+   "tier": 6,
+   "ms_per_step": 134.66995650014724,
+   "accept": 3.0120481927710845,
+   "n_steps": 83,
+   "tok_per_s": 22.366148107932233,
+   "active_layer_calls_per_step": 75.9375,
+   "cpu_units_per_step": 809.775,
+   "distinct_per_step": 594.6,
+   "reuse": 1.3618819374369322,
+   "routing_fidelity": 0.8469757313732785,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.596750700280112,
+   "layer_calls_per_step": 75.9375,
+   "persistence": 0.3207828792465523,
+   "counter_steps": 80,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.7592320261437908,
+    "2": 0.6824142156862745,
+    "4": 0.5804942810457516,
+    "8": 0.44109477124183005
+   }
+  },
+  {
+   "tier": 8,
+   "ms_per_step": 168.46236999845132,
+   "accept": 3.048780487804878,
+   "n_steps": 82,
+   "tok_per_s": 18.097694386187882,
+   "active_layer_calls_per_step": 75.9375,
+   "cpu_units_per_step": 1289.7375,
+   "distinct_per_step": 927.05,
+   "reuse": 1.3912275497545978,
+   "routing_fidelity": 1.0,
+   "unreachable_per_step": 0.0,
+   "resident_frac_of_kept": 0.5183053221288515,
+   "layer_calls_per_step": 75.9375,
+   "persistence": 0.3358907286554123,
+   "counter_steps": 80,
+   "n_layers": 75,
+   "lookahead_accuracy": {
+    "0": 1.0,
+    "1": 0.7607638888888889,
+    "2": 0.6839256535947712,
+    "4": 0.577532679738562,
+    "8": 0.44078839869281045
+   }
+  }
+ ],
+ "windows": {
+  "4": {
+   "demand_covered": 0.5121612230715775,
+   "layers_fully_covered": 0.0,
+   "pinned_gb": 5.68359375,
+   "n_layers": 75
+  },
+  "8": {
+   "demand_covered": 0.6668140754311707,
+   "layers_fully_covered": 0.0,
+   "pinned_gb": 11.3671875,
+   "n_layers": 75
+  },
+  "16": {
+   "demand_covered": 0.8195716722471413,
+   "layers_fully_covered": 0.02666666666666667,
+   "pinned_gb": 22.734375,
+   "n_layers": 75
+  },
+  "32": {
+   "demand_covered": 0.9464906184850591,
+   "layers_fully_covered": 0.25333333333333335,
+   "pinned_gb": 45.46875,
+   "n_layers": 75
+  }
+ }
+}
