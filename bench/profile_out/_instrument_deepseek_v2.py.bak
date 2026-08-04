@@ -748,6 +748,12 @@ def _kt_pred_measure(moe, hidden_states, router_logits, topk_output,
         return
     n_exp = router_logits.shape[1]
     allow_vec = mask.to(torch.bool)
+    # A predicted expert that is ALREADY GPU-resident costs nothing to "fetch",
+    # so the transfer columns must be intersected with this before they mean
+    # bytes. Counting |predicted| instead reported 7.31 experts per layer-call
+    # against 1.98 actually needed, which is a ~3.7x overstatement of the link
+    # cost and would have priced every superset out on sight.
+    nonres = ~allow_vec
     need = torch.zeros(n_exp, device=w.device, dtype=torch.float32)
     need.index_add_(0, true_ids.reshape(-1),
                     (~allow_vec[true_ids]).float().reshape(-1))
@@ -785,8 +791,9 @@ def _kt_pred_measure(moe, hidden_states, router_logits, topk_output,
             bfull = ((bcov >= n_need) & (n_need > 0)).to(torch.float32)
             stats[slot, pi].add_(
                 torch.stack([hit, tot, full, active, n_need, cov,
-                             bfull, bcov, bl.sum().to(torch.float32),
-                             psb.sum().to(torch.float32)]).to(stats.dtype)
+                             bfull, bcov,
+                             (bl & nonres).sum().to(torch.float32),
+                             (psb & nonres).sum().to(torch.float32)]).to(stats.dtype)
             )
     prev.copy_(need_b.to(prev.dtype))
 

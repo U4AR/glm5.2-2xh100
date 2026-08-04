@@ -188,6 +188,9 @@ def delta(before: dict, after: dict) -> dict:
                     # payoff is convex in.
                     "distinct_need": need / active if active else 0.0,
                     "distinct_cov": cov / need if need else 0.0,
+                    # NON-RESIDENT predicted experts only: these are the bytes
+                    # that actually cross the link. Compare against
+                    # `distinct_need` -- the ratio is what a superset costs.
                     "fetch_per_call": pset / active if active else 0.0,
                     "blend_full_cov": bfull / active if active else 0.0,
                     "blend_distinct_cov": bcov / need if need else 0.0,

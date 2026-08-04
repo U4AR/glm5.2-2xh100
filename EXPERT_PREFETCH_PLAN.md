@@ -410,8 +410,59 @@ The per-expert miss rate is again **flat across tiers** (recall 77.0 / 77.1 /
 77.1% at top2 / top4 / top8 for depth 1, P=2), confirming the portability
 signal: drift is a property of the residual stream, not of the configuration.
 
-**Open, and the reason this is not yet priced: the instrument counts the WRONG
-fetch set.** `fetch_per_call` is `|predicted|` -- 7.31 experts at P=2 -- but
+### Stage D3 -- the corrected fetch set closes the superset question
+
+The fetch columns now intersect the predicted set with the residency mask, so
+they count experts that actually cross the link. Sanity check: the depth-0 cell
+reports fetch == `distinct_need` == 1.99 exactly, as it must.
+
+Measured, top2, depth 1 (`bench/profile_out/placement_model_fetchfix.json`):
+
+| cell | recall | layer coverage | experts FETCHED | vs exact |
+|---|---:|---:|---:|---:|
+| exact (depth 0) | 100% | 100% | 1.99 | 1.00x |
+| P=2 | 76.4% | 60.6% | **2.30** | 1.16x |
+| P=3 | 85.3% | 78.1% | **3.83** | 1.92x |
+| P=4 | 88.8% | 84.7% | **5.55** | 2.79x |
+| P=2 + persistence blend | -- | 66.7% | **3.74** | 1.88x |
+
+The 27%-residency scaling used to estimate these in Stage D2 was optimistic by
+32% at P=3 and 46% at P=4 -- which is exactly why it was not priced on.
+
+Priced against the production boot (67.42 ms/step, floor 53.59, 62 active
+layer-calls, 0.223 ms of CPU per active call = 0.040 fixed + 0.183 marginal,
+9.7 MB/expert/card aggregated over both cards, 61.3 GB/s, contention 0.10
+ms/GB when the layer is fully covered and 1.98 ms/GB when it is not):
+
+| cell | GB/step | link ms | **link duty** | ms/step | tok/s | speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| exact (unreachable) | 2.34 | 38.1 | 71% | 53.82 | 51.61 | 1.253x |
+| P=2 | 2.70 | 44.1 | **76%** | 57.92 | 47.97 | **1.164x** |
+| P=3 | 4.50 | 73.4 | **129%** | 56.75 | 48.95 | 1.188x |
+| P=4 | 6.52 | 106.3 | **188%** | 56.65 | 49.04 | 1.190x |
+| P=2 + blend | 4.39 | 71.6 | **123%** | 58.41 | 47.56 | 1.154x |
+
+**The superset is priced out, twice over.** It fails the link outright -- P=3
+needs 129% of the step and P=4 needs 188%, so neither is schedulable at any
+policy. And even with an infinite link it would only move 1.164x -> 1.190x,
+because the extra bytes are paid on EVERY active layer-call while the extra
+coverage only helps the layers it converts. The persistence blend fails the same
+way: +6 points of coverage for +63% bytes is a net loss (1.154x).
+
+**So Stage D2's reopening of "more bandwidth does not help" closes again.** The
+original claim was right; it just had not been measured. The operating point is
+**P=2, depth 1, no blend: ~1.164x (41.2 -> 48.0 tok/s), at 76% link duty**,
+against a 1.258x ceiling. That is the target the Stage B/C build must be judged
+against, and 76% duty is close enough to saturation that the A2 head-of-line
+regime is a live risk in the partially-covered layers.
+
+One policy idea this does NOT rule out, because it costs bytes only where they
+pay: fetch **selectively** rather than on every active layer-call -- skip the
+layers whose prediction looks unlikely to cover, spending the freed link budget
+on a superset only where it converts a layer. `bench/hybrid_policy.py` already
+sweeps k per layer and is the right home for it. Unmeasured.
+
+**Superseded note (Stage D2): the instrument counted the WRONG fetch set.** `fetch_per_call` is `|predicted|` -- 7.31 experts at P=2 -- but
 most of those are already GPU-resident and cost nothing to "fetch". The bytes
 that actually move are `|predicted AND non-resident|`. Scaling by the observed
 non-resident fraction (1.98 needed of ~7.36 distinct routed, 27%) estimates
@@ -448,13 +499,12 @@ better lookahead (predict from a later point in layer L, or blend the depth-1
 prediction with persistence), or fewer experts that have to hit at once (a
 lower tier, or a larger resident set).
 
-> **AMENDED by Stage D2.** "More bandwidth does not help" was stated before
-> whole-layer coverage was measured directly, and it is now the live question
-> rather than a settled one. Recall CAN be bought with bandwidth -- a predicted
-> superset takes whole-layer coverage from 60.8% to 84.8% -- so the two
-> constraints trade against each other and the optimum is wherever the link
-> saturates. Pricing that trade requires the corrected fetch-set measurement
-> (predicted AND non-resident), which is the next thing to do.
+> **AMENDED by Stage D2, then RESTORED by Stage D3.** D2 reopened this: a
+> predicted superset takes whole-layer coverage from 60.8% to 84.8%, so recall
+> looked buyable with bandwidth. D3 measured the bytes properly and closed it
+> again -- P=3 needs 129% of the step's link budget and P=4 needs 188%, and even
+> at infinite bandwidth the superset is only worth 1.164x -> 1.190x. The
+> statement stands, now on measurement rather than assumption.
 
 ---
 
@@ -466,20 +516,18 @@ Stage D2 (superset / blend / direct whole-layer coverage).
 
 **Next session, in order.**
 
-1. **Fix `PRED_SET` / `PRED_BLEND_SET` to intersect with `~allow_vec`** in
-   `_kt_pred_measure` (`deepseek_v2.py`) so the fetch column counts bytes that
-   actually move. One-line change; then re-run only `--tiers 0,2`, which is
-   ~10 minutes, not the full ladder.
-2. **Price P = 2,3,4 against the link** with the corrected bytes and pick the
-   operating point. This is the decision that sets the Stage B/C target: if P=3
-   fits, whole-layer coverage is ~77.6% rather than 60.8% and the payoff moves
-   well above the 1.14x that currently justifies the build.
-3. **Measure `KT_PRED_POINT=post`** (already implemented, never run): predict
+1. ~~Fix the fetch columns to intersect with `~allow_vec`~~ -- **DONE**, and
+   ~~price P = 2,3,4 against the link~~ -- **DONE, see Stage D3.** The operating
+   point is **P=2, depth 1, no blend, ~1.164x**; the superset is priced out.
+2. **Measure `KT_PRED_POINT=post`** (already implemented, never run): predict
    from layer L's OUTPUT residual stream instead of its MoE input. Higher recall
    -- the only drift left is layer L+1's attention -- but the transfer's shadow
    shrinks to that attention block. Two numbers, one tradeoff, one boot.
-4. **Then, and only then, Stage B/C.** The build has not started and should not
-   until the operating point is chosen.
+3. **Selective fetching** -- the one lever D3 did not rule out. Spend link
+   budget only where it converts a layer, instead of on every active layer-call.
+   `bench/hybrid_policy.py` already sweeps k per layer.
+4. **Then, and only then, Stage B/C**, judged against the 1.164x operating
+   point. The build has not started.
 
 **Loose ends, all still open.** `bench/measure_distinct_experts.py` still
 carries both defects that produced the wrong constants (prefill-only dump,
