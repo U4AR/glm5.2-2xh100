@@ -155,20 +155,45 @@ def delta(before: dict, after: dict) -> dict:
     counts = {lid: c - before["counts"].get(lid, torch.zeros_like(c))
               for lid, c in after["counts"].items()}
     pred = {}
-    depths = after["pred"].get("depths") if after["pred"] else None
+    meta = after["pred"] or {}
+    depths = meta.get("depths")
     if depths:
+        p_sizes = meta.get("p_sizes", [2])
         acc = {}
         for lid, st in after["pred"].items():
-            if lid == "depths":
+            if not isinstance(lid, int):
                 continue
             prev = before["pred"].get(lid)
             d = st - prev if prev is not None else st
+            if d.dim() == 2:                       # legacy (slot, 2) layout
+                d = d[:, None, :]
             for slot, n in enumerate(depths):
-                h, t = float(d[slot, 0]), float(d[slot, 1])
-                a = acc.setdefault(n, [0.0, 0.0])
-                a[0] += h
-                a[1] += t
-        pred = {n: (h / t if t else 0.0) for n, (h, t) in acc.items()}
+                for pi, P in enumerate(p_sizes):
+                    a = acc.setdefault((n, P), [0.0] * d.shape[-1])
+                    for c in range(d.shape[-1]):
+                        a[c] += float(d[slot, pi, c])
+        pred = {"point": meta.get("point", "pre"), "cells": {}}
+        for (n, P), a in acc.items():
+            hit, tot, full, active = a[0], a[1], a[2], a[3]
+            cell = {"recall": hit / tot if tot else 0.0,
+                    "layer_full_cov": full / active if active else 0.0,
+                    "active_layer_calls": active / steps}
+            if len(a) >= 10:
+                need, cov = a[4], a[5]
+                bfull, bcov, bset, pset = a[6], a[7], a[8], a[9]
+                cell.update({
+                    # Distinct CPU-bound experts per active layer-call, and the
+                    # fraction of them the prefetch would have had ready. This
+                    # is the partial-credit term; layer_full_cov is the one the
+                    # payoff is convex in.
+                    "distinct_need": need / active if active else 0.0,
+                    "distinct_cov": cov / need if need else 0.0,
+                    "fetch_per_call": pset / active if active else 0.0,
+                    "blend_full_cov": bfull / active if active else 0.0,
+                    "blend_distinct_cov": bcov / need if need else 0.0,
+                    "blend_fetch_per_call": bset / active if active else 0.0,
+                })
+            pred["cells"][f"d{n}p{P}"] = cell
     return {"steps": steps, "total": after["total"] - before["total"],
             "n_layers": after["n_layers"], "counts": counts, "pred": pred}
 
@@ -312,7 +337,7 @@ def measure_tier(url: str, model: str, tier: int, tokens: int,
     c = delta(before, after)
     row = {"tier": tier, **r, **features(c), "counter_steps": c["steps"],
            "n_layers": c["n_layers"],
-           "lookahead_accuracy": {str(k): v for k, v in c["pred"].items()}}
+           "lookahead": c["pred"]}
     return row, c["counts"]
 
 
@@ -412,15 +437,30 @@ def main() -> int:
         for r in rows:
             if r["distinct_per_step"] > 0:
                 print(f"{r['tier']:>5} {r['persistence']*100:>11.1f}%")
-        la = next((r["lookahead_accuracy"] for r in rows
-                   if r.get("lookahead_accuracy")), None)
-        if la:
-            print("\nlookahead prediction: run layer L+n's router early, on "
-                  "layer L's hidden state")
-            print(f"{'depth n':>8} {'top-K recall':>13}")
-            for n in sorted(la, key=int):
-                tag = "  (scoring-path check, no lead time)" if n == "0" else ""
-                print(f"{n:>8} {la[n]*100:>12.1f}%{tag}")
+        # Per TIER, never "the first row that has data" -- top0 emits degenerate
+        # text, so its hidden-state trajectory is not representative of anything
+        # shippable, and reading it as "the" number once cost a wrong headline.
+        for r in rows:
+            la = r.get("lookahead") or {}
+            cells = la.get("cells") or {}
+            if not cells:
+                continue
+            print(f"\n[top{r['tier']}] lookahead, prediction point "
+                  f"'{la.get('point','pre')}': run layer L+n's router early"
+                  + ("   <-- DEGENERATE ROUTING, do not read" if r["tier"] == 0
+                     else ""))
+            print(f"{'cell':>8} {'recall':>8} {'layerCov':>9} {'blendCov':>9} "
+                  f"{'need':>6} {'cov':>7} {'fetch':>7} {'bFetch':>7}")
+            for key in sorted(cells, key=lambda s: (int(s.split("p")[0][1:]),
+                                                    int(s.split("p")[1]))):
+                c = cells[key]
+                print(f"{key:>8} {c['recall']*100:>7.1f}% "
+                      f"{c['layer_full_cov']*100:>8.1f}% "
+                      f"{c.get('blend_full_cov',0)*100:>8.1f}% "
+                      f"{c.get('distinct_need',0):>6.2f} "
+                      f"{c.get('distinct_cov',0)*100:>6.1f}% "
+                      f"{c.get('fetch_per_call',0):>7.2f} "
+                      f"{c.get('blend_fetch_per_call',0):>7.2f}")
         budgets = {}
         for r in rows:
             if r["distinct_per_step"] > 0:

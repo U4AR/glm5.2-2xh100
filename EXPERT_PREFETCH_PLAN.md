@@ -369,6 +369,67 @@ Raising it requires better recall, not more bandwidth. Transferring a predicted
 superset does not help here: the link is already at ~66% duty at exact coverage,
 and 3 experts/layer would need 4.26 GB/step = 69 ms against a 59.5 ms step.
 
+### Stage D2 -- superset, blend, and DIRECTLY measured whole-layer coverage
+
+The section above infers whole-layer coverage as `recall ** D`, which assumes a
+layer's misses are independent. They are not. The instrument now measures the
+quantity itself: per active layer-call, was EVERY non-resident expert that layer
+needed present in the predicted set. It also scores a predicted SUPERSET (fetch
+the predicted top-P for P > K) and a BLEND with persistence (union the
+prediction with what this same layer needed last step).
+
+Measured 2026-08-04, decode, safe mode, GPU_EXPERTS=104, prediction point
+`pre` (layer L's MoE input), scored against the genuine top-2, depth-0 self
+check exactly 100.0% in every cell
+(`bench/profile_out/placement_model_pred.json`):
+
+| tier | cell | recall | layer coverage | blend coverage |
+|---|---|---:|---:|---:|
+| top2 | depth 1, P=2 | 77.0% | **60.8%** | 67.4% |
+| top2 | depth 1, P=3 | 85.8% | **77.6%** | 80.9% |
+| top2 | depth 1, P=4 | 89.1% | **84.8%** | 86.9% |
+| top2 | depth 2, P=2 | 69.1% | 50.9% | 58.8% |
+| top2 | depth 2, P=3 | 78.7% | 66.7% | 71.8% |
+| top2 | depth 2, P=4 | 82.7% | 74.8% | 78.5% |
+
+Three findings, all of which move the number:
+
+1. **The independence approximation was pessimistic.** Directly measured
+   whole-layer coverage at depth 1 / P=2 is **60.8%**, not the `0.752**2.09` =
+   55% the section above assumed. A layer's misses are positively correlated --
+   which makes sense, since a layer that has drifted has drifted for all of its
+   experts at once.
+2. **A superset is a real lever, and it is bigger than the blend.** Going from
+   P=2 to P=4 takes whole-layer coverage from 60.8% to **84.8%**. Nothing else
+   measured moves it that far.
+3. **The blend with persistence is worth ~7 points on its own** (60.8 -> 67.4)
+   and is nearly free in compute, but it is dominated by P=3 at a similar byte
+   cost. It stops mattering once P >= 3 (84.8 -> 86.9).
+
+The per-expert miss rate is again **flat across tiers** (recall 77.0 / 77.1 /
+77.1% at top2 / top4 / top8 for depth 1, P=2), confirming the portability
+signal: drift is a property of the residual stream, not of the configuration.
+
+**Open, and the reason this is not yet priced: the instrument counts the WRONG
+fetch set.** `fetch_per_call` is `|predicted|` -- 7.31 experts at P=2 -- but
+most of those are already GPU-resident and cost nothing to "fetch". The bytes
+that actually move are `|predicted AND non-resident|`. Scaling by the observed
+non-resident fraction (1.98 needed of ~7.36 distinct routed, 27%) estimates
+~2.0 / ~2.9 / ~3.8 experts actually transferred at P = 2 / 3 / 4, i.e. P=4
+costs ~1.9x the bytes of exact coverage. At top2 exact coverage is 2.52 GB/step
+= 41.2 ms at 61.3 GB/s against a 67.4 ms production step (61% duty), so P=4
+would need ~78 ms and does NOT fit, while P=3 at ~60 ms is marginal. **Fix the
+instrument to intersect with the residency mask before believing any of this**
+-- the 27% scaling assumes predicted-but-not-routed experts are resident at the
+same rate as routed ones, which is exactly the kind of assumption this plan has
+already been burned by twice.
+
+Note also that the instrumented boot's fitted floor is 109.35 ms, not 59.54:
+nine scoring cells per layer per step is ~50 ms of extra kernel launches. The
+ACCURACY figures are unaffected (they are ratios of counters), but that boot's
+`a_active` / `a_unit` are not a production cost model -- keep using
+`placement_model.json` for that.
+
 ## Honest summary
 
 Ceiling **~51.5 tok/s (1.23x)** at top2 if the CPU path were eliminated
@@ -386,3 +447,45 @@ what they were for.
 better lookahead (predict from a later point in layer L, or blend the depth-1
 prediction with persistence), or fewer experts that have to hit at once (a
 lower tier, or a larger resident set).
+
+> **AMENDED by Stage D2.** "More bandwidth does not help" was stated before
+> whole-layer coverage was measured directly, and it is now the live question
+> rather than a settled one. Recall CAN be bought with bandwidth -- a predicted
+> superset takes whole-layer coverage from 60.8% to 84.8% -- so the two
+> constraints trade against each other and the optimum is wherever the link
+> saturates. Pricing that trade requires the corrected fetch-set measurement
+> (predicted AND non-resident), which is the next thing to do.
+
+---
+
+## Where this stands, 2026-08-04 EOD
+
+**Done and trustworthy:** Stage 0 (instrument, retrodicts 1.25% on a second
+independent boot), Stage A2 (contention, passes), Stage D (recall by depth),
+Stage D2 (superset / blend / direct whole-layer coverage).
+
+**Next session, in order.**
+
+1. **Fix `PRED_SET` / `PRED_BLEND_SET` to intersect with `~allow_vec`** in
+   `_kt_pred_measure` (`deepseek_v2.py`) so the fetch column counts bytes that
+   actually move. One-line change; then re-run only `--tiers 0,2`, which is
+   ~10 minutes, not the full ladder.
+2. **Price P = 2,3,4 against the link** with the corrected bytes and pick the
+   operating point. This is the decision that sets the Stage B/C target: if P=3
+   fits, whole-layer coverage is ~77.6% rather than 60.8% and the payoff moves
+   well above the 1.14x that currently justifies the build.
+3. **Measure `KT_PRED_POINT=post`** (already implemented, never run): predict
+   from layer L's OUTPUT residual stream instead of its MoE input. Higher recall
+   -- the only drift left is layer L+1's attention -- but the transfer's shadow
+   shrinks to that attention block. Two numbers, one tradeoff, one boot.
+4. **Then, and only then, Stage B/C.** The build has not started and should not
+   until the operating point is chosen.
+
+**Loose ends, all still open.** `bench/measure_distinct_experts.py` still
+carries both defects that produced the wrong constants (prefill-only dump,
+positional `ids[:, :K]`) and should be deleted or rewired to the instrument;
+`bench/calibrate_hybrid.py` still sources `--distinct` from it, and
+`hybrid_profile.H100-VM1.json` / `hybrid_policy.py` / `test_hybrid_policy.py`
+still carry D=2.50 / U=3.60 / contention 1.21 ms/GB. The whole instrument lives
+in the vendored sglang tree under `.venv`, which is gitignored and therefore
+**not version controlled** -- a venv reinstall loses it.
