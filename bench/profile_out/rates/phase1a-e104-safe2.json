@@ -1,0 +1,62 @@
+{
+ "label": "phase1a-e104-safe2",
+ "ts": 1785829451.1863625,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2-top2",
+  "runs": 5,
+  "tokens": 400,
+  "warmup": 2,
+  "label": "phase1a-e104-safe2",
+  "out": "bench/profile_out/rates"
+ },
+ "runs": [
+  {
+   "ttft_s": 0.37053551399912976,
+   "decode_s": 9.55710726900179,
+   "completion_tokens": 400,
+   "chunks": 144,
+   "tok_per_s": 41.749034385555696,
+   "ms_per_token": 23.95264979699697,
+   "e2e_tok_per_s": 40.29153835842271
+  },
+  {
+   "ttft_s": 0.38294747899999493,
+   "decode_s": 9.490678374000709,
+   "completion_tokens": 400,
+   "chunks": 144,
+   "tok_per_s": 42.04125187647732,
+   "ms_per_token": 23.78616133834764,
+   "e2e_tok_per_s": 40.511966521238556
+  },
+  {
+   "ttft_s": 0.38364608399933786,
+   "decode_s": 9.555766715999198,
+   "completion_tokens": 400,
+   "chunks": 144,
+   "tok_per_s": 41.754891246136765,
+   "ms_per_token": 23.949290015035583,
+   "e2e_tok_per_s": 40.24382607391645
+  },
+  {
+   "ttft_s": 0.38426491700010956,
+   "decode_s": 9.491698097999688,
+   "completion_tokens": 400,
+   "chunks": 144,
+   "tok_per_s": 42.03673524804656,
+   "ms_per_token": 23.7887170375932,
+   "e2e_tok_per_s": 40.502379301387876
+  },
+  {
+   "ttft_s": 0.36911674399925687,
+   "decode_s": 9.464963274000183,
+   "completion_tokens": 400,
+   "chunks": 144,
+   "tok_per_s": 42.15547260453028,
+   "ms_per_token": 23.721712466165872,
+   "e2e_tok_per_s": 40.67487749417078
+  }
+ ],
+ "median_tok_per_s": 42.03673524804656,
+ "spread_pct": 0.9668643784449763
+}

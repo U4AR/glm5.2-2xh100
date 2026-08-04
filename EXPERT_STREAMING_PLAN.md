@@ -110,8 +110,11 @@ Composing with top-2 substitution caps the win. At tier 2 the CPU expert path is
 only 24 ms of an 86 ms step (28%), so the same formula yields ~+6-10% there. The
 larger prize is the other direction: **streaming makes full top-8 affordable**
 (≈22 tok/s vs top-2's 30.3), buying quality back instead of buying speed by
-dropping experts. sub2 stays the headline benchmark as chosen, but every phase
-reports safe8 alongside it, because that is where the mechanism actually pays.
+dropping experts. **`safe2` is the headline benchmark, never `sub2`** (2026-08-04
+direction, and [[glm52-sub2-never-default]]): `sub` drops a genuine top-K expert
+whenever it is not GPU-resident, so its speed comes from not doing what the router
+asked for. Every phase reports safe8 alongside safe2, because that is where the
+mechanism actually pays.
 
 ---
 
@@ -326,7 +329,7 @@ stage may change routing, expert weights, model precision, or expert-count polic
 ### Phase 1 — finish the streaming baseline
 
 - **1a. Re-verify the headline configs** so "exceeded" means something:
-  `GPU_EXPERTS=104` at sub2 (recorded 45.05) and safe8 (recorded ~17.5), via
+  `GPU_EXPERTS=104` at safe2 (recorded 30.5) and safe8 (recorded ~17.5), via
   `bench/decode_rate.py --runs 5`, results committed to `bench/profile_out/rates/`.
   Anything that fails to reproduce gets chased before design work continues.
 - **1b. Measure contention directly.** Run the H2D benchmark *while* the
@@ -338,9 +341,17 @@ we say so before building it.
 
 #### Phase 1 execution — 2026-08-04
 
-Boot: `GPU_EXPERTS=104`, RAWINT4 packed, TP2, MTP depth-3, dense MLA, sentinel
-`sub2`, `KT_CPU_EXPERT_OPTS=none`. Per-request tiers (`GLM5.2-topN`) select the
-routing live inside one CUDA graph, so every number below shares one boot.
+Two boots of `GPU_EXPERTS=104`, RAWINT4 packed, TP2, MTP depth-3, dense MLA,
+`KT_CPU_EXPERT_OPTS=none`. Per-request tiers (`GLM5.2-topN`) select routing live
+inside one CUDA graph, so every row within a boot is directly comparable.
+
+The measurement boot is **`safe`** (sentinel `safe2`). An earlier `sub2` boot was
+taken first and is retained only as a rejected control: per direction and
+[[glm52-sub2-never-default]], `sub` drops a genuine top-K expert whenever it is
+not GPU-resident, so it buys speed by not doing what the router asked. It also
+destroys the experiment — under `sub`, every tier below 8 routes **zero** experts
+to the CPU (top2 53.96 vs top0 54.17 ms/step), so the CPU cost curve a
+CPU/GPU-split experiment exists to measure does not exist in that boot.
 
 ##### 1a — the headline configs, re-verified
 
@@ -348,115 +359,123 @@ routing live inside one CUDA graph, so every number below shares one boot.
 
 | config | recorded | measured | spread | artifact |
 |---|---:|---:|---:|---|
-| e104 sub2 (`-top2`) | 45.05 | **43.61** | 0.4% | `rates/phase1a-e104-sub2.json` |
-| e104 safe8 (`-top8`) | ~17.5 | **20.60** | 0.4% | `rates/phase1a-e104-safe8.json` |
+| e104 **safe2** (`-top2`) | 30.5 | **42.04** | 1.0% | `rates/phase1a-e104-safe2.json` |
+| e104 **safe8** (`-top8`) | ~17.5 | **20.71** | 0.4% | `rates/phase1a-e104-safe8-safemode.json` |
+| e104 safe8, `sub` boot | — | 20.60 | 0.4% | `rates/phase1a-e104-safe8.json` |
+| e104 sub2 — rejected control | 45.05 | 43.61 | 0.4% | `rates/phase1a-e104-sub2.json` |
 
-sub2 reproduces 3.2% low — a real gap against a 0.4% run spread, but small and
-in the direction any of the config drift since (KV pool 81920, prefill
-threshold, prompt length) would push it. Not chased further.
+Neither headline reproduces, both in the *good* direction, and the two cross-check
+each other: safe8 measured 20.71 in the safe boot and 20.60 in the sub boot (0.5%
+apart), exactly as the code implies — at `K == E` the residency filter is skipped,
+so `sub8` and `safe8` are the same path.
 
-safe8 does **not** reproduce: it comes in 18% *high*. The `~17.5` figure was
-never measured at this config — it is `run_fast.sh`'s header row for plain
-routing + MTP, and Stage 0F measured 16.07 at `GPU_EXPERTS=60`. At the shipped
-104-expert config the quality tier is already **20.60 tok/s**, i.e. the whole
-Section 1 cost curve was taken at 60 experts and the streaming target derived
-from it (`~22 tok/s`) is only 7% above where safe8 already sits.
+- **safe2 is 38% above its recorded 30.5** (2026-07-28, GPU=104). That figure
+  predates the MTP CUDA-graph fix and the current placement/adaptive defaults.
+- **safe8 is 18% above the `~17.5`** it was quoted at, which was never measured
+  at 104 experts — it is `run_fast.sh`'s header row, and Stage 0F measured 16.07
+  at `GPU_EXPERTS=60`. The whole Section 1 curve is an e60 measurement.
+- **sub2 is worth only +3.7% over safe2** (43.61 vs 42.04). The unsafe routing
+  contract buys less than 4%, which settles the question independently of quality.
 
-Two step-level constants follow, and they replace the e60 ones for policy use:
+##### 1a — the real per-mode cost curve (safe boot)
 
-| tier | ms/step | note |
-|---|---:|---|
-| top8 (safe8) | 147.10 | 4.75 CPU-side experts/token at 104/256 residency |
-| top2 (sub2) | 53.96 | residency-forcing substitution → ~0 CPU-side experts |
-| top0 | 54.17 | CPU submit still fires, every expert masked |
+`bench/cpu_fixed_cost.py --tiers 0,1,2,4,6,8 --runs 3`, interleaved. This is the
+curve the streaming policy needs, and it only exists in a `safe` boot:
 
-CPU expert path at safe8 = 147.10 − 54.17 = **92.9 ms/step (63% of the step)**,
-or 1.24 ms/layer, for 19 expert-token-layer units per step → **0.065 ms per
-expert-token per layer**.
+| mode | ms/step | accept | tok/s | vs safe8 | CPU path (− top0) | CPU share | CPU ms/layer |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| top0 (no experts) | 53.57 | 3.57 | 67.84 | 3.20x | — | — | — |
+| safe1 | 58.46 | 2.17 | 36.78 | 1.74x | 4.89 | 8.4% | 0.065 |
+| **safe2** (default) | 65.81 | 2.78 | 41.89 | 1.98x | 12.24 | 18.6% | 0.163 |
+| safe4 | 87.44 | 3.17 | 35.99 | 1.70x | 33.87 | 38.7% | 0.452 |
+| safe6 | 113.10 | 3.17 | 27.84 | 1.31x | 59.53 | 52.6% | 0.794 |
+| safe8 (full fidelity) | 147.78 | 3.12 | 21.20 | 1.00x | 94.21 | 63.8% | 1.256 |
 
-The top2/top0 pair is the load-bearing one: under `sub` they are equal within
-noise (53.96 vs 54.17), because residency-forced substitution already routes
-**zero** experts to the CPU. Streaming moves CPU-side experts to the GPU, so at
-the sub2 headline it has *nothing to move*. Section 1.5 expected +6-10% there
-from an e60 measurement where sub2 still had 24 ms of CPU path; at e104 that
-term is gone. The mechanism's entire value is at safe8.
+Fit over tiers>0: `ms/step = 41.27 + 12.68·K`, i.e. **12.68 ms per kept expert per
+step** (0.169 ms per expert per layer), or 21.3 ms per *CPU-side* expert at
+104/256 residency. Artifact `phase1_e104_safemode_tiers.json`.
+
+Read the ms/step column, not tok/s: safe1 is *slower* than safe2 in tok/s
+(36.78 vs 41.89) purely because MTP acceptance drops to 2.17, the failure mode
+[[glm52-tier-movement-synchronous]] warned about. Steps got cheaper; tokens per
+step got cheaper faster.
 
 ##### 1b — contention, measured in both directions
 
 `bench/pcie_contention.py`. One numactl-bound worker per card (gpu0→node0,
-gpu1→node1), 9.7 MB pinned H2D chunks, measured *during* a live decode, with the
+gpu1→node1), 9.7 MB pinned H2D chunks issued *during* a live decode, with the
 decode's own ms/step read over the same window.
 
-| case | tier | H2D GB/s | decode alone | under DMA | Δ | ms of decode per GB |
-|---|---:|---:|---:|---:|---:|---:|
-| idle server | — | 112.4 (56.2/card) | — | — | — | — |
-| saturated, both cards | 8 | 108.7 | 147.10 | 193.91 | +31.8% | 2.22 |
-| saturated, both cards | 2 | 108.0 | 53.96 | 92.89 | +72.2% | 3.88 |
-| duty 50% | 8 | 52.5 | 147.19 | 182.01 | +23.7% | 3.64 |
-| duty 25% | 8 | 26.1 | 147.49 | 161.21 | +9.3% | 3.26 |
-| single card only | 8 | 53.5 | 146.89 | 190.01 | +29.4% | 4.24 |
-| tier-0 load | 0 | 108.0 | 54.17 | 92.90 | +71.5% | 3.86 |
-| spin-only control | 8 | 0.0 | 146.94 | 145.57 | −0.9% | — |
-| **queue depth 1** | 8 | **104.3** | 146.98 | **165.44** | **+12.6%** | **1.07** |
+| case | mode | H2D GB/s | decode alone | under DMA | Δ | ms decode per GB |
+|---|---|---:|---:|---:|---:|---:|
+| idle server | — | 112.3 (56.2/card) | — | — | — | — |
+| queued 64 MB | safe8 | 108.4 | 146.79 | 193.30 | +31.7% | 2.22 |
+| queued 64 MB | safe2 | 107.9 | 65.67 | 94.29 | +43.6% | 2.81 |
+| **queue depth 1** | safe8 | 104.2 | 146.48 | **165.11** | **+12.7%** | **1.08** |
+| **queue depth 1** | safe2 | 104.0 | 65.71 | **76.36** | **+16.2%** | **1.34** |
 
-**The gate passes: PCIe does not collapse.** Under a full CPU-expert decode the
-link still delivers 108.7 of 112.4 GB/s — 96.7%, and 56.2 GB/s per card idle
-confirms yesterday's 53.4. A streamed 9.7 MB expert costs 0.18 ms per card under
-load, exactly as the design assumed.
+Mechanism controls (taken in the `sub` boot; they probe the transport, not the
+routing, so the boot does not matter — and the safe-boot safe8 penalty, +31.7%,
+reproduces the sub boot's +31.8% exactly):
 
-**But the reverse direction is not free, and that is the new constraint.** The
-decode pays for the transfer even though the transfer does not slow down.
+| control | result | rules out |
+|---|---:|---|
+| spin-only, same cores, zero bytes | −0.9% | CPU core theft |
+| tier-0 load (no expert traffic) | +71.5% / +38.7 ms — same *absolute* penalty as tier 8 | DRAM contention with expert weights |
+| single card (gpu0 only) | +29.4% of the +31.8% both cards cost | per-card additive bandwidth |
 
-The controls say what that cost is *not*:
+**The gate passes: PCIe does not collapse.** A live safe8 decode still leaves
+108.4 of 112.3 GB/s (96.5%), and a 9.7 MB expert costs 0.18 ms per card under
+load, as designed.
 
-- **not CPU cores.** Burning the same two cores in the same spin without moving
-  a byte costs −0.9% (noise). The benchmark is not stealing threads from kt.
-- **not DRAM contention with expert weights.** The tier-0 load has essentially
-  no CPU expert traffic and still pays +38.7 ms/step — the same absolute penalty
-  as tier 8 (+46.8) and tier 2 (+38.9). A near-constant penalty across a 3x
-  change in CPU memory traffic is not a bandwidth-sharing story.
-- **not per-card additive.** Saturating gpu0 alone already costs +43.1 of the
-  +46.8 ms that saturating both costs.
+**What the decode pays is head-of-line blocking, not bandwidth.** kt ships
+activations host-ward and back once per MoE layer on the same link; those small
+latency-critical transfers queue behind whatever bulk copies are already
+submitted — hence ~0.5 ms x 75 layers, hence the tier-independence, hence gpu0
+(where the kt path lives) carrying almost all of it.
 
-What it *is*: **head-of-line blocking of kt's own per-layer PCIe round-trips.**
-The CPU expert path ships activations to the host and results back once per MoE
-layer, on the same link, and those small latency-critical transfers queue behind
-whatever bulk copies are already submitted. Hence ~0.5 ms × 75 layers, hence the
-tier-independence, hence gpu0 (where the kt path lives) carrying almost all of it.
+**That is fixable by submission shape, and it is the improvement Phase 1 actually
+delivers to every mode:** submitting one chunk at a time instead of 64 MB of
+queued copies keeps 96% of the bandwidth and cuts the concurrent-DMA penalty
+**2.5x at safe8 (+31.7% → +12.7%) and 2.7x at safe2 (+43.6% → +16.2%)**, an
+exchange rate of 1.08-1.34 ms of decode per GB streamed. Queue depth, not
+bandwidth, is the thing to design around; Phase 3 inherits it as a constraint on
+both mechanism candidates.
 
-That diagnosis is directly actionable, and it is the most useful thing Phase 1
-produced: **submitting one chunk at a time instead of 64 MB of queued copies
-keeps 96% of the bandwidth (104.3 GB/s) while cutting the decode penalty from
-+31.8% to +12.6%** — the exchange rate improves 3.4x, from 2.2-3.9 to **1.07 ms
-of decode per GB streamed**. Queue depth, not bandwidth, is the thing to design
-around. Phase 3 inherits this as a constraint on both mechanism candidates, and
-a copy-engine-priority or interleaved-submission variant is now worth measuring.
+##### What this does to the expected payoff, per mode
 
-##### What this does to the expected payoff
+Per layer per step: CPU pole `C` from the table above, `U` expert-token units
+(`K x 0.594 x 4` verify tokens), and each streamed distinct expert costs 0.185 ms
+of PCIe plus 0.021 ms of contention = **0.206 ms**, while removing `U/D` units,
+where `D` is the distinct non-resident experts a layer routes across the verify
+batch (between `U/4` and `U`; unmeasured). Optimum `x* = C/(0.185 + C/D)`.
 
-With measured constants, per layer per step at e104 safe8: CPU pole 1.24 ms,
-`U` = 19 expert-token units, each streamed distinct expert costs 0.185 ms of
-PCIe and 0.021 ms of contention, and removes `U/D` units of CPU work, where `D`
-is the number of *distinct* non-resident experts a layer routes across the
-4-token verify batch (between 4.75 and 19; unmeasured).
+| mode | C (ms/layer) | streamed x* | predicted tok/s | gain |
+|---|---:|---:|---:|---:|
+| safe2 | 0.163 | 0.7-0.7 | 42.4-43.0 | **+1-3%** |
+| safe4 | 0.452 | 1.7-1.9 | 37.7-39.2 | **+5-9%** |
+| safe6 | 0.794 | 2.9-3.3 | 30.1-32.0 | **+8-15%** |
+| safe8 | 1.256 | 4.3-5.0 | 23.9-26.0 | **+13-22%** |
 
-| D (distinct/layer) | optimal streamed x | predicted safe8 | vs 20.60 |
-|---:|---:|---:|---:|
-| 8 (high reuse) | 3.6 | 27.4 | 1.33x |
-| 12 (midpoint) | 4.3 | 25.2 | 1.22x |
-| 19 (no reuse) | 4.9 | 23.2 | 1.13x |
+(ranges span `D` = no reuse across the verify batch to `D` = U/1.6 reuse.)
 
-So the honest revised headline is **1.13-1.33x at safe8 and ~1.0x at sub2**, not
-the 1.53x/1.78x of Section 1.4 — which was computed at 60 GPU experts, where the
-CPU pole was 80% of the step instead of 63% and sub2 still had CPU work to
-remove. The GPU-side compute of the streamed experts is not yet priced in, so
-these are upper bounds within their band.
+**The decisive number is safe2's.** Its entire CPU pole is 0.163 ms/layer, which
+is *less than the 0.206 ms cost of streaming a single expert in that layer* — the
+first unit of transfer already costs more than all the CPU work it could remove.
+Streaming cannot pay at the shipped default. Break-even is `C > ~0.21 ms/layer`,
+i.e. tier 3 and above.
 
-`D` is now the pivotal unknown and it is cheap to measure from the existing
-decode counters. **Phase 2 measures `D` first**, and it is a go/no-go input: at
-`D ≥ 16` the ceiling is under 1.15x on the quality tier alone, which is close
-enough to Phase 5's "under ~10% gets parked" that building Phases 3-4 would be
-hard to justify.
+So the mechanism's honest positioning changed: it does not speed up the default,
+it **makes fidelity cheaper**. It narrows the safe2→safe8 gap from today's 1.98x
+to about 1.6-1.75x, buying back routing quality rather than tok/s — which is the
+same direction Section 1.5 argued for, now with the safe-mode numbers to support
+it and with sub2 out of the comparison entirely.
+
+`D` is the pivotal unknown and is cheap to read off the existing decode counters.
+**Phase 2 measures `D` first**, and it is go/no-go: at `D` = U (no reuse) even
+safe8 returns only +13%, which is close enough to Phase 5's "under ~10% gets
+parked" that building Phases 3-4 would be hard to justify for a tier that is not
+the default.
 
 ### Phase 2 — offline calibration file
 
@@ -469,10 +488,12 @@ Constants:
 - `distinct_experts_per_layer` — `D`, the union of non-resident routed experts
   over the verify batch. **Measure this first**; 1b's payoff table turns on it
   and it decides whether Phases 3-4 are worth building at all.
-- `contention_ms_per_gb` — decode time the step pays per GB streamed: 1.07 at
-  queue depth 1, 2.2-3.9 with 64 MB of queued copies (1b)
-- `cpu_ms_per_expert_token` — per layer; **0.065 ms** measured at e104 in 1a,
-  which supersedes the Stage 0F e60 curve for policy use
+- `contention_ms_per_gb` — decode time the step pays per GB streamed: **1.08
+  (safe8) / 1.34 (safe2) at queue depth 1**, 2.2-2.8 with 64 MB queued (1b)
+- `cpu_ms_per_layer[mode]` — the safe-boot curve: 0.163 (safe2), 0.452 (safe4),
+  0.794 (safe6), 1.256 (safe8). Supersedes the Stage 0F e60 curve for policy use.
+  Break-even for streaming is ~0.21 ms/layer, so the policy must be allowed to
+  return "stream nothing" for the whole model at low tiers.
 - `cpu_fixed_ms_per_layer` — from the Stage 0F no-CPU comparison
 - `gpu_ms_per_expert` — GPU MoE marginal cost per streamed expert
 - `bytes_per_expert_per_card` — from the model config, not assumed
@@ -533,8 +554,9 @@ against 1.5 GB currently free. Not a blocker at `GPU_EXPERTS=60`; re-check at 10
 
 The point of the experiment is to **exceed** the Stage-0F numbers, so:
 
-- `bench/decode_rate.py` and `bench/cpu_fixed_cost.py` rerun at sub2 (headline)
-  and safe8 (where the mechanism pays), same prompts, ≥5 runs, interleaved.
+- `bench/decode_rate.py` and `bench/cpu_fixed_cost.py` rerun at safe2 (headline)
+  and safe8 (where the mechanism pays), same prompts, ≥5 runs, interleaved. No
+  phase measures `sub2`.
 - Report ms/step *and* accept length together — [[glm52-tier-movement-synchronous]]
   showed ~85% of a movement scheme's cost can hide in accept length while step
   rate looks fine.
