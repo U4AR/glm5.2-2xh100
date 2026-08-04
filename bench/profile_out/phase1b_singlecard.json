@@ -1,0 +1,98 @@
+{
+ "ts": 1785828236.1833894,
+ "args": {
+  "worker": false,
+  "gpu": 0,
+  "start_at": 0.0,
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "8",
+  "seconds": 8.0,
+  "chunk_mb": 9.7,
+  "buf_mb": 256.0,
+  "gpus": "0",
+  "load_tokens": 800,
+  "repeats": 2,
+  "duty": 1.0,
+  "spin_only": false,
+  "skip_idle": true,
+  "out": "bench/profile_out/phase1b_singlecard.json"
+ },
+ "numa": {
+  "0": 0,
+  "1": 1
+ },
+ "idle": [],
+ "loaded": {
+  "8": [
+   {
+    "h2d": [
+     {
+      "gpu": 0,
+      "chunk_mb": 9.7,
+      "buf_mb": 252.19999504089355,
+      "duty": 1.0,
+      "spin_only": false,
+      "windows": 7021,
+      "gbs_effective": 53.556686544355784,
+      "gbs_median": 53.59250206946398,
+      "gbs_mean": 53.59777025354168,
+      "gbs_min": 47.46071419488842,
+      "gbs_max": 56.28126096458035,
+      "bytes_moved_gb": 428.471423562,
+      "seconds": 8.000334808000844
+     }
+    ],
+    "aggregate_gbs": 53.556686544355784,
+    "busy_gbs": 53.59250206946398,
+    "decode_ms_per_step": 190.1812810010597,
+    "decode_steps_in_window": 58,
+    "decode_covered_window": true
+   },
+   {
+    "h2d": [
+     {
+      "gpu": 0,
+      "chunk_mb": 9.7,
+      "buf_mb": 252.19999504089355,
+      "duty": 1.0,
+      "spin_only": false,
+      "windows": 7012,
+      "gbs_effective": 53.48758920803557,
+      "gbs_median": 53.54430536249044,
+      "gbs_mean": 53.528199513488964,
+      "gbs_min": 45.607193219757235,
+      "gbs_max": 56.227539264866685,
+      "bytes_moved_gb": 427.922179464,
+      "seconds": 8.000401322999096
+     }
+    ],
+    "aggregate_gbs": 53.48758920803557,
+    "busy_gbs": 53.54430536249044,
+    "decode_ms_per_step": 189.84187050045875,
+    "decode_steps_in_window": 58,
+    "decode_covered_window": true
+   }
+  ]
+ },
+ "decode_alone": {
+  "8": [
+   146.91746949938533,
+   146.85310699951515
+  ]
+ },
+ "summary": {
+  "8": {
+   "idle_aggregate_gbs": NaN,
+   "loaded_aggregate_gbs": 53.52213787619568,
+   "loaded_busy_gbs": 53.56840371597721,
+   "pcie_retained_pct": NaN,
+   "decode_ms_alone": 146.88528824945024,
+   "decode_ms_loaded": 190.01157575075922,
+   "decode_slowdown_pct": 29.360522088549178,
+   "gb_moved_per_step": 10.169825755405334,
+   "decode_ms_per_gb": 4.240612232553449,
+   "expert_transfer_ms": 0.18107689098652188
+  }
+ }
+}
