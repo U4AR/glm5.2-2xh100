@@ -568,6 +568,122 @@ The point of the experiment is to **exceed** the Stage-0F numbers, so:
 
 ---
 
+### Phases 2-3 execution — 2026-08-04
+
+#### Phase 2a — `D`, the go/no-go constant
+
+Measured from a `KT_DUMP_TOPK=1` routing dump (prefill, so not graph-captured;
+consecutive real tokens as the closest available proxy for a verify batch),
+`bench/measure_distinct_experts.py`:
+
+| tier | U (expert-token units/layer) | D (distinct/layer) | reuse U/D |
+|---:|---:|---:|---:|
+| 2 | 3.2-3.6 | 2.3-2.5 | 1.39-1.44 |
+| 4 | 7.3-8.0 | 5.3-5.6 | 1.39-1.43 |
+| 6 | 11.9-12.9 | 8.5-9.0 | 1.40-1.44 |
+| 8 | 16.9-18.1 | 11.9-12.4 | 1.42-1.46 |
+
+Ranges span two dumps: a clean 2600-token prefill and a later one contaminated
+by short benchmark prefills, which shifts D about 4%. Not material.
+
+**Reuse is real: ~1.44.** One transfer removes 1.44 tokens' worth of CPU work,
+so the transfer bill is 1.44x cheaper than the naive per-token count. That put
+this box at the top of Phase 1's band, not the bottom -- a GO for the high tiers.
+
+#### Phase 2b — the calibration file
+
+`bench/calibrate_hybrid.py` writes `hybrid_profile.<hostname>.json`;
+`bench/hybrid_policy.py` holds the decision and is shared by the calibrator, the
+tests and (eventually) the serving path, so those three cannot disagree. Per
+layer it minimises `max(cpu_ms(k), link_ms(k)) + extra_ms(k)` over k, which
+reaches the interior optimum and both corners including k=D (CPU leaves the
+layer entirely).
+
+#### Phase 3 — mechanism, measured
+
+| mechanism | per expert | achieved | verdict |
+|---|---:|---:|---|
+| **A. UVA gather kernel in-graph** | **0.197 ms** | 51.7 GB/s | **chosen** |
+| B. host staging + captured H2D | 0.629 ms | 16.2 GB/s | 3.2x worse, doubles host traffic |
+| GPU repack of one expert | 0.037 ms | — | upper bound (random permutation) |
+
+A picks *different experts after capture* -- verified bitwise against the source
+window. That is the entire requirement for a decode graph and it holds.
+
+**The pinned-memory blocker dissolved.** The gather can only read page-locked
+memory, and kt's non-resident store is ~222 GB, far past what a copy could pin.
+A pinned *window* was the fallback, and the routing dump prices it honestly:
+
+| window | pinned RAM | demand covered |
+|---:|---:|---:|
+| 8/layer | 11.4 GB | 40.8% |
+| 16/layer | 22.7 GB | 55.5% |
+| 32/layer | 45.5 GB | 72.6% |
+| 64/layer | 90.9 GB | 89.7% |
+
+But `cudaHostRegister` page-locks pageable memory **in place**: 4 GB in 0.50 s
+(8 GB/s), and a gather from it is correct and full-speed (0.198 ms/expert). So
+kt's store gets locked where it already lives -- ~28 s of boot for 222 GB, no
+extra RAM, and **100% coverage instead of 55%**. No window, no background
+refill, no coverage discount.
+
+#### What the measured mechanism does to the payoff
+
+Folding in the real costs (0.197 gather + 0.037 repack, not an idealised 0.185
+DMA) lowers the prediction:
+
+| mode | CPU ms/layer | stream k | step ms | -> | speedup |
+|---|---:|---:|---:|---:|---:|
+| safe2 (default) | 0.177 | **0** | 66.82 | 66.82 | **1.000x** |
+| safe4 | 0.474 | 1 | 89.11 | 86.47 | 1.031x |
+| safe6 | 0.811 | 3 | 114.39 | 105.88 | 1.080x |
+| safe8 | 1.263 | 4 | 148.33 | 132.44 | **1.120x** |
+
+safe2 needs 0.232 ms/layer of CPU work before one transfer pays and has 0.177.
+
+#### Portability — the reason to keep the code
+
+`bench/test_hybrid_policy.py`. Same code, constants from a different machine:
+
+| machine | k | speedup |
+|---|---:|---:|
+| this box, safe8 | 4 | 1.12x |
+| this box, safe2 | 0 | 1.00x |
+| GH200-class link (900 GB/s C2C), safe8 | 11 | ~1.54x |
+| GH200-class link, at the tier this box refuses | 2 | 1.07x |
+| PCIe Gen3 x8, safe8 | 0 | 1.00x |
+| small-VRAM box (bigger CPU pole) | 10 | ~1.47x |
+
+k is monotonic in link bandwidth (0,1,2,4,7,10,11 across 6→900 GB/s) and in the
+CPU pole; a zero-bandwidth or missing profile falls back to all-CPU.
+
+### Phase 4-5 status — built to the gate, not through it
+
+Done and committed: the policy, the calibration file, the measured mechanism,
+the in-place page-locking result, and the portability tests. **Not built: the
+serving-path implementation.** Two pieces remain, and neither is blocked by
+anything unknown any more:
+
+1. **A real cutlass W4A8 repack kernel.** The 0.037 ms is a random-permutation
+   upper bound, not the actual interleave. The kernel has to reproduce
+   `process_weights_after_loading`'s output bitwise for one expert.
+2. **Plumbing.** In-graph per-layer k and index computation, marking streamed
+   experts as -1 so kt's `should_skip_expert` drops them, landing slots feeding
+   the existing GPU MoE, and the model-wide corner that swaps to the no-CPU
+   graph when every layer returns k=m.
+
+**The gate says stop here on this machine.** Phase 5's own rule is "under ~10%
+end-to-end gets written up and parked". The measured prediction is 1.120x at
+safe8 -- and **1.000x at safe2, the shipped default**. Building both remaining
+pieces buys nothing at the tier that actually serves traffic, and 12% at a tier
+that is 2x slower to begin with.
+
+That verdict is machine-specific, which is exactly why the calibration exists.
+On a GH200-class host the same profile says stream 11 of 12.4 experts for ~1.54x
+at safe8 *and* a win at the low tier, so the remaining two pieces are worth
+building the moment this runs somewhere with a fatter host-to-device link. Run
+`bench/calibrate_hybrid.py` there and it will say so in its own numbers.
+
 ## 3. Risks
 
 | risk | why it matters | first check |
@@ -579,7 +695,7 @@ The point of the experiment is to **exceed** the Stage-0F numbers, so:
 | Empty-route fast path skips real work | mixed routing must never select the no-CPU path | Stage 0E alternating-route tests |
 | DMA and CPU experts contend for RAM | the entire streaming headline assumes they add | ✅ Phase 1b: they do add — PCIe keeps 96.7% under load. The real cost is head-of-line blocking of kt's per-layer round-trips, priced at 1.07 ms/GB at queue depth 1 |
 | Bulk copies delay kt's own per-layer transfers | 64 MB of queued copies costs +31.8% decode for the same bandwidth | ✅ Phase 1b: submit shallow (queue depth 1) → +12.6%; carry into Phase 3 |
-| Layout conversion cost per streamed expert | 136 ms whole-layer interleave is fatal per step | Phase 3(ii) |
-| Pinned window vs 7 GB free RAM | pinned pages cannot swap; the box already OOM-cratered once | size window in Phase 2 |
+| Layout conversion cost per streamed expert | 136 ms whole-layer interleave is fatal per step | ⚠️ Phase 3: a GPU-side repack is bounded at 0.037 ms/expert, but the real cutlass kernel is still unwritten — the one remaining unknown |
+| Pinned window vs 7 GB free RAM | pinned pages cannot swap; the box already OOM-cratered once | ✅ Phase 3: no window needed — cudaHostRegister locks kt's store in place (8 GB/s, no extra RAM, 100% coverage vs a 22.7 GB window's 55%) |
 | Streaming on the critical path | layer L+1's routing needs layer L's output, so there is no prefetch distance | measure serial cost in Phase 3 |
 | Convex CPU slope | the split point moves with load; a static formula may sit off-optimum | Stage 0F calibration captures the curve |
