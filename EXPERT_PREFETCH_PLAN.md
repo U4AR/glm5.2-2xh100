@@ -69,7 +69,7 @@ each transfer 1.44x more valuable. Concurrent batching restores reuse the same w
 > ahead of schedule because it turned out to be the binding constraint. The
 > routing constants below were re-measured **in decode, in safe mode**, and
 > several of them were wrong; see "Corrected constants". The honest payoff on
-> this machine is **~1.10x at top2, not 1.23x**, and the limiter is prediction
+> this machine is **~1.14x at top2, not 1.23x**, and the limiter is prediction
 > accuracy, not transport. Details at the end.
 
 ## Stage 0 -- the placement quality score (the instrument)
@@ -315,13 +315,25 @@ Measured in-graph with `KT_PRED_LOOKAHEAD`, scored against the router's genuine
 top-2, with a depth-0 self-check that reads **100.0%** (so the numbers below are
 hidden-state drift, not a harness artefact):
 
+At the shipped tier (top2):
+
 | predictor | top-2 recall |
 |---|---:|
 | "fetch what this layer needed last step" (persistence) | **27.1%** |
-| run layer L+1's router early, on layer L's hidden state | **64.4%** |
-| ... L+2 | 54.7% |
-| ... L+4 | 43.9% |
-| ... L+8 | 30.4% |
+| run layer L+1's router early, on layer L's hidden state | **75.2%** |
+| ... L+2 | 67.4% |
+| ... L+4 | 57.3% |
+| ... L+8 | 43.4% |
+
+The per-expert miss rate is **flat at ~24% across every tier** (top1 23.1%,
+top2 24.8%, top4 24.4%, top6 24.1%, top8 23.9%) -- it is a property of how fast
+the residual stream moves, not of the configuration, which is a good
+portability signal. What collapses with tier is WHOLE-LAYER coverage, because
+more experts must all hit at once: 69% of layers fully covered at top1, **55%
+at top2**, 28% at top4, 12% at top6, 4% at top8.
+
+Do not read the top0 row (35.6% miss): top0 emits degenerate text, so its
+hidden-state trajectory is not representative of anything shippable.
 
 **The user's proposal is the right mechanism and it is 2.4x better than the
 obvious alternative.** Running the next layer's router early beats recent-history
@@ -332,22 +344,26 @@ at depth 1 -- but also 71% at depth 0, i.e. most of the apparent error was the
 sigmoid/bias/group scoring path, not the residual stream. Using the target
 layer's own `topk` module removed that confound entirely.
 
-### What 64.4% is worth, per layer, at top2
+### What 75.2% is worth, per layer, at top2
 
-- a layer that routes to the CPU costs `0.0323 + 2.19 x 0.0691 = 0.184 ms`
-- expected hits at 64.4% of 1.69 distinct experts: 1.09, saving `1.09 x 0.0691
-  = 0.075 ms`
-- transferring 1.69 experts is 0.032 GB; in the CPU-still-active regime that is
-  `0.032 x 1.98 = 0.063 ms` of contention
+Per ACTIVE layer-call (61.11 of 75.94 calls/step touch the CPU), 2.09 distinct
+CPU experts and 2.70 expert-token units:
 
-Partial coverage is therefore **roughly break-even** (+0.012 ms/layer), which is
-the ~59% break-even threshold from A2 restated with real numbers -- 64.4% clears
-it, but barely. The win comes from layers that are covered *completely*, which
-escape to the 0.10 ms/GB regime: `0.644^1.69 ~ 48%` of layers, each saving the
-full 0.184 ms.
+- a layer that routes to the CPU costs `0.0255 + 2.70 x 0.0721 = 0.220 ms`
+- fully covered (`0.752^2.09` = **55% of layers**): saves the whole 0.220 ms and
+  pays only the cheap contention regime, `0.040 GB x 0.10 = 0.004 ms`
+- partially covered (45%): hits 1.57 of 2.09 experts, saving
+  `1.57 x 0.0721 = 0.113 ms`, but the layer still submits/syncs AND pays the
+  expensive regime, `0.040 GB x 1.98 = 0.078 ms` -> only +0.035 ms
 
-Blending the two: **~5.7 ms/step, i.e. 73.05 -> 67.4 ms, 37.95 -> 41.7 tok/s =
-1.10x.** Real, and above the 10% gate, but less than half the 1.23x ceiling.
+Partial coverage is barely above break-even, which is the ~59% threshold from
+A2 restated with real numbers. The win is concentrated in the layers covered
+*completely*.
+
+Blending: `0.55 x 0.216 + 0.45 x 0.035 = 0.135 ms` per active layer-call, times
+61.11 = **~8.2 ms/step. 67.42 -> ~59.2 ms, 41.66 -> ~47.5 tok/s = 1.14x**,
+against a 1.26x ceiling (the 53.59 ms floor). Above the 10% gate, and about
+half of what full elimination would buy.
 
 Raising it requires better recall, not more bandwidth. Transferring a predicted
 superset does not help here: the link is already at ~66% duty at exact coverage,
@@ -358,10 +374,15 @@ and 3 experts/layer would need 4.26 GB/step = 69 ms against a 59.5 ms step.
 Ceiling **~51.5 tok/s (1.23x)** at top2 if the CPU path were eliminated
 outright. Not 67.84 -- that number requires degenerate routing.
 
-Achievable with the best predictor measured: **~1.10x**. Transport passes its
-gate with room to spare and prediction does not; a depth-1 early-router
-prefetch hits 64.4% of the experts it needs, and a miss keeps the layer's CPU
-submit/sync alive, which is where most of the cost sits. Stage 0 and the Stage D
-measurement together cost far less than the Stage B/C build and moved the
-expected payoff from 1.23x to 1.10x before any of it was written -- which is
+Achievable with the best predictor measured: **~1.14x** (41.66 -> ~47.5 tok/s).
+Transport passes its gate with room to spare; prediction is the limiter. A
+depth-1 early-router prefetch hits 75.2% of the experts it needs, but a miss
+keeps the layer's CPU submit/sync alive, so only the 55% of fully-covered
+layers pay properly. Stage 0 and the Stage D measurement together cost far less
+than the Stage B/C build and priced it before any of it was written -- which is
 what they were for.
+
+**More bandwidth does not help.** Raising the payoff means raising recall:
+better lookahead (predict from a later point in layer L, or blend the depth-1
+prediction with persistence), or fewer experts that have to hit at once (a
+lower tier, or a larger resident set).
