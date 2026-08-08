@@ -1674,3 +1674,50 @@ was never the cause of the accept drop.
 
 Scope: the fused predictor is behind `KT_PRED_FUSED=1`, and the prefetch path
 needs `KT_PREFETCH_SLOTS > 0` which defaults to 0. Production never ran it.
+
+## Stage H12 -- the shipping comparison, against what production actually runs
+
+Every prefetch number to this point compared `GPU_EXPERTS=100 + 4 slots` against
+`GPU_EXPERTS=100` with those slots allocated but idle. Equal VRAM, which is the
+right control for "does the machinery pay for itself" -- but NOT the shipping
+question, because production holds 104 resident and no slots, and a landing slot
+is bought with a resident expert (~9.73 MiB/card/layer).
+
+`bench/fair_baseline.sh`, one ladder, all rows deterministic:
+
+| row | ms/step | accept | tok/s |
+|---|---|---|---|
+| F104-plain -- production | 65.27 | 2.778 | 42.56 |
+| F100-idle -- the handicapped baseline | 65.63 | 2.857 | 43.53 |
+| F100-fetch -- prefetch, index fixed | **64.05** | 2.857 | **44.61** |
+
+**The four extra resident experts are worth 0.36 ms/step.** That is the whole
+handicap, and it is small -- consistent with the placement work finding that
+residency coverage barely moves speed once the tier substitution has run.
+
+**Prefetch beats production by 1.22 ms/step = +1.9%**, down from the +2.1%
+claimed against the handicapped baseline. The correction is real but does not
+change the verdict: it ships, marginally.
+
+### Do not bank the tok/s gap
+
+44.61 vs 42.56 is +4.8%, and most of that is not the prefetch. The two residency
+configs produce DIFFERENT TEXT (different substitution -> different completion ->
+different draft agreement), so accept differs: 2.778 at 104, 2.857 at 100.
+Holding accept fixed:
+
+  - prefetch's own step-rate contribution: **+1.9%**
+  - the 104->100 change yielding a better-accepting completion here: +2.8%
+
+The second is one-prompt content luck. **ms/step is the only clean cross-config
+metric**; tok/s across configs mixes step rate with which completion the config
+happened to produce. Same trap as the accept-quantisation warning in
+TODO item 8, arriving from a different direction.
+
+### Cross-day stability, which licenses the comparison
+
+Every config reproduced its exact completion hash across a full shutdown and cold
+reboot: F104-plain = `9e49a7738c` (production's hash from the previous day),
+F100-idle = `5093e29512` (every 100-expert baseline), F100-fetch = `45c4fbb027`
+(yesterday's Y-full). The rig is stable across days; the rule about subtracting
+only within a run still stands, but the baselines are not drifting.
