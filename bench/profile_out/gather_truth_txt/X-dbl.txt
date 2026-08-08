@@ -1,0 +1,14 @@
+1.  **Understand the Goal:** The user wants a step-by-step explanation of how a Mixture-of-Experts (MoE) transformer routes a token through its experts, and why the router is trained with an auxiliary loss.
+
+2.  **Deconstruct the Request:**
+    *   Part 1: Step-by-step routing mechanism of a token in an MoE transformer.
+    *   Part 2: Explanation of the auxiliary loss and its purpose.
+
+3.  **Plan the Explanation Structure:**
+    *   Introduction: Briefly define what an MoE transformer is and the core components (Router, Experts).
+    *   Step-by-step Routing:
+        *   Step 1: Input (Token representation).
+        *   Step 2: Router computation (Gating network).
+        *   Step 3: Top-K selection (Sparse routing).
+        *   Step 4: Expert computation (Parallel processing).
+        *   Step 5: Weighted aggregation (

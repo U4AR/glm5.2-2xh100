@@ -1,0 +1,277 @@
+{
+ "ts": 1785822317.5798159,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "0,1,2,4,6,8",
+  "runs": 3,
+  "tokens": 200,
+  "out": "bench/profile_out/stage0a_normal.json"
+ },
+ "per_tier": {
+  "0": [
+   {
+    "ttft_s": 0.40775602200028516,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 52.558568999984345,
+    "ms_per_step_mean": 52.576619220584526,
+    "steps_per_s": 19.01986120112655,
+    "tok_per_s": 55.13003246703347,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.4096932789998391,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 52.50955149995207,
+    "ms_per_step_mean": 52.552958220591044,
+    "steps_per_s": 19.028424542772644,
+    "tok_per_s": 55.15485374716709,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.4105588889997307,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 52.45049549989744,
+    "ms_per_step_mean": 52.50990854411906,
+    "steps_per_s": 19.04402478933658,
+    "tok_per_s": 55.2000718531495,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   }
+  ],
+  "1": [
+   {
+    "ttft_s": 0.3729590879997886,
+    "n_steps": 84,
+    "n_tokens": 200,
+    "accept_length": 2.380952380952381,
+    "ms_per_step_median": 64.89357200007362,
+    "ms_per_step_mean": 65.56278987951724,
+    "steps_per_s": 15.252554106340957,
+    "tok_per_s": 36.31560501509752,
+    "sample": "1. **Analyze the Request:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism"
+   },
+   {
+    "ttft_s": 0.3678256779999174,
+    "n_steps": 84,
+    "n_tokens": 200,
+    "accept_length": 2.380952380952381,
+    "ms_per_step_median": 64.7964839999986,
+    "ms_per_step_mean": 65.01417151807198,
+    "steps_per_s": 15.381261910290286,
+    "tok_per_s": 36.62205216735782,
+    "sample": "1. **Analyze the Request:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism"
+   },
+   {
+    "ttft_s": 0.3667356259998087,
+    "n_steps": 84,
+    "n_tokens": 200,
+    "accept_length": 2.380952380952381,
+    "ms_per_step_median": 64.46002800021233,
+    "ms_per_step_mean": 64.72669375903955,
+    "steps_per_s": 15.449576394597518,
+    "tok_per_s": 36.78470570142266,
+    "sample": "1. **Analyze the Request:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism"
+   }
+  ],
+  "2": [
+   {
+    "ttft_s": 0.3823888449996957,
+    "n_steps": 75,
+    "n_tokens": 200,
+    "accept_length": 2.6666666666666665,
+    "ms_per_step_median": 80.75008600008005,
+    "ms_per_step_mean": 80.48934509459384,
+    "steps_per_s": 12.424004678193935,
+    "tok_per_s": 33.13067914185049,
+    "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three speci"
+   },
+   {
+    "ttft_s": 0.37822016800009806,
+    "n_steps": 75,
+    "n_tokens": 200,
+    "accept_length": 2.6666666666666665,
+    "ms_per_step_median": 79.17948399995112,
+    "ms_per_step_mean": 79.02632163513404,
+    "steps_per_s": 12.654011717981994,
+    "tok_per_s": 33.74403124795199,
+    "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three speci"
+   },
+   {
+    "ttft_s": 0.37390831499988053,
+    "n_steps": 75,
+    "n_tokens": 200,
+    "accept_length": 2.6666666666666665,
+    "ms_per_step_median": 79.42381199995907,
+    "ms_per_step_mean": 79.25217591892343,
+    "steps_per_s": 12.61795008660734,
+    "tok_per_s": 33.64786689761957,
+    "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three speci"
+   }
+  ],
+  "4": [
+   {
+    "ttft_s": 0.5746209349999845,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 107.71629199985,
+    "ms_per_step_mean": 108.1123929852899,
+    "steps_per_s": 9.249633389726773,
+    "tok_per_s": 26.81053156442543,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   },
+   {
+    "ttft_s": 0.5702199749998726,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 104.70826150003631,
+    "ms_per_step_mean": 104.94775136764395,
+    "steps_per_s": 9.52855098816635,
+    "tok_per_s": 27.618988371496663,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   },
+   {
+    "ttft_s": 0.5670549790002042,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 105.40342450008211,
+    "ms_per_step_mean": 105.8628189264656,
+    "steps_per_s": 9.446187151832977,
+    "tok_per_s": 27.380252614008626,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   }
+  ],
+  "6": [
+   {
+    "ttft_s": 0.823430697999811,
+    "n_steps": 63,
+    "n_tokens": 200,
+    "accept_length": 3.1746031746031744,
+    "ms_per_step_median": 144.80647499999577,
+    "ms_per_step_mean": 144.53693424193702,
+    "steps_per_s": 6.9186468167791855,
+    "tok_per_s": 21.963958148505352,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   },
+   {
+    "ttft_s": 0.817282256999988,
+    "n_steps": 63,
+    "n_tokens": 200,
+    "accept_length": 3.1746031746031744,
+    "ms_per_step_median": 143.26238050011852,
+    "ms_per_step_mean": 142.5886626935505,
+    "steps_per_s": 7.013180298557015,
+    "tok_per_s": 22.264064439863542,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   },
+   {
+    "ttft_s": 0.8163435209999079,
+    "n_steps": 63,
+    "n_tokens": 200,
+    "accept_length": 3.1746031746031744,
+    "ms_per_step_median": 142.91468500005067,
+    "ms_per_step_mean": 142.51175625806735,
+    "steps_per_s": 7.016964959642701,
+    "tok_per_s": 22.276079236960957,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, mem"
+   }
+  ],
+  "8": [
+   {
+    "ttft_s": 1.0840773149998313,
+    "n_steps": 60,
+    "n_tokens": 200,
+    "accept_length": 3.3333333333333335,
+    "ms_per_step_median": 181.56269400014935,
+    "ms_per_step_mean": 181.99032871186733,
+    "steps_per_s": 5.494797482250997,
+    "tok_per_s": 18.31599160750332,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.087914369000373,
+    "n_steps": 60,
+    "n_tokens": 200,
+    "accept_length": 3.3333333333333335,
+    "ms_per_step_median": 180.90615199980675,
+    "ms_per_step_mean": 180.84118920338923,
+    "steps_per_s": 5.529713691914046,
+    "tok_per_s": 18.43237897304682,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.0793423519999124,
+    "n_steps": 60,
+    "n_tokens": 200,
+    "accept_length": 3.3333333333333335,
+    "ms_per_step_median": 180.50791899986507,
+    "ms_per_step_mean": 180.52263032203712,
+    "steps_per_s": 5.539471689594177,
+    "tok_per_s": 18.46490563198059,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   }
+  ]
+ },
+ "summary": {
+  "0": {
+   "ms_per_step": 52.50955149995207,
+   "spread_pct": 0.20581684093607483,
+   "steps_per_s": 19.028424542772644,
+   "accept_length": 2.898550724637681,
+   "tok_per_s": 55.15485374716709,
+   "n_runs": 3
+  },
+  "1": {
+   "ms_per_step": 64.7964839999986,
+   "spread_pct": 0.669085686595734,
+   "steps_per_s": 15.381261910290286,
+   "accept_length": 2.380952380952381,
+   "tok_per_s": 36.62205216735782,
+   "n_runs": 3
+  },
+  "2": {
+   "ms_per_step": 79.42381199995907,
+   "spread_pct": 1.9774951120826816,
+   "steps_per_s": 12.61795008660734,
+   "accept_length": 2.6666666666666665,
+   "tok_per_s": 33.64786689761957,
+   "n_runs": 3
+  },
+  "4": {
+   "ms_per_step": 105.40342450008211,
+   "spread_pct": 2.85382615800243,
+   "steps_per_s": 9.446187151832977,
+   "accept_length": 2.898550724637681,
+   "tok_per_s": 27.380252614008626,
+   "n_runs": 3
+  },
+  "6": {
+   "ms_per_step": 143.26238050011852,
+   "spread_pct": 1.320507165482664,
+   "steps_per_s": 7.013180298557015,
+   "accept_length": 3.1746031746031744,
+   "tok_per_s": 22.264064439863542,
+   "n_runs": 3
+  },
+  "8": {
+   "ms_per_step": 180.90615199980675,
+   "spread_pct": 0.5830509292383861,
+   "steps_per_s": 5.529713691914046,
+   "accept_length": 3.3333333333333335,
+   "tok_per_s": 18.43237897304682,
+   "n_runs": 3
+  },
+  "fit": {
+   "intercept_ms": 45.33631224395216,
+   "slope_ms_per_tier": 16.529080560962107
+  }
+ }
+}

@@ -1,0 +1,62 @@
+[
+ {
+  "label": "F-base",
+  "tier": "2",
+  "ms_per_step": 66.16977799785673,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.17896997078336,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786097258.6671245,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "F-nofix",
+  "tier": "2",
+  "ms_per_step": 64.72051399759948,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 42.9195877196032,
+  "steps": [
+   67,
+   72,
+   83
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786097537.6332622,
+  "sample": "1.  **Analyze the Request:**\n    *   **Topic:** Modern CPUs vs. GPUs in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Goal:** Provide a comprehensive, structured, and informative essay covering the requested topics.\n\n2.  **Identify the Key Themes:**\n    *   Parallelism (CPU: ILP, TLP, SMT; GPU: SIMT/SMT, massive TLP).\n    *"
+ },
+ {
+  "label": "F-full",
+  "tier": "2",
+  "ms_per_step": 66.1117710005783,
+  "accept": 2.272727272727273,
+  "tok_per_s": 34.37704418336324,
+  "steps": [
+   88,
+   88,
+   88
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786098050.4908776,
+  "sample": "1.  **Deconstruct the Prompt:** The user wants a \"detailed technical essay\" comparing modern CPUs and GPUs across three specific axes: parallelism, memory hierarchy, and scheduling. The tone should be highly technical, analytical, and structured.\n\n2.  **Target Audience & Persona:** Target: highly technical computer science/engineering enthusiasts (e.g., PhD researchers, kernel developers, compiler"
+ }
+]

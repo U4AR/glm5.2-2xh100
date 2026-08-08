@@ -1,0 +1,215 @@
+{
+ "link_gibs": 48.0,
+ "measured_link": false,
+ "point": {
+  "R_unit_economics": 0.38046527196652713,
+  "F_fit": 0.4510706584629702,
+  "transfer_ms_per_layer": 0.31508789062500003,
+  "exposed_ms_per_step": 2.3631591796874996,
+  "saving_ms_per_step": 8.991,
+  "predictor_ms_per_step": 5.03,
+  "net_ms_per_step": -1.5978408203125127,
+  "baseline_ms": 66.64,
+  "step_ms": 65.04215917968749,
+  "cpu_layer_ms": 0.8885333333333333,
+  "cpu_compute_ms": 0.11988,
+  "speedup": 1.02456623273988
+ },
+ "inputs": {
+  "device": 0,
+  "link_gbs": 48.0,
+  "bytes_mib": 9.56,
+  "cpu_ms_per_expert": 0.074,
+  "cpu_slowdown": 1.0,
+  "experts_per_layer": 1.62,
+  "layers": 75,
+  "gpu_ms_per_layer": 0.19,
+  "predictor_ms": 5.03,
+  "overlap_eff": 0.9,
+  "baseline_ms": 66.64,
+  "sweep": true,
+  "out": "bench/profile_out/prefetch_portability.json"
+ },
+ "sweep": [
+  {
+   "cpu_slowdown": 1,
+   "link_gibs": 12,
+   "speedup": 0.6055189058192048,
+   "net_ms": 43.41436718750002
+  },
+  {
+   "cpu_slowdown": 1,
+   "link_gibs": 24,
+   "speedup": 0.9886460241120048,
+   "net_ms": 0.7653183593749873
+  },
+  {
+   "cpu_slowdown": 1,
+   "link_gibs": 48,
+   "speedup": 1.02456623273988,
+   "net_ms": -1.5978408203125127
+  },
+  {
+   "cpu_slowdown": 1,
+   "link_gibs": 96,
+   "speedup": 1.0435232568825334,
+   "net_ms": -2.7794204101562485
+  },
+  {
+   "cpu_slowdown": 1,
+   "link_gibs": 400,
+   "speedup": 1.0584064527043213,
+   "net_ms": -3.6774208984375036
+  },
+  {
+   "cpu_slowdown": 2,
+   "link_gibs": 12,
+   "speedup": 0.7417533342040581,
+   "net_ms": 26.33146718750001
+  },
+  {
+   "cpu_slowdown": 2,
+   "link_gibs": 24,
+   "speedup": 1.1220331249942228,
+   "net_ms": -8.225681640624998
+  },
+  {
+   "cpu_slowdown": 2,
+   "link_gibs": 48,
+   "speedup": 1.1627996510856817,
+   "net_ms": -10.588840820312498
+  },
+  {
+   "cpu_slowdown": 2,
+   "link_gibs": 96,
+   "speedup": 1.184314337354185,
+   "net_ms": -11.770420410156241
+  },
+  {
+   "cpu_slowdown": 2,
+   "link_gibs": 400,
+   "speedup": 1.201205558590644,
+   "net_ms": -12.668420898437496
+  },
+  {
+   "cpu_slowdown": 3,
+   "link_gibs": 12,
+   "speedup": 0.9014753243258171,
+   "net_ms": 9.24856718750003
+  },
+  {
+   "cpu_slowdown": 3,
+   "link_gibs": 24,
+   "speedup": 1.2554202258764413,
+   "net_ms": -17.216681640624998
+  },
+  {
+   "cpu_slowdown": 3,
+   "link_gibs": 48,
+   "speedup": 1.301033069431484,
+   "net_ms": -19.579840820312498
+  },
+  {
+   "cpu_slowdown": 3,
+   "link_gibs": 96,
+   "speedup": 1.3251054178258366,
+   "net_ms": -20.76142041015624
+  },
+  {
+   "cpu_slowdown": 3,
+   "link_gibs": 400,
+   "speedup": 1.344004664476967,
+   "net_ms": -21.659420898437496
+  },
+  {
+   "cpu_slowdown": 4,
+   "link_gibs": 12,
+   "speedup": 1.0913319484828932,
+   "net_ms": -7.834332812499994
+  },
+  {
+   "cpu_slowdown": 4,
+   "link_gibs": 24,
+   "speedup": 1.3888073267586596,
+   "net_ms": -26.207681640624997
+  },
+  {
+   "cpu_slowdown": 4,
+   "link_gibs": 48,
+   "speedup": 1.439266487777286,
+   "net_ms": -28.570840820312497
+  },
+  {
+   "cpu_slowdown": 4,
+   "link_gibs": 96,
+   "speedup": 1.465896498297488,
+   "net_ms": -29.75242041015624
+  },
+  {
+   "cpu_slowdown": 4,
+   "link_gibs": 400,
+   "speedup": 1.4868037703632897,
+   "net_ms": -30.650420898437496
+  },
+  {
+   "cpu_slowdown": 6,
+   "link_gibs": 12,
+   "speedup": 1.5471020078904134,
+   "net_ms": -39.46336328125
+  },
+  {
+   "cpu_slowdown": 6,
+   "link_gibs": 24,
+   "speedup": 1.6555815285230964,
+   "net_ms": -44.189681640625
+  },
+  {
+   "cpu_slowdown": 6,
+   "link_gibs": 48,
+   "speedup": 1.7157333244688904,
+   "net_ms": -46.5528408203125
+  },
+  {
+   "cpu_slowdown": 6,
+   "link_gibs": 96,
+   "speedup": 1.7474786592407912,
+   "net_ms": -47.73442041015624
+  },
+  {
+   "cpu_slowdown": 6,
+   "link_gibs": 400,
+   "speedup": 1.7724019821359354,
+   "net_ms": -48.632420898437495
+  },
+  {
+   "cpu_slowdown": 8,
+   "link_gibs": 12,
+   "speedup": 1.7963962263221125,
+   "net_ms": -57.44536328125001
+  },
+  {
+   "cpu_slowdown": 8,
+   "link_gibs": 24,
+   "speedup": 1.9223557302875336,
+   "net_ms": -62.17168164062501
+  },
+  {
+   "cpu_slowdown": 8,
+   "link_gibs": 48,
+   "speedup": 1.9922001611604951,
+   "net_ms": -64.53484082031251
+  },
+  {
+   "cpu_slowdown": 8,
+   "link_gibs": 96,
+   "speedup": 2.0290608201840943,
+   "net_ms": -65.71642041015625
+  },
+  {
+   "cpu_slowdown": 8,
+   "link_gibs": 400,
+   "speedup": 2.058000193908581,
+   "net_ms": -66.6144208984375
+  }
+ ]
+}

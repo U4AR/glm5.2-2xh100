@@ -1,0 +1,277 @@
+{
+ "ts": 1785822580.4092915,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "0,1,2,4,6,8",
+  "runs": 3,
+  "tokens": 200,
+  "out": "bench/profile_out/stage0a_noCPU.json"
+ },
+ "per_tier": {
+  "0": [
+   {
+    "ttft_s": 0.3993379210000967,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 51.21591000010994,
+    "ms_per_step_mean": 51.364545205882784,
+    "steps_per_s": 19.468682064481122,
+    "tok_per_s": 56.430962505742386,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.397682666000037,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 51.111986999785586,
+    "ms_per_step_mean": 51.24440886764687,
+    "steps_per_s": 19.514324042312243,
+    "tok_per_s": 56.563258093658675,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.39227878200017585,
+    "n_steps": 69,
+    "n_tokens": 200,
+    "accept_length": 2.898550724637681,
+    "ms_per_step_median": 51.01173250022839,
+    "ms_per_step_mean": 51.24393205882343,
+    "steps_per_s": 19.514505617018024,
+    "tok_per_s": 56.5637843971537,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   }
+  ],
+  "1": [
+   {
+    "ttft_s": 0.3452024889998029,
+    "n_steps": 65,
+    "n_tokens": 200,
+    "accept_length": 3.076923076923077,
+    "ms_per_step_median": 50.44119200010755,
+    "ms_per_step_mean": 50.690962890627134,
+    "steps_per_s": 19.727382219147035,
+    "tok_per_s": 60.6996375973755,
+    "sample": "The essay should be deeply into technical aspects of CPU/GPU parallelism, memory hierarchy, and scheduling. It should be"
+   },
+   {
+    "ttft_s": 0.3359877900002175,
+    "n_steps": 65,
+    "n_tokens": 200,
+    "accept_length": 3.076923076923077,
+    "ms_per_step_median": 50.36799399999836,
+    "ms_per_step_mean": 50.64760289062065,
+    "steps_per_s": 19.744271059769908,
+    "tok_per_s": 60.75160326083049,
+    "sample": "The essay should be deeply into technical aspects of CPU/GPU parallelism, memory hierarchy, and scheduling. It should be"
+   },
+   {
+    "ttft_s": 0.3461739609997494,
+    "n_steps": 65,
+    "n_tokens": 200,
+    "accept_length": 3.076923076923077,
+    "ms_per_step_median": 50.35849249998137,
+    "ms_per_step_mean": 50.598573546878356,
+    "steps_per_s": 19.763402995412985,
+    "tok_per_s": 60.81047075511688,
+    "sample": "The essay should be deeply into technical aspects of CPU/GPU parallelism, memory hierarchy, and scheduling. It should be"
+   }
+  ],
+  "2": [
+   {
+    "ttft_s": 0.33837618899997324,
+    "n_steps": 57,
+    "n_tokens": 200,
+    "accept_length": 3.508771929824561,
+    "ms_per_step_median": 49.8623905000386,
+    "ms_per_step_mean": 50.15340010714096,
+    "steps_per_s": 19.938827634093297,
+    "tok_per_s": 69.96079871611684,
+    "sample": "The request asks for a essay comparing modern CPUs and GPUs in their areas of parallelism, memory hierarchy, and schedul"
+   },
+   {
+    "ttft_s": 0.3449784960002944,
+    "n_steps": 57,
+    "n_tokens": 200,
+    "accept_length": 3.508771929824561,
+    "ms_per_step_median": 49.80038100006823,
+    "ms_per_step_mean": 50.07839798214166,
+    "steps_per_s": 19.968689900116367,
+    "tok_per_s": 70.06557859689954,
+    "sample": "The request asks for a essay comparing modern CPUs and GPUs in their areas of parallelism, memory hierarchy, and schedul"
+   },
+   {
+    "ttft_s": 0.3366153529996154,
+    "n_steps": 57,
+    "n_tokens": 200,
+    "accept_length": 3.508771929824561,
+    "ms_per_step_median": 49.90817899988542,
+    "ms_per_step_mean": 50.124414892861424,
+    "steps_per_s": 19.95035756801257,
+    "tok_per_s": 70.00125462460552,
+    "sample": "The request asks for a essay comparing modern CPUs and GPUs in their areas of parallelism, memory hierarchy, and schedul"
+   }
+  ],
+  "4": [
+   {
+    "ttft_s": 0.3430547840002873,
+    "n_steps": 88,
+    "n_tokens": 200,
+    "accept_length": 2.272727272727273,
+    "ms_per_step_median": 50.138392000008025,
+    "ms_per_step_mean": 49.99363187355801,
+    "steps_per_s": 20.002547575042396,
+    "tok_per_s": 45.46033539782363,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approaches to parallelism, memory hier"
+   },
+   {
+    "ttft_s": 0.3408623670002271,
+    "n_steps": 88,
+    "n_tokens": 200,
+    "accept_length": 2.272727272727273,
+    "ms_per_step_median": 50.05330999983926,
+    "ms_per_step_mean": 49.91309647126379,
+    "steps_per_s": 20.03482193447415,
+    "tok_per_s": 45.533686214713974,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approaches to parallelism, memory hier"
+   },
+   {
+    "ttft_s": 0.3431049749997328,
+    "n_steps": 88,
+    "n_tokens": 200,
+    "accept_length": 2.272727272727273,
+    "ms_per_step_median": 50.02787300009004,
+    "ms_per_step_mean": 49.90235474713114,
+    "steps_per_s": 20.039134527163558,
+    "tok_per_s": 45.54348756173536,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approaches to parallelism, memory hier"
+   }
+  ],
+  "6": [
+   {
+    "ttft_s": 0.34424549000004845,
+    "n_steps": 56,
+    "n_tokens": 200,
+    "accept_length": 3.5714285714285716,
+    "ms_per_step_median": 47.82870799999728,
+    "ms_per_step_mean": 48.21173167272884,
+    "steps_per_s": 20.741839492267275,
+    "tok_per_s": 74.07799818666884,
+    "sample": "1.  **Analyze the Request:**\n    *   **Topic:** Modern CPUs vs GPUs in their approach to parallelism, memory hierarchy, "
+   },
+   {
+    "ttft_s": 0.34126363099994705,
+    "n_steps": 56,
+    "n_tokens": 200,
+    "accept_length": 3.5714285714285716,
+    "ms_per_step_median": 47.75714600009451,
+    "ms_per_step_mean": 48.171917363635494,
+    "steps_per_s": 20.758982717073458,
+    "tok_per_s": 74.13922398954806,
+    "sample": "1.  **Analyze the Request:**\n    *   **Topic:** Modern CPUs vs GPUs in their approach to parallelism, memory hierarchy, "
+   },
+   {
+    "ttft_s": 0.34047815100029766,
+    "n_steps": 56,
+    "n_tokens": 200,
+    "accept_length": 3.5714285714285716,
+    "ms_per_step_median": 47.67855599993709,
+    "ms_per_step_mean": 48.16335434545015,
+    "steps_per_s": 20.7626734804958,
+    "tok_per_s": 74.152405287485,
+    "sample": "1.  **Analyze the Request:**\n    *   **Topic:** Modern CPUs vs GPUs in their approach to parallelism, memory hierarchy, "
+   }
+  ],
+  "8": [
+   {
+    "ttft_s": 0.33156893099976514,
+    "n_steps": 74,
+    "n_tokens": 200,
+    "accept_length": 2.7027027027027026,
+    "ms_per_step_median": 47.41153800023312,
+    "ms_per_step_mean": 47.37635665753559,
+    "steps_per_s": 21.107574970962695,
+    "tok_per_s": 57.047499921520796,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs vs GPUs in parallelism, memory hierarchy, and scheduling"
+   },
+   {
+    "ttft_s": 0.33483631899980537,
+    "n_steps": 74,
+    "n_tokens": 200,
+    "accept_length": 2.7027027027027026,
+    "ms_per_step_median": 47.20415799965849,
+    "ms_per_step_mean": 47.276700136984026,
+    "steps_per_s": 21.15206850525744,
+    "tok_per_s": 57.167752716912,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs vs GPUs in parallelism, memory hierarchy, and scheduling"
+   },
+   {
+    "ttft_s": 0.33592872300005183,
+    "n_steps": 74,
+    "n_tokens": 200,
+    "accept_length": 2.7027027027027026,
+    "ms_per_step_median": 47.18971699958274,
+    "ms_per_step_mean": 47.32531890410789,
+    "steps_per_s": 21.130338329599695,
+    "tok_per_s": 57.10902251243161,
+    "sample": "The user wants a detailed technical essay comparing modern CPUs vs GPUs in parallelism, memory hierarchy, and scheduling"
+   }
+  ]
+ },
+ "summary": {
+  "0": {
+   "ms_per_step": 51.111986999785586,
+   "spread_pct": 0.3994708714462797,
+   "steps_per_s": 19.514324042312243,
+   "accept_length": 2.898550724637681,
+   "tok_per_s": 56.563258093658675,
+   "n_runs": 3
+  },
+  "1": {
+   "ms_per_step": 50.36799399999836,
+   "spread_pct": 0.16419057730626474,
+   "steps_per_s": 19.744271059769908,
+   "accept_length": 3.076923076923077,
+   "tok_per_s": 60.75160326083049,
+   "n_runs": 3
+  },
+  "2": {
+   "ms_per_step": 49.8623905000386,
+   "spread_pct": 0.21619099833793692,
+   "steps_per_s": 19.95035756801257,
+   "accept_length": 3.508771929824561,
+   "tok_per_s": 70.00125462460552,
+   "n_runs": 3
+  },
+  "4": {
+   "ms_per_step": 50.05330999983926,
+   "spread_pct": 0.22080258012575105,
+   "steps_per_s": 20.03482193447415,
+   "accept_length": 2.272727272727273,
+   "tok_per_s": 45.533686214713974,
+   "n_runs": 3
+  },
+  "6": {
+   "ms_per_step": 47.75714600009451,
+   "spread_pct": 0.3144073979209131,
+   "steps_per_s": 20.758982717073458,
+   "accept_length": 3.5714285714285716,
+   "tok_per_s": 74.13922398954806,
+   "n_runs": 3
+  },
+  "8": {
+   "ms_per_step": 47.20415799965849,
+   "spread_pct": 0.4699183505232407,
+   "steps_per_s": 21.130338329599695,
+   "accept_length": 2.7027027027027026,
+   "tok_per_s": 57.10902251243161,
+   "n_runs": 3
+  },
+  "fit": {
+   "intercept_ms": 51.039753436051924,
+   "slope_ms_per_tier": -0.47398898479192525
+  }
+ }
+}

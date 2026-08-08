@@ -1,0 +1,62 @@
+[
+ {
+  "label": "G5-base",
+  "tier": "2",
+  "ms_per_step": 66.67221699899528,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.85357508339513,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786094601.6979823,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "G5-fused-off",
+  "tier": "2",
+  "ms_per_step": 68.17910300014773,
+  "accept": 2.857142857142857,
+  "tok_per_s": 41.90643073049328,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786094906.5800352,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "G5-fused-on",
+  "tier": "2",
+  "ms_per_step": 64.55836249915592,
+  "accept": 2.6666666666666665,
+  "tok_per_s": 41.1058917415362,
+  "steps": [
+   73,
+   77,
+   75
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786095163.991267,
+  "sample": "1.  **Understand the Request**: The user wants a detailed technical essay comparing modern CPUs and GPUs in three specific areas: parallelism, memory hierarchy, and scheduling. The essay needs to be technical, detailed, and structured.\n\n2.  **Identify the Core Themes**:\n    *   **Parallelism**: CPUs use thread-level parallelism (TLP) and instruction-level parallelism (ILP) via superscalar architec"
+ }
+]

@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anatomy of a 64 ms decode step</title>
+<style>
+  /* minimal reset -- the hosted artifact runtime supplies this; a local file
+     needs it so the page looks identical opened straight from disk. */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: #F4F6F7; }
+  @media (prefers-color-scheme: dark) { html { background: #0F1519; } }
+  body { margin: 0; }
+  img, svg { max-width: 100%; }
+</style>
+</head>
+<body>
+<style>
+  :root {
+    --ground: #F4F6F7;
+    --panel: #FFFFFF;
+    --panel-2: #EBEFF1;
+    --ink: #131A1E;
+    --ink-2: #46545C;
+    --ink-3: #75858E;
+    --rule: #D6DDE1;
+    --gpu: #C47C1E;
+    --gpu-soft: #E8C58E;
+    --cpu: #1F7F77;
+    --cpu-soft: #98C9C4;
+    --xfer: #6152B8;
+    --xfer-soft: #B7AEE4;
+    --hot: #B3402B;
+    --hot-soft: #E0A99D;
+    --idle: #C3CBD0;
+    --shadow: 0 1px 2px rgba(19,26,30,.06), 0 8px 24px rgba(19,26,30,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F1519;
+      --panel: #161E23;
+      --panel-2: #1D272D;
+      --ink: #E8EDEF;
+      --ink-2: #A3B1B8;
+      --ink-3: #71828A;
+      --rule: #27333A;
+      --gpu: #E0983C;
+      --gpu-soft: #6B4A18;
+      --cpu: #2F9E95;
+      --cpu-soft: #174B47;
+      --xfer: #8878DE;
+      --xfer-soft: #362E63;
+      --hot: #D9614C;
+      --hot-soft: #5C2A20;
+      --idle: #2B373E;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1519; --panel: #161E23; --panel-2: #1D272D;
+    --ink: #E8EDEF; --ink-2: #A3B1B8; --ink-3: #71828A; --rule: #27333A;
+    --gpu: #E0983C; --gpu-soft: #6B4A18; --cpu: #2F9E95; --cpu-soft: #174B47;
+    --xfer: #8878DE; --xfer-soft: #362E63; --hot: #D9614C; --hot-soft: #5C2A20;
+    --idle: #2B373E;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.28);
+  }
+  :root[data-theme="light"] {
+    --ground: #F4F6F7; --panel: #FFFFFF; --panel-2: #EBEFF1;
+    --ink: #131A1E; --ink-2: #46545C; --ink-3: #75858E; --rule: #D6DDE1;
+    --gpu: #C47C1E; --gpu-soft: #E8C58E; --cpu: #1F7F77; --cpu-soft: #98C9C4;
+    --xfer: #6152B8; --xfer-soft: #B7AEE4; --hot: #B3402B; --hot-soft: #E0A99D;
+    --idle: #C3CBD0;
+    --shadow: 0 1px 2px rgba(19,26,30,.06), 0 8px 24px rgba(19,26,30,.05);
+  }
+
+  * { box-sizing: border-box; }
+
+  .wrap {
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: ui-serif, Georgia, "Iowan Old Style", serif;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    padding: clamp(20px, 5vw, 68px) clamp(16px, 5vw, 40px) 90px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: clamp(30px, 5vw, 52px);
+    -webkit-font-smoothing: antialiased;
+  }
+  .col { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: inherit; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: .69rem; letter-spacing: .17em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(2rem, 5.4vw, 3.15rem); line-height: 1.03;
+    letter-spacing: -.032em; font-weight: 800; margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: clamp(1.15rem, 2.4vw, 1.42rem); letter-spacing: -.018em;
+    font-weight: 750; margin: 0 0 6px; text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .15em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+    margin: 0 0 12px;
+  }
+  p { margin: 0 0 13px; color: var(--ink-2); max-width: 66ch; }
+  p:last-child { margin-bottom: 0; }
+  .lede { font-family: var(--serif); font-size: 1.16rem; line-height: 1.56;
+          color: var(--ink); font-style: italic; max-width: 60ch; }
+  strong { color: var(--ink); font-weight: 650; }
+  code, .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  code { font-size: .875em; background: var(--panel-2); padding: .1em .38em;
+         border-radius: 3px; }
+
+  section { display: flex; flex-direction: column; gap: 16px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 10px; padding: clamp(18px, 3.2vw, 28px);
+    box-shadow: var(--shadow);
+  }
+
+  /* ---- headline stats ---- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 1px;
+           background: var(--rule); border: 1px solid var(--rule); border-radius: 10px;
+           overflow: hidden; }
+  .stat { background: var(--panel); padding: 17px 18px; display: flex; flex-direction: column; gap: 3px; }
+  .stat .v { font-family: var(--mono); font-size: 1.52rem; font-weight: 600;
+             letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .stat .k { font-family: var(--mono); font-size: .655rem; letter-spacing: .13em;
+             text-transform: uppercase; color: var(--ink-3); }
+  .stat .s { font-size: .78rem; color: var(--ink-3); }
+  .up { color: var(--cpu); }
+
+  /* ---- budget bars ---- */
+  .budget { display: flex; flex-direction: column; gap: 20px; }
+  .brow { display: flex; flex-direction: column; gap: 7px; }
+  .blab { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .blab .name { font-weight: 650; font-size: .93rem; }
+  .blab .tot { font-family: var(--mono); font-size: .93rem; font-variant-numeric: tabular-nums;
+               color: var(--ink-2); }
+  .bar { display: flex; height: 46px; border-radius: 5px; overflow: hidden;
+         border: 1px solid var(--rule); background: var(--panel-2); }
+  .seg { display: flex; align-items: center; justify-content: center;
+         font-family: var(--mono); font-size: .7rem; font-weight: 600;
+         font-variant-numeric: tabular-nums; color: #fff; overflow: hidden;
+         white-space: nowrap; min-width: 0; }
+  .seg.floor { background: var(--idle); color: var(--ink-2); }
+  .seg.cpu   { background: var(--cpu); }
+  .seg.pred  { background: var(--xfer); }
+  .seg.gath  { background: var(--hot); }
+  .seg.resid { background: var(--cpu); }
+  .axis { display: flex; justify-content: space-between; font-family: var(--mono);
+          font-size: .66rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .lg { display: flex; align-items: center; gap: 7px; font-size: .8rem; color: var(--ink-2); }
+  .sw { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+
+  /* ---- gantt ---- */
+  .gantt { display: flex; flex-direction: column; gap: 3px; }
+  .glane { display: grid; grid-template-columns: 108px 1fr; align-items: center; gap: 12px; }
+  .gname { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--ink-3); text-align: right; }
+  .gtrack { position: relative; height: 34px; background: var(--panel-2);
+            border-radius: 4px; overflow: hidden; }
+  .gbar { position: absolute; top: 5px; height: 24px; border-radius: 3px;
+          display: flex; align-items: center; padding: 0 7px;
+          font-family: var(--mono); font-size: .655rem; font-weight: 600;
+          color: #fff; white-space: nowrap; overflow: hidden; }
+  .gbar.hatch {
+    background-image: repeating-linear-gradient(45deg,
+      transparent 0 5px, rgba(255,255,255,.22) 5px 10px);
+  }
+  .gscale { display: grid; grid-template-columns: 108px 1fr; gap: 12px; margin-top: 5px; }
+  .gticks { display: flex; justify-content: space-between; font-family: var(--mono);
+            font-size: .64rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; font-size: .855rem; min-width: 430px; }
+  th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--rule);
+           font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+  th { font-family: var(--mono); font-size: .655rem; letter-spacing: .11em;
+       text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+       border-bottom: 1px solid var(--ink-3); white-space: nowrap; }
+  td { font-family: var(--mono); color: var(--ink-2); }
+  td:first-child { font-family: var(--sans); color: var(--ink); }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.hi td { color: var(--ink); font-weight: 650; }
+  .mini { display: inline-block; height: 7px; border-radius: 2px; vertical-align: middle;
+          background: var(--gpu); }
+
+  .note { border-left: 2px solid var(--xfer); padding: 2px 0 2px 16px; }
+  .note p { font-size: .875rem; }
+
+  ul { margin: 0; padding-left: 19px; color: var(--ink-2); max-width: 66ch; }
+  li { margin-bottom: 7px; font-size: .9rem; }
+  li:last-child { margin-bottom: 0; }
+
+  hr { border: none; border-top: 1px solid var(--rule); margin: 0; }
+  .foot { font-size: .8rem; color: var(--ink-3); max-width: 66ch; }
+</style>
+
+<div class="wrap">
+<div class="col">
+
+  <header>
+    <p class="eyebrow">GLM-5.2 · 2×H100 · measured 2026-08-07</p>
+    <h1>Anatomy of a 64&nbsp;ms decode step</h1>
+    <p class="lede">The prefetcher removes 98% of the CPU expert path it was built to remove. It nets 2% — because moving the bytes costs almost as much as the compute it avoids.</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span class="k">step, prefetch on</span><span class="v">63.89</span><span class="s">ms · 2.86 tokens</span></div>
+    <div class="stat"><span class="k">step, baseline</span><span class="v">66.07</span><span class="s">ms · same accept</span></div>
+    <div class="stat"><span class="k">net gain</span><span class="v up">+2.1%</span><span class="s">43.25 → 44.72 tok/s</span></div>
+    <div class="stat"><span class="k">gather GPU time</span><span class="v">24.20</span><span class="s">ms/step, ~62% hidden</span></div>
+  </div>
+
+  <section>
+    <h2>Where the step goes</h2>
+    <p>Both rows are one boot, one tier (<code>top2</code>), so every subtraction is within-config. The floor is measured directly: at tier&nbsp;0 no expert runs on the CPU at all.</p>
+
+    <div class="card budget">
+      <div class="brow">
+        <div class="blab"><span class="name">Baseline — no prefetch</span><span class="tot">66.07 ms</span></div>
+        <div class="bar">
+          <div class="seg floor" style="width:79.73%">52.68 &nbsp;GPU floor</div>
+          <div class="seg cpu" style="width:20.27%">13.39 &nbsp;CPU experts</div>
+        </div>
+      </div>
+
+      <div class="brow">
+        <div class="blab"><span class="name">Prefetch on — index fixed</span><span class="tot">63.89 ms</span></div>
+        <div class="bar">
+          <div class="seg floor" style="width:82.45%">52.68 &nbsp;GPU floor</div>
+          <div class="seg pred" style="width:2.75%">1.76</div>
+          <div class="seg gath" style="width:14.46%">9.24 &nbsp;gather</div>
+          <div class="seg resid" style="width:0.33%"></div>
+        </div>
+        <div class="axis"><span>0 ms</span><span>66 ms</span></div>
+      </div>
+
+      <div class="legend">
+        <span class="lg"><span class="sw" style="background:var(--idle)"></span>GPU floor — everything not CPU-expert-related</span>
+        <span class="lg"><span class="sw" style="background:var(--cpu)"></span>CPU expert path, exposed</span>
+        <span class="lg"><span class="sw" style="background:var(--xfer)"></span>predictor</span>
+        <span class="lg"><span class="sw" style="background:var(--hot)"></span>gather, exposed portion</span>
+      </div>
+    </div>
+
+    <p>The decomposition <strong>closes to the millisecond</strong>: 52.68&nbsp;+&nbsp;1.76&nbsp;+&nbsp;9.24&nbsp;+&nbsp;0.21&nbsp;=&nbsp;63.89. The CPU expert path collapses from <span class="n">13.39</span> to <span class="n">0.21</span>&nbsp;ms — the sliver at the right edge above.</p>
+  </section>
+
+  <section>
+    <h2>What the machinery costs when it cannot help</h2>
+    <p>Tier&nbsp;0 substitutes every expert with a GPU-resident one, so there is no CPU work to save — but the predictor still fires and the gather still moves bytes. That isolates the overhead exactly.</p>
+    <div class="card scroll">
+      <table>
+        <thead><tr><th>Tier</th><th>baseline</th><th>prefetch on</th><th>delta</th><th>reading</th></tr></thead>
+        <tbody>
+          <tr><td>top8 — all true experts</td><td>149.48</td><td>141.45</td><td>−8.03</td><td>4 slots cannot cover 8</td></tr>
+          <tr class="hi"><td>top2 — shipped</td><td>66.07</td><td>63.89</td><td>−2.18</td><td>the net win</td></tr>
+          <tr><td>top0 — no CPU experts</td><td>52.68</td><td>63.68</td><td><strong style="color:var(--hot)">+11.00</strong></td><td>pure overhead</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>So the prefetch machinery costs <strong>11.00&nbsp;ms</strong> and buys back <strong>13.18&nbsp;ms</strong>. The margin is thin not because prediction is poor, but because the transfer is nearly as expensive as the compute it displaces.</p>
+  </section>
+
+  <section>
+    <h2>Inside one MoE layer</h2>
+    <p>Durations are step totals divided across the 74 layers that run a prediction, so they are averages, not a traced single layer. The shape is what matters: the gather runs on its own stream and is only paid for where it sticks out past the GPU work it hides behind.</p>
+
+    <div class="card">
+      <div class="gantt">
+        <div class="glane">
+          <span class="gname">GPU main</span>
+          <div class="gtrack">
+            <div class="gbar" style="left:0%; width:9%; background:var(--gpu)">gate</div>
+            <div class="gbar" style="left:9.6%; width:20%; background:var(--gpu)">attention 83 µs</div>
+            <div class="gbar" style="left:30.2%; width:37%; background:var(--gpu)">GPU experts + norm/rope 154 µs</div>
+            <div class="gbar" style="left:67.8%; width:13%; background:var(--gpu-soft); color:var(--ink)">all-reduce</div>
+          </div>
+        </div>
+        <div class="glane">
+          <span class="gname">CPU experts</span>
+          <div class="gtrack">
+            <div class="gbar" style="left:9.6%; width:6%; background:var(--cpu)">sub</div>
+            <div class="gbar hatch" style="left:16%; width:48%; background:var(--cpu)">compute — hidden behind GPU</div>
+            <div class="gbar" style="left:64.4%; width:3.4%; background:var(--hot)"></div>
+          </div>
+        </div>
+        <div class="glane">
+          <span class="gname">Prefetch</span>
+          <div class="gtrack">
+            <div class="gbar" style="left:0%; width:4%; background:var(--xfer)">7&nbsp;µs</div>
+            <div class="gbar hatch" style="left:4.6%; width:58%; background:var(--xfer)">gather 327 µs — side stream</div>
+            <div class="gbar" style="left:63%; width:14.5%; background:var(--hot)">exposed 125 µs</div>
+          </div>
+        </div>
+        <div class="gscale">
+          <span></span>
+          <div class="gticks"><span>0</span><span>~215 µs</span><span>~430 µs</span><span>~650 µs</span><span>863 µs</span></div>
+        </div>
+      </div>
+      <div class="legend" style="margin-top:16px">
+        <span class="lg"><span class="sw" style="background:var(--gpu)"></span>GPU kernels</span>
+        <span class="lg"><span class="sw" style="background:var(--cpu)"></span>CPU expert path</span>
+        <span class="lg"><span class="sw" style="background:var(--xfer)"></span>prefetch predict + gather</span>
+        <span class="lg"><span class="sw" style="background:var(--hot)"></span>exposed on the critical path</span>
+        <span class="lg"><span class="sw hatch" style="background:var(--ink-3); background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.35) 3px 6px)"></span>overlapped / hidden</span>
+      </div>
+    </div>
+
+    <div class="note">
+      <p>The prefetch fires on <strong>74 of 75</strong> MoE layers every step — layer&nbsp;3 has no predecessor to predict for it. Per layer that is one <code>k_pred_fused</code> launch and four gather launches.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>GPU kernel time, from the trace</h2>
+    <p>Parsed from the server's own torch profiler. The profiler slowed steps 1.30×; every figure below is rescaled to the unprofiled step. The four gather kernels were 90% of what the profiler's classifier had been filing as “other”.</p>
+
+    <div class="card scroll">
+      <table>
+        <thead><tr><th>Kernel / stage</th><th>ms/step</th><th>launches/step</th><th></th></tr></thead>
+        <tbody>
+          <tr class="hi"><td>k_w13_weights — gather</td><td>13.25</td><td>74</td><td><span class="mini" style="width:100%; background:var(--hot)"></span></td></tr>
+          <tr><td>norm / rope / elemwise</td><td>12.29</td><td>—</td><td><span class="mini" style="width:93%"></span></td></tr>
+          <tr><td>MoE experts (GPU int4)</td><td>11.55</td><td>—</td><td><span class="mini" style="width:87%"></span></td></tr>
+          <tr class="hi"><td>k_w2_weights — gather</td><td>8.08</td><td>74</td><td><span class="mini" style="width:61%; background:var(--hot)"></span></td></tr>
+          <tr><td>attention (NSA / MLA)</td><td>6.45</td><td>—</td><td><span class="mini" style="width:49%"></span></td></tr>
+          <tr><td>dense GEMM</td><td>4.42</td><td>—</td><td><span class="mini" style="width:33%"></span></td></tr>
+          <tr><td>memcpy H↔D</td><td>2.84</td><td>—</td><td><span class="mini" style="width:21%"></span></td></tr>
+          <tr><td>sampling / draft logic</td><td>2.24</td><td>—</td><td><span class="mini" style="width:17%"></span></td></tr>
+          <tr class="hi"><td>k_w13_scales + k_w2_scales</td><td>2.88</td><td>148</td><td><span class="mini" style="width:22%; background:var(--hot)"></span></td></tr>
+          <tr><td>comm (NCCL all-reduce)</td><td>1.55</td><td>—</td><td><span class="mini" style="width:12%"></span></td></tr>
+          <tr class="hi"><td>k_pred_fused — predictor</td><td>0.53</td><td>74</td><td><span class="mini" style="width:4%; background:var(--xfer)"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>GPU busy was <span class="n">48.2</span>&nbsp;ms of the step (72.7%) with the CPU expert path holding <span class="n">18.1</span>&nbsp;ms of critical path. Occupancy says the box is <strong>not</strong> bandwidth-bound: HBM at 12.1% of peak, CPU int8 VNNI at 4.5% of 28&nbsp;TOPS, while CPU cores sit at 93% and both GPUs report 91–97% SM — the high side being NCCL spin, not work.</p>
+  </section>
+
+  <section>
+    <h2>How much it predicts</h2>
+    <div class="stats">
+      <div class="stat"><span class="k">layers covered</span><span class="v">74/75</span><span class="s">every step</span></div>
+      <div class="stat"><span class="k">wanted / layer-call</span><span class="v">2.18</span><span class="s">distinct non-resident</span></div>
+      <div class="stat"><span class="k">fetched / layer-call</span><span class="v">1.78</span><span class="s">82% of demand</span></div>
+      <div class="stat"><span class="k">over slot budget</span><span class="v">18.8%</span><span class="s">of calls want &gt; 4</span></div>
+    </div>
+    <p>The strongest statement available is the end-to-end one: the exposed CPU expert path fell from <span class="n">13.39</span> to <span class="n">0.21</span>&nbsp;ms. Almost everything the layers needed had already landed.</p>
+    <div class="note">
+      <p><strong>One caveat on that number.</strong> Part of the collapse may be extra shadow rather than better prediction — the gather adds 24&nbsp;ms of GPU work, giving the CPU more time to hide behind. This experiment does not separate the two. Per-layer recall was not re-measured today: the fused predictor bypasses the scoring instrument, so <code>KT_PLACE_SCORE</code> is a no-op and it needs a separate eager boot.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this says about the ceiling</h2>
+    <ul>
+      <li><strong>The CPU expert path is only 20% of the step at the shipped tier</strong> — 13.39 of 66.07&nbsp;ms. The tier substitution already removed 86% of it (at top8 the same path costs 96.80&nbsp;ms). A prefetcher cannot win more than what substitution left behind.</li>
+      <li><strong>The gather is the expensive half.</strong> 24.20&nbsp;ms/step of GPU kernel time to avoid 13.18&nbsp;ms of CPU compute. It only nets positive because ~62% of it hides.</li>
+      <li><strong>The 52.68 ms floor is now the target.</strong> It is 82% of the step and has nothing to do with CPU experts. Norm/rope/elemwise alone is 12.29&nbsp;ms across thousands of tiny launches — this decode is priced by launch count, not FLOPs.</li>
+    </ul>
+  </section>
+
+  <hr>
+  <p class="foot">Config: GPU_EXPERTS=100, MEM_FRACTION=0.94, RUNGLM_TOPK_MODE=safe2, MTP depth-3, tier top2, 200-token greedy completions, 3 runs per row. Harnesses: <code>bench/step_anatomy.sh</code>, <code>bench/profile_occupancy.py</code>, <code>bench/prefetch_rate.py</code>. Per-layer figures are step totals divided by 74; the layer Gantt shows measured durations in a schematic order, not a traced timeline.</p>
+
+</div>
+</div>
+</body>
+</html>

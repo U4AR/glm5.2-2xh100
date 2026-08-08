@@ -1,0 +1,42 @@
+[
+ {
+  "label": "Y-base",
+  "tier": "2",
+  "ms_per_step": 65.68004000291694,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.500930526473,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786101210.0914223,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "Y-full",
+  "tier": "2",
+  "ms_per_step": 64.34694700146792,
+  "accept": 2.857142857142857,
+  "tok_per_s": 44.40215099991734,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786101529.6217818,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs in three specific areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Deconstruct the Prompt:**\n    *   **Topic:** Modern CPUs vs. Modern GPUs.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n3.  **Initial Brainstorming & Kn"
+ }
+]

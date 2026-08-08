@@ -1,0 +1,323 @@
+<title>Where a GLM-5.2 token's time goes</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg:#f2f3f4; --surface:#fafbfb; --surface-2:#eceeef; --track:#dfe3e6;
+  --ink:#0d1013; --ink-2:#4e565e; --ink-3:#79828b; --rule:#dbdfe2;
+  --accent:#eb6834;          /* emphasis: the bottleneck */
+  --blue:#2a78d6;
+  --r1:#104281; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#86b6ef;
+  --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg:#0e1114; --surface:#171b1f; --surface-2:#1f242a; --track:#2b3138;
+    --ink:#f1f3f5; --ink-2:#a7b0b8; --ink-3:#79828b; --rule:#2a3037;
+    --accent:#d95926; --blue:#3987e5;
+    --r1:#cde2fb; --r2:#9ec5f4; --r3:#6da7ec; --r4:#3987e5; --r5:#184f95;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#0e1114; --surface:#171b1f; --surface-2:#1f242a; --track:#2b3138;
+  --ink:#f1f3f5; --ink-2:#a7b0b8; --ink-3:#79828b; --rule:#2a3037;
+  --accent:#d95926; --blue:#3987e5;
+  --r1:#cde2fb; --r2:#9ec5f4; --r3:#6da7ec; --r4:#3987e5; --r5:#184f95;
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap { max-width:1040px; margin:0 auto; padding:40px 24px 72px; }
+h1,h2,h3 { font-family:var(--mono); font-weight:600; text-wrap:balance; margin:0; }
+h1 { font-size:26px; letter-spacing:-0.02em; }
+h2 { font-size:14px; text-transform:uppercase; letter-spacing:0.12em; color:var(--ink-2); }
+p { margin:0; max-width:68ch; color:var(--ink-2); }
+.eyebrow {
+  font-family:var(--mono); font-size:11px; text-transform:uppercase;
+  letter-spacing:0.16em; color:var(--ink-3);
+}
+.num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+header { border-bottom:1px solid var(--rule); padding-bottom:24px; margin-bottom:36px; }
+header .sub { margin-top:10px; font-family:var(--mono); font-size:12.5px; color:var(--ink-3); }
+
+section { margin-top:44px; display:flex; flex-direction:column; gap:16px; }
+.card { background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:22px 24px; }
+
+/* ---- readout strip ---- */
+.readout { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+           background:var(--rule); border:1px solid var(--rule); border-radius:4px; overflow:hidden; }
+.readout > div { background:var(--surface); padding:16px 18px; }
+.readout .k { font-family:var(--mono); font-size:10.5px; text-transform:uppercase;
+              letter-spacing:0.1em; color:var(--ink-3); }
+.readout .v { font-family:var(--mono); font-variant-numeric:tabular-nums;
+              font-size:26px; font-weight:600; letter-spacing:-0.02em; margin-top:4px; }
+.readout .v small { font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0; }
+.readout .hero .v { color:var(--accent); }
+
+/* ---- lane diagram ---- */
+.lanes { display:flex; flex-direction:column; gap:10px; }
+.lane { display:grid; grid-template-columns:186px 1fr; gap:14px; align-items:center; }
+.lane .name { font-family:var(--mono); font-size:12px; color:var(--ink-2); text-align:right; line-height:1.35; }
+.lane .name b { display:block; color:var(--ink); font-weight:600; }
+.bar { position:relative; height:34px; background:var(--track); border-radius:3px; display:flex; overflow:hidden; }
+.seg { height:100%; position:relative; }
+.seg + .seg { margin-left:2px; }          /* 2px surface gap between fills */
+.seg:first-child { border-radius:3px 0 0 3px; }
+.seg:last-child  { border-radius:0 3px 3px 0; }
+.seg.only { border-radius:3px; }
+.lab { font-family:var(--mono); font-size:11.5px; font-variant-numeric:tabular-nums;
+       color:#fff; padding:0 9px; line-height:34px; white-space:nowrap; overflow:hidden; }
+.lab.dark { color:var(--ink); }
+.axis { display:grid; grid-template-columns:186px 1fr; gap:14px; margin-top:4px; }
+.ticks { position:relative; height:20px; border-top:1px solid var(--rule); }
+.ticks span { position:absolute; top:3px; transform:translateX(-50%);
+              font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
+.ticks span:first-child { transform:none; }
+.ticks span:last-child { transform:translateX(-100%); }
+
+/* ---- meters ---- */
+.meters { display:flex; flex-direction:column; gap:2px; }
+.meter { display:grid; grid-template-columns:200px 1fr 132px; gap:14px; align-items:center;
+         padding:9px 0; border-bottom:1px solid var(--rule); }
+.meter:last-child { border-bottom:0; }
+.meter .name { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+.meter .name span { display:block; color:var(--ink-3); font-size:11px; }
+.meter .track { height:14px; background:var(--track); border-radius:3px; overflow:hidden; }
+.meter .fill { height:100%; border-radius:3px; background:var(--blue); }
+.meter.hot .fill { background:var(--accent); }
+.meter .val { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px;
+              text-align:right; color:var(--ink-2); }
+.meter .val b { color:var(--ink); font-size:15px; }
+.pill { display:inline-block; font-family:var(--mono); font-size:10px; text-transform:uppercase;
+        letter-spacing:0.09em; padding:2px 7px; border-radius:3px; border:1px solid currentColor; }
+.pill.hot { color:var(--accent); }
+.pill.cool { color:var(--ink-3); }
+
+/* ---- table ---- */
+.tablewrap { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12.5px;
+        font-variant-numeric:tabular-nums; }
+th,td { text-align:left; padding:8px 14px 8px 0; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th { font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-3); font-weight:600; }
+td.n { text-align:right; padding-right:22px; }
+td.d { color:var(--ink-2); white-space:normal; min-width:220px; }
+
+.note { font-size:13.5px; color:var(--ink-2); }
+.note b { color:var(--ink); font-weight:600; }
+ul.method { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:9px;
+            font-size:13.5px; color:var(--ink-2); max-width:76ch; }
+ul.method b { color:var(--ink); font-family:var(--mono); font-size:12.5px; font-weight:600; }
+code { font-family:var(--mono); font-size:12.5px; background:var(--surface-2);
+       padding:1px 5px; border-radius:3px; color:var(--ink); }
+pre { font-family:var(--mono); font-size:12.5px; background:var(--surface-2); color:var(--ink);
+      padding:14px 16px; border-radius:4px; overflow-x:auto; margin:0; border:1px solid var(--rule); }
+.legend { display:flex; flex-wrap:wrap; gap:16px; font-family:var(--mono); font-size:11.5px; color:var(--ink-2); }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; vertical-align:-1px; margin-right:6px; }
+
+#tip { position:fixed; z-index:20; pointer-events:none; opacity:0; transition:opacity .1s;
+       background:var(--ink); color:var(--bg); font-family:var(--mono); font-size:11.5px;
+       padding:6px 9px; border-radius:3px; max-width:280px; line-height:1.45; }
+[data-tip] { cursor:default; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (max-width:720px) {
+  .lane, .axis { grid-template-columns:1fr; }
+  .lane .name { text-align:left; }
+  .meter { grid-template-columns:1fr; gap:6px; }
+  .meter .val { text-align:left; }
+}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">occupancy profile · live server, nothing restarted</div>
+  <h1>Where a GLM5.2 token's time goes</h1>
+  <div class="sub">
+    2026-08-03 10:01:45 &nbsp;·&nbsp; NVIDIA H100 NVL, 95830 MiB
+    x2 &nbsp;·&nbsp; AMD EPYC 9V84 96-Core Processor &nbsp;·&nbsp;
+    660 GB RAM<br>
+    tp 2 · RAWINT4 cpu experts · 60 gpu-resident experts ·
+    nsa attention · MTP depth 3 · tier safe8
+  </div>
+</header>
+
+<div class="readout">
+  <div class="hero"><div class="k">per token</div>
+    <div class="v">62.5<small> ms</small></div></div>
+  <div><div class="k">throughput</div>
+    <div class="v">16.0<small> tok/s</small></div></div>
+  <div><div class="k">per forward step</div>
+    <div class="v">191<small> ms</small></div></div>
+  <div><div class="k">tokens / step</div>
+    <div class="v">3.05</div></div>
+  <div><div class="k">prefill</div>
+    <div class="v">1338<small> ms</small></div></div>
+</div>
+
+<section>
+  <h2>Anatomy of one forward step</h2>
+  <p>Each step runs the CPU experts asynchronously while the GPU works, so a layer
+  costs <span class="num">max(cpu, gpu)</span>. The GPU finishes its share in
+  <b class="num">37 ms</b> and then waits: for
+  <b class="num">80%</b> of every step the
+  accelerators are idle behind 6.1
+  expert GEMMs per layer running out of host DRAM.</p>
+  <div class="card">
+    <div class="lanes">
+      <div class="lane">
+        <div class="name"><b>GPU 0</b>compute rank<br>kernels + CPU wait</div>
+        <div class="bar"><div class="seg" style="width:5.43%;background:var(--r1)" data-tip="norm / rope / elemwise — 10.37 ms per step, 5.4% of the step"></div><div class="seg" style="width:4.00%;background:var(--r2)" data-tip="attention (NSA / MLA) — 7.64 ms per step, 4.0% of the step"></div><div class="seg" style="width:2.84%;background:var(--r3)" data-tip="MoE experts (GPU int4) — 5.42 ms per step, 2.8% of the step"></div><div class="seg" style="width:2.49%;background:var(--r4)" data-tip="comm (NCCL all-reduce) — 4.74 ms per step, 2.5% of the step"></div><div class="seg" style="width:5.17%;background:var(--r5)" data-tip="other kernels — 9.87 ms per step, 5.2% of the step"></div><div class="seg" style="flex:1 1 auto;min-width:0;background:var(--track)" data-tip="GPU idle — blocked on the CPU expert path for 154 ms"><span class="lab dark">idle — waiting on CPU experts &nbsp;154 ms</span></div></div>
+      </div>
+      <div class="lane">
+        <div class="name"><b>GPU 1</b>tp peer<br>NCCL spin-wait</div>
+        <div class="bar"><div class="seg only" style="width:87.3%;background:var(--track)"
+             data-tip="Rank 1 shows a 87% kernel duty cycle, but it is spinning inside the all-reduce waiting for rank 0 — not doing work.">
+             <span class="lab dark">spinning in all-reduce &nbsp;87% duty</span></div></div>
+      </div>
+      <div class="lane">
+        <div class="name"><b>CPU</b>6.1 experts x
+          75 layers<br>int4 W4A8 from DRAM</div>
+        <div class="bar"><div class="seg only" style="width:100%;background:var(--accent)"
+             data-tip="The CPU expert path runs the whole step and is what the step time actually is.">
+             <span class="lab">critical path — 191 ms, 8.9 GB of weights per token</span></div></div>
+      </div>
+    </div>
+    <div class="axis"><div></div><div class="ticks"><span style="left:0%">0</span><span style="left:20%">38</span><span style="left:40%">76</span><span style="left:60%">115</span><span style="left:80%">153</span><span style="left:100%">191</span><span style="left:100%">ms</span></div></div>
+    <div class="legend" style="margin-top:14px"><span><i style="background:var(--r1)"></i>norm / rope / elemwise 10.4 ms</span> <span><i style="background:var(--r2)"></i>attention (NSA / MLA) 7.6 ms</span> <span><i style="background:var(--r3)"></i>MoE experts (GPU int4) 5.4 ms</span> <span><i style="background:var(--r4)"></i>comm (NCCL all-reduce) 4.7 ms</span> <span><i style="background:var(--r5)"></i>other kernels 9.9 ms</span>
+      <span><i style="background:var(--track)"></i>idle / waiting</span>
+      <span><i style="background:var(--accent)"></i>CPU expert path</span>
+    </div>
+  </div>
+  <p class="note">The GPU segments are drawn contiguously for legibility; in reality
+  they are interleaved layer by layer across the whole step. Stage times come from
+  the server's torch profile, rescaled from the profiled step
+  (251 ms) to the unprofiled one
+  (191 ms) — the profiler itself costs
+  1.32x.</p>
+</section>
+
+<section>
+  <h2>Resource occupancy</h2>
+  <p>Only one number is near its ceiling — and it is the one that measures
+  <em>occupancy</em>, not work.</p>
+  <div class="card"><div class="meters">
+    <div class="meter hot">
+      <div class="name">CPU cores occupied<span>75 of 80 cores, both NUMA nodes</span></div>
+      <div class="track" data-tip="Cores counted busy while they stall on memory and while kt worker threads spin — occupancy, not useful arithmetic."><div class="fill" style="width:93.7%"></div></div>
+      <div class="val"><b>94%</b> <span class='pill hot'>saturated</span></div>
+    </div>
+    <div class="meter">
+      <div class="name">Host DRAM bandwidth<span>ceiling 379 GB/s measured (STREAM read)</span></div>
+      <div class="track" data-tip="~143 GB/s of a measured 379 GB/s read ceiling, and that demand figure is an upper bound. A 4-thread probe kept 38% of its idle bandwidth under load, but it competes for cores and cache too, so it overstates the memory pressure."><div class="fill" style="width:37.7%"></div></div>
+      <div class="val"><b>38%</b> <span class='pill cool'>headroom</span></div>
+    </div>
+    <div class="meter">
+      <div class="name">CPU arithmetic<span>int8 VNNI, 0.55 of 28 TOPS</span></div>
+      <div class="track" data-tip="The cores are busy but barely computing. Neither the vector units nor DRAM throughput is the limit."><div class="fill" style="width:2.0%"></div></div>
+      <div class="val"><b>2.0%</b> <span class='pill cool'>idle</span></div>
+    </div>
+    <div class="meter">
+      <div class="name">GPU compute<span>kernels busy on the compute rank; 0.35 of 1,979 TFLOP/s</span></div>
+      <div class="track" data-tip="From the server&#x27;s own torch profile: kernels occupy 19.6% of the step window. Arithmetic utilisation is 0.02% — batch-1 decode is not a compute problem."><div class="fill" style="width:19.6%"></div></div>
+      <div class="val"><b>20%</b> <span class='pill cool'>idle</span></div>
+    </div>
+    <div class="meter">
+      <div class="name">GPU HBM bandwidth<span>153 of 3,900 GB/s per card</span></div>
+      <div class="track" data-tip="Analytic model says 153 GB/s; NVML measured a 3.5% memory duty cycle independently. The two agree."><div class="fill" style="width:3.9%"></div></div>
+      <div class="val"><b>3.9%</b> <span class='pill cool'>idle</span></div>
+    </div>
+    <div class="meter">
+      <div class="name">SSD bandwidth<span>0.0 MB/s read, 0.1 MB/s write</span></div>
+      <div class="track" data-tip="0 major faults, 0 pages swapped in during the run. The weights are resident in RAM; storage is off the decode path entirely."><div class="fill" style="width:0.6%"></div></div>
+      <div class="val"><b>0%</b> <span class='pill cool'>unused</span></div>
+    </div></div></div>
+  <p class="note"><b>The interesting part is what is <i>not</i> saturated.</b> The CPU
+  holds 94% of its cores busy while retiring
+  2.0% of its int8 throughput and pulling
+  38% of its memory bandwidth. So the expert path is limited by
+  neither arithmetic nor DRAM throughput: what is left is per-layer submit/sync
+  serialisation and memory latency — 75 round trips per forward
+  pass, each too small to hide its own overhead. Meanwhile the two H100s sit at
+  ~20% kernel duty and
+  ~4% of HBM bandwidth, and the SSDs are untouched.</p>
+</section>
+
+<section>
+  <h2>Measurements</h2>
+  <div class="card tablewrap">
+    <table>
+      <thead><tr><th>quantity</th><th class="n">value</th><th class="d">detail</th></tr></thead>
+      <tbody><tr><td>Time per token</td><td class='n'>62.5 ms</td><td class='d'>16.00 tok/s</td></tr><tr><td>Time per forward step</td><td class='n'>190.8 ms</td><td class='d'>median 190.3, p10 181.8 / p90 202.4</td></tr><tr><td>Tokens per step</td><td class='n'>3.05</td><td class='d'>MTP/NEXTN depth 3 accept length</td></tr><tr><td>Prefill (TTFT)</td><td class='n'>1338 ms</td><td class='d'>short prompt, GPU bulk prefill</td></tr><tr><td>— step split: GPU busy</td><td class='n'>37.3 ms</td><td class='d'>19.6% of the step, overlapped per layer</td></tr><tr><td>— step split: CPU experts</td><td class='n'>153.5 ms</td><td class='d'>80.4% of the step, on the critical path</td></tr><tr><td>DRAM read ceiling</td><td class='n'>299 GB/s</td><td class='d'>STREAM read; triad 301 GB/s. Half the cores reach 379 GB/s, so this is a controller limit, not a thread limit</td></tr><tr><td>DRAM demand (analytic)</td><td class='n'>143 GB/s</td><td class='d'>8.94 GB of expert weights per token x 16.0 tok/s</td></tr><tr><td>DRAM probe under load</td><td class='n'>38% retained</td><td class='d'>132 -&gt; 50 GB/s for a 4-thread probe</td></tr><tr><td>Experts per token per layer</td><td class='n'>6.12 CPU / 1.88 GPU</td><td class='d'>top-8 of 256, 60 resident on GPU, 19.5 MB each at int4</td></tr><tr><td>GPU kernel duty, rank 0 / rank 1</td><td class='n'>20% / 87%</td><td class='d'>rank 1&#x27;s high figure is NCCL spin-wait on rank 0, not work</td></tr></tbody>
+    </table>
+  </div>
+  <p class="note">Sampled counters during the decode window: gpu0 sm 26% mem 3.5% 130 W · gpu1 sm 95% mem 3.5% 134 W.</p>
+</section>
+
+<section>
+  <h2>How each number was obtained</h2>
+  <ul class="method">
+    <li><b>Time per token</b> — a streaming completion, timestamped per SSE chunk.
+    One chunk is one forward <em>step</em>, and MTP emits
+    3.05 tokens per step, so token time is the step time divided
+    by the server's own token count, not the chunk rate.</li>
+    <li><b>GPU compute and stage split</b> — the server's <code>/start_profile</code>
+    endpoint (torch profiler, CUPTI). Busy time is the union of kernel intervals, so
+    concurrent kernels are not double-counted.</li>
+    <li><b>GPU bandwidth</b> — NVML memory duty cycle, cross-checked against an
+    analytic bytes-per-token model of the weights actually read. Both land at
+    ~4%.</li>
+    <li><b>CPU occupancy</b> — <code>/proc/stat</code> deltas over the decode window
+    only, prefill excluded.</li>
+    <li><b>DRAM ceiling</b> — a STREAM triad and a pure-read kernel built and run on
+    this box while the server was idle. The triad is counted at 32 B/element, not 24,
+    because the store pulls the line in first.</li>
+    <li><b>DRAM demand</b> — analytic: 6.12
+    CPU-resident experts x 19.5 MB x
+    75 MoE layers per token. This assumes uniform routing across
+    the 60 GPU-resident experts; hotcore placement biases
+    the hot experts onto the GPU, so treat it as an upper bound. The contention probe
+    is the assumption-free cross-check.</li>
+    <li><b>SSD</b> — <code>/proc/diskstats</code> plus major-fault and swap counters.</li>
+    <li><b>Not used:</b> hardware DRAM counters. This VM exposes no uncore/UMC PMU and
+    <code>perf_event_paranoid</code> is 4, so bandwidth
+    is bracketed by the two methods above rather than counted directly.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Reproduce</h2>
+  <pre>MODEL=GLM5.2 .venv/bin/python bench/profile_occupancy.py \
+    --tokens 400 --torch-tokens 150
+.venv/bin/python bench/profile_report.py bench/profile_out/results.json</pre>
+  <p class="note">Runs against a live server and does not restart it. It does briefly
+  drive the torch profiler and a 4-thread memory probe, which slow decode while they
+  run.</p>
+</section>
+</div>
+<div id="tip"></div>
+<script>
+const tip = document.getElementById('tip');
+document.addEventListener('mouseover', e => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) return;
+  tip.textContent = t.getAttribute('data-tip');
+  tip.style.opacity = 1;
+});
+document.addEventListener('mousemove', e => {
+  if (tip.style.opacity == 0) return;
+  const pad = 14;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  const r = tip.getBoundingClientRect();
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - pad;
+  if (y + r.height > innerHeight - 8) y = e.clientY - r.height - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+});
+document.addEventListener('mouseout', e => {
+  if (e.target.closest('[data-tip]')) tip.style.opacity = 0;
+});
+</script>

@@ -1,0 +1,14 @@
+1.  **Understand the Request**: The user wants a step-by-step explanation of how a Mixture-of-Experts (MoE) transformer routes a token through its experts, and why the router is trained with an auxiliary loss.
+
+2.  **Deconstruct the Query**: Two main parts:
+    *   Part 1: Routing mechanism (step-by-step).
+    *   Part 2: Auxiliary loss explanation (why it is used).
+
+3.  **Brainstorm the Content**:
+    *   Routing mechanism:
+        *   Input: a token's embedding $x$ (from previous layer).
+        *   Router: a linear layer (or MLP) that produces logits for each expert.
+        *   Gating: softmax to get probabilities $g_i$.
+        *   Selection: typically uses argmax (or k argmax for top-k) to select active experts.
+        *   Expert computation: each selected expert processes the token.
+        *   Aggregation:

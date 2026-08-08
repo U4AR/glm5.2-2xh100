@@ -1,0 +1,71 @@
+{
+ "gds": {
+  "nvidia_fs_loaded": false,
+  "libcufile": [
+   "/usr/local/cuda/lib64/libcufile.so",
+   "/usr/local/cuda-12.9/lib64/libcufile.so"
+  ],
+  "real_p2p": false,
+  "mode": "cuFile COMPAT (bounces through host DRAM)"
+ },
+ "sources": {
+  "/cache/nvme0/.gdstest": {
+   "gbs_median": 5.858605155959692,
+   "gbs_runs": [
+    5.814556711117571,
+    5.858605155959692,
+    5.875429677011178
+   ],
+   "ms_per_expert": 1.6556842015769966,
+   "duty_pct_of_layer": 318.8310793577325,
+   "vs_cpu_compute": 22.374110832121577,
+   "reuse_needed_to_break_even": 22.374110832121577,
+   "note": "537 MB in 91 ms"
+  },
+  "/cache/nvme1/.gdstest": {
+   "gbs_median": 5.849714277763493,
+   "gbs_runs": [
+    5.849714277763493,
+    5.847582313065781,
+    5.863761974310163
+   ],
+   "ms_per_expert": 1.6582006469739197,
+   "duty_pct_of_layer": 319.31566512673453,
+   "vs_cpu_compute": 22.408116850998915,
+   "reuse_needed_to_break_even": 22.408116850998915,
+   "note": "537 MB in 92 ms"
+  },
+  "weights/GLM-5.2-W4AFP8/model-00001-of-00040.safetensors": {
+   "gbs_median": 2.04500505021273,
+   "gbs_runs": [
+    2.0389705101289475,
+    2.197810546894463,
+    2.04500505021273
+   ],
+   "ms_per_expert": 4.743264569929039,
+   "duty_pct_of_layer": 913.3989205606596,
+   "vs_cpu_compute": 64.09816986390594,
+   "reuse_needed_to_break_even": 64.09816986390594,
+   "note": "537 MB in 263 ms"
+  }
+ },
+ "requirement": {
+  "layer_ms": 0.8879999999999999,
+  "mb_per_layer_per_card": 16.587,
+  "gbs_per_card": 18.679054054054056,
+  "gbs_total_all_cards": 37.35810810810811,
+  "note": "BAR 1: source must sustain this or duty > 100% and it never catches up"
+ },
+ "verdict": {
+  "reuse_rule": {
+   "explain": "A moved expert must be USED this many times before the move beats computing it in place. Prefetch achieves ~1.4; a resident cache achieves hundreds.",
+   "formula": "reuse_needed = dram_gbs / source_gbs",
+   "dram_gbs": 130.0,
+   "per_source": {
+    "/cache/nvme0/.gdstest": 22.18958208299068,
+    "/cache/nvme1/.gdstest": 22.223307639856657,
+    "weights/GLM-5.2-W4AFP8/model-00001-of-00040.safetensors": 63.56952516399744
+   }
+  }
+ }
+}

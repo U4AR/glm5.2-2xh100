@@ -1,0 +1,62 @@
+{
+ "label": "cpu-stage0b-scheduler-e60-safe8",
+ "ts": 1785755821.721333,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2-top8",
+  "runs": 5,
+  "tokens": 400,
+  "warmup": 2,
+  "label": "cpu-stage0b-scheduler-e60-safe8",
+  "out": "bench/profile_out/rates"
+ },
+ "runs": [
+  {
+   "ttft_s": 1.6003055950022826,
+   "decode_s": 26.79798035099884,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 14.889181750785486,
+   "ms_per_token": 67.1628580225535,
+   "e2e_tok_per_s": 14.085357150096787
+  },
+  {
+   "ttft_s": 1.5986714660029975,
+   "decode_s": 26.886106845999166,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 14.840378426130293,
+   "ms_per_token": 67.3837264310756,
+   "e2e_tok_per_s": 14.04258778561245
+  },
+  {
+   "ttft_s": 1.5956384559976868,
+   "decode_s": 26.860241127000336,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 14.854669327555625,
+   "ms_per_token": 67.31890006767001,
+   "e2e_tok_per_s": 14.056848913536808
+  },
+  {
+   "ttft_s": 1.5875579549974645,
+   "decode_s": 26.81798895099928,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 14.8780730997032,
+   "ms_per_token": 67.2130048897225,
+   "e2e_tok_per_s": 14.081756683781903
+  },
+  {
+   "ttft_s": 1.5996531240016338,
+   "decode_s": 26.83079102699776,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 14.870974157955947,
+   "ms_per_token": 67.24509029322746,
+   "e2e_tok_per_s": 14.069424940233976
+  }
+ ],
+ "median_tok_per_s": 14.870974157955947,
+ "spread_pct": 0.32817839730481396
+}

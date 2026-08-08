@@ -1,0 +1,43 @@
+{
+ "verdict": "PASS",
+ "layer": 3,
+ "n_tp": 2,
+ "experts_checked": [
+  0,
+  1,
+  2,
+  3
+ ],
+ "region_bytes": {
+  "gate_w": 3145728,
+  "gate_s": 196608,
+  "up_w": 3145728,
+  "up_s": 196608,
+  "down_w": 3145728,
+  "down_s": 196608
+ },
+ "per_expert_all_tp_bytes": 20054016,
+ "weights_bytes": 18874368,
+ "scales_fp32_bytes": 1179648,
+ "scales_bf16_bytes": 589824,
+ "raw_gather_inflation_vs_bf16_store": 1.0303030303030303,
+ "register_gbs": 1.2207221572748173,
+ "per_expert": {
+  "0": {
+   "w13_weights_byte_exact": true,
+   "w13_scales_byte_exact_after_bf16": true
+  },
+  "1": {
+   "w13_weights_byte_exact": true,
+   "w13_scales_byte_exact_after_bf16": true
+  },
+  "2": {
+   "w13_weights_byte_exact": true,
+   "w13_scales_byte_exact_after_bf16": true
+  },
+  "3": {
+   "w13_weights_byte_exact": true,
+   "w13_scales_byte_exact_after_bf16": true
+  }
+ }
+}

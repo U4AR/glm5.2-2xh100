@@ -1,0 +1,5 @@
+1.  **Understand the Request**: The user wants a step-by-step explanation of how a mixture-of-experts (MoE) transformer routes a token through its experts, and why the router is trained with an auxiliary loss. The explanation should be clear, educational, and cover both the routing mechanism and the auxiliary loss purpose.
+
+2.  **Analyze the Subject**: MoE transformers are a specific architecture within the broader transformer family. The core concepts are:
+    *   **Routing mechanism**: How a token's embedding is processed by a router (usually a linear layer) to produce logits, which are then softmaxed to get probabilities. These probabilities determine which expert(s) handle the token. This can involve "no routing" (all experts always), "top-k routing" (select top-k experts), or "expert choice routing" (experts choose tokens).
+    *   **Expert execution**: The selected expert(s) apply their FFN computation to the token. The outputs are

@@ -1,0 +1,48 @@
+{
+ "Y-base": {
+  "hashes": [
+   "5093e29512",
+   "5093e29512",
+   "5093e29512"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   802,
+   802,
+   802
+  ]
+ },
+ "Y-full": {
+  "hashes": [
+   "45c4fbb027",
+   "45c4fbb027",
+   "45c4fbb027"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   748,
+   748,
+   748
+  ]
+ }
+}

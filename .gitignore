@@ -51,3 +51,11 @@ livebench_results.json
 
 # Source document for the whole-document QA setup (data, not code)
 unlimited_ocr.txt
+
+# Profiler traces and weight dumps -- regenerable measurement artifacts, tens of
+# MB each. The JSON summaries beside them ARE tracked; the raw traces are not.
+bench/profile_out/**/torch_trace/
+bench/profile_out/torch_trace/
+bench/profile_out/pf_dump/
+bench/profile_out/routing/
+bench/profile_out/*.pt

@@ -1,0 +1,768 @@
+{
+  "meta": {
+    "ts": 1786102665.6055274,
+    "date": "2026-08-07 11:37:45",
+    "argv": [
+      "bench/profile_occupancy.py",
+      "--no-stream",
+      "--no-report",
+      "--model",
+      "GLM5.2-top2",
+      "--tokens",
+      "200",
+      "--torch-tokens",
+      "120",
+      "--torch-steps",
+      "200",
+      "--out",
+      "bench/profile_out/anatomy"
+    ],
+    "args": {
+      "url": "http://localhost:8000",
+      "model": "GLM5.2-top2",
+      "tokens": 200,
+      "torch_tokens": 120,
+      "torch_steps": 200,
+      "idle_seconds": 8.0,
+      "gpu_experts": 100,
+      "coverage": null,
+      "hbm_peak_gbs": 3900.0,
+      "gpu_fp8_tflops": 1979.0,
+      "settle_tries": 4,
+      "settle_tol_pct": 8.0,
+      "cpu_ghz": 3.0,
+      "cpu_threads": 72,
+      "canary_threads": 4,
+      "no_stream": true,
+      "no_report": true,
+      "no_torch": false,
+      "out": "bench/profile_out/anatomy"
+    },
+    "model": "GLM5.2-top2"
+  },
+  "server": {
+    "model_path": "/data/models/RunGLM/weights/GLM-5.2-W4AFP8",
+    "max_total_tokens": 81920,
+    "tp_size": 2,
+    "attention_backend": "flashmla",
+    "speculative_algorithm": "EAGLE",
+    "speculative_num_steps": 3,
+    "speculative_num_draft_tokens": 4,
+    "kt_num_gpu_experts": 100,
+    "kt_method": "RAWINT4",
+    "kt_cpuinfer": 72,
+    "mem_fraction_static": 0.94,
+    "context_length": 81920,
+    "topk_mode": "safe2"
+  },
+  "model_config": {
+    "num_hidden_layers": 78,
+    "hidden_size": 6144,
+    "intermediate_size": 12288,
+    "moe_intermediate_size": 2048,
+    "n_routed_experts": 256,
+    "num_experts_per_tok": 8,
+    "n_shared_experts": 1,
+    "first_k_dense_replace": 3,
+    "num_nextn_predict_layers": 1
+  },
+  "host": {
+    "cpu_model": "AMD EPYC 9V84 96-Core Processor",
+    "n_cores": 80,
+    "numa_nodes": 2,
+    "mem_total_GB": 660.456,
+    "gpus": "NVIDIA H100 NVL, 95830 MiB\nNVIDIA H100 NVL, 95830 MiB",
+    "perf_paranoid": "4",
+    "disks": [
+      "sda",
+      "sdb",
+      "sdc",
+      "nvme0n1",
+      "nvme1n1"
+    ]
+  },
+  "idle": {
+    "seconds": 7.245658874511719,
+    "cpu_busy_frac": 0.002123068956589281,
+    "cpu_cores_busy": 0.16984551652714247,
+    "cpu_cores_busy_per_node": {
+      "0": 0.07042375075515664,
+      "1": 0.1008026236299301
+    },
+    "n_cores": 80,
+    "disk": {
+      "sda": {
+        "read_MB": 0.0,
+        "write_MB": 0.475136,
+        "read_MBs": 0.0,
+        "write_MBs": 0.06557526489018145
+      },
+      "sdb": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "sdc": {
+        "read_MB": 0.0,
+        "write_MB": 0.135168,
+        "read_MBs": 0.0,
+        "write_MBs": 0.018655032253241277
+      },
+      "nvme0n1": {
+        "read_MB": 0.008192,
+        "write_MB": 0.0,
+        "read_MBs": 0.0011306080153479562,
+        "write_MBs": 0.0
+      },
+      "nvme1n1": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      }
+    },
+    "gpu": {
+      "0": {
+        "sm_util_mean": 0.0,
+        "sm_util_p95": 0.0,
+        "mem_util_mean": 0.0,
+        "mem_util_p95": 0.0,
+        "power_W_mean": 94.1891891891892,
+        "sm_clock_MHz": 1785.0,
+        "n": 37
+      },
+      "1": {
+        "sm_util_mean": 0.0,
+        "sm_util_p95": 0.0,
+        "mem_util_mean": 0.0,
+        "mem_util_p95": 0.0,
+        "power_W_mean": 94.88702702702703,
+        "sm_clock_MHz": 1785.0,
+        "n": 37
+      }
+    },
+    "mem_available_MB": 384286.28125,
+    "pgmajfault": 1,
+    "pswpin": 2,
+    "pswpout": 0
+  },
+  "stream": {
+    "skipped": true
+  },
+  "settled": true,
+  "settle_tok_s": 51.018771476088915,
+  "settle_tokens": 80,
+  "decode": {
+    "t_start": 1786102679.483266,
+    "t_first_token": 1786102679.8432922,
+    "t_end": 1786102684.2160006,
+    "ttft_s": 0.36002612113952637,
+    "usage": {
+      "prompt_tokens": 54,
+      "total_tokens": 254,
+      "completion_tokens": 200,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 0
+    },
+    "n_steps": 67,
+    "n_tokens": 200,
+    "accept_length": 2.985074626865672,
+    "decode_seconds": 4.372669696807861,
+    "ms_per_step_mean": 66.25257116375548,
+    "ms_per_step_median": 66.04635715484619,
+    "ms_per_step_p10": 63.40384483337402,
+    "ms_per_step_p90": 68.32671165466309,
+    "ms_per_token_mean": 22.194611339858085,
+    "tok_per_s": 45.05598159334085,
+    "steps_per_s": 15.093753833769187,
+    "sample_text": "1.  **Deconstruct the Request:**\n    *   **Topic:** Modern out-of-order (OoO) CPU pipeline.\n    *   **Required Components:** Fetch, Decode, Rename, Dispatch, Execution Ports, Reorder Buffer (ROB), Loa",
+    "gaps_ms": [
+      64.25309181213379,
+      62.53314018249512,
+      61.18369102478027,
+      63.13014030456543,
+      63.84444236755371,
+      65.02795219421387,
+      67.82770156860352,
+      65.64044952392578,
+      64.4078254699707,
+      67.40069389343262,
+      66.0090446472168,
+      65.44899940490723,
+      64.68772888183594,
+      66.14279747009277,
+      63.40384483337402,
+      62.17169761657715,
+      67.40164756774902,
+      66.55073165893555,
+      68.12524795532227,
+      68.93253326416016,
+      74.01466369628906,
+      63.86828422546387,
+      63.27104568481445,
+      66.08366966247559,
+      63.52686882019043,
+      65.98591804504395,
+      65.61684608459473,
+      66.30802154541016,
+      68.31789016723633,
+      65.56057929992676,
+      63.280344009399414,
+      64.49151039123535,
+      67.43240356445312,
+      67.90518760681152,
+      66.7579174041748,
+      67.25597381591797,
+      66.71953201293945,
+      68.28141212463379,
+      71.78544998168945,
+      72.88956642150879,
+      65.96946716308594,
+      67.13247299194336,
+      67.51370429992676,
+      68.56513023376465,
+      65.7355785369873,
+      65.83213806152344,
+      66.8492317199707,
+      68.26448440551758,
+      64.85247611999512,
+      63.73906135559082,
+      67.93785095214844,
+      67.1839714050293,
+      67.84200668334961,
+      70.56832313537598,
+      68.64738464355469,
+      67.49200820922852,
+      65.1552677154541,
+      66.50805473327637,
+      66.77818298339844,
+      63.78912925720215,
+      64.10050392150879,
+      65.582275390625,
+      64.09931182861328,
+      65.20986557006836,
+      65.51861763000488,
+      68.32671165466309
+    ]
+  },
+  "loaded": {
+    "seconds": 3.821263313293457,
+    "cpu_busy_frac": 0.9303368579565915,
+    "cpu_cores_busy": 74.42694863652731,
+    "cpu_cores_busy_per_node": {
+      "0": 37.51072118374963,
+      "1": 36.910989622548854
+    },
+    "n_cores": 80,
+    "disk": {
+      "sda": {
+        "read_MB": 0.053248,
+        "write_MB": 0.126976,
+        "read_MBs": 0.013934658680745766,
+        "write_MBs": 0.03322880146947067
+      },
+      "sdb": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "sdc": {
+        "read_MB": 0.0,
+        "write_MB": 0.012288,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0032156904647874848
+      },
+      "nvme0n1": {
+        "read_MB": 0.008192,
+        "write_MB": 0.0,
+        "read_MBs": 0.0021437936431916564,
+        "write_MBs": 0.0
+      },
+      "nvme1n1": {
+        "read_MB": 0.008192,
+        "write_MB": 0.0,
+        "read_MBs": 0.0021437936431916564,
+        "write_MBs": 0.0
+      }
+    },
+    "gpu": {
+      "0": {
+        "sm_util_mean": 91.4,
+        "sm_util_p95": 93.0,
+        "mem_util_mean": 15.85,
+        "mem_util_p95": 16.0,
+        "power_W_mean": 198.8375,
+        "sm_clock_MHz": 1785.0,
+        "n": 20
+      },
+      "1": {
+        "sm_util_mean": 97.25,
+        "sm_util_p95": 98.0,
+        "mem_util_mean": 15.2,
+        "mem_util_p95": 16.0,
+        "power_W_mean": 201.7945,
+        "sm_clock_MHz": 1785.0,
+        "n": 20
+      }
+    },
+    "mem_available_MB": 384312.09375,
+    "pgmajfault": 2,
+    "pswpin": 4,
+    "pswpout": 0
+  },
+  "prefill": {
+    "seconds": 0.20127272605895996,
+    "cpu_busy_frac": 0.9312693498452013,
+    "cpu_cores_busy": 74.5015479876161,
+    "cpu_cores_busy_per_node": {
+      "0": 37.94427244582043,
+      "1": 36.1609907120743
+    },
+    "n_cores": 80,
+    "disk": {
+      "sda": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "sdb": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "sdc": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "nvme0n1": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      },
+      "nvme1n1": {
+        "read_MB": 0.0,
+        "write_MB": 0.0,
+        "read_MBs": 0.0,
+        "write_MBs": 0.0
+      }
+    },
+    "gpu": {
+      "0": {
+        "sm_util_mean": 50.0,
+        "sm_util_p95": 36.0,
+        "mem_util_mean": 7.5,
+        "mem_util_p95": 7.0,
+        "power_W_mean": 193.72500000000002,
+        "sm_clock_MHz": 1785.0,
+        "n": 2
+      },
+      "1": {
+        "sm_util_mean": 69.5,
+        "sm_util_p95": 44.0,
+        "mem_util_mean": 7.5,
+        "mem_util_p95": 6.0,
+        "power_W_mean": 192.64,
+        "sm_clock_MHz": 1785.0,
+        "n": 2
+      }
+    },
+    "mem_available_MB": 384307.640625,
+    "pgmajfault": 0,
+    "pswpin": 0,
+    "pswpout": 0
+  },
+  "torch": {
+    "decode": {
+      "t_start": 1786102684.3088357,
+      "t_first_token": 1786102684.8833919,
+      "t_end": 1786102687.8470266,
+      "ttft_s": 0.5745561122894287,
+      "usage": {
+        "prompt_tokens": 54,
+        "total_tokens": 174,
+        "completion_tokens": 120,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 0
+      },
+      "n_steps": 41,
+      "n_tokens": 120,
+      "accept_length": 2.926829268292683,
+      "decode_seconds": 2.963592290878296,
+      "ms_per_step_mean": 74.0898072719574,
+      "ms_per_step_median": 73.5393762588501,
+      "ms_per_step_p10": 69.53978538513184,
+      "ms_per_step_p90": 77.65460014343262,
+      "ms_per_token_mean": 25.31401748458544,
+      "tok_per_s": 39.50380458609281,
+      "steps_per_s": 13.49713323358171,
+      "gaps_ms": [
+        70.14751434326172,
+        68.64237785339355,
+        67.6126480102539,
+        69.47445869445801,
+        69.53978538513184,
+        71.43282890319824,
+        73.9743709564209,
+        72.62516021728516,
+        70.56784629821777,
+        76.99966430664062,
+        74.39184188842773,
+        73.47989082336426,
+        73.31991195678711,
+        74.26571846008301,
+        71.44546508789062,
+        70.26982307434082,
+        77.97622680664062,
+        87.18395233154297,
+        77.39114761352539,
+        82.6420783996582,
+        76.48682594299316,
+        72.84927368164062,
+        72.1883773803711,
+        75.80351829528809,
+        72.81351089477539,
+        75.14476776123047,
+        71.31767272949219,
+        76.17878913879395,
+        78.20415496826172,
+        74.42831993103027,
+        72.13973999023438,
+        74.56231117248535,
+        73.59886169433594,
+        77.16012001037598,
+        76.42745971679688,
+        76.73335075378418,
+        77.65460014343262,
+        72.5400447845459,
+        71.7020034790039,
+        72.27587699890137
+      ],
+      "sample_text": "1.  **Deconstruct the Request:**\n    *   **Topic:** Modern out-of-order (OoO) CPU pipeline.\n    *   **Required Components:** Fetch, Decode, Rename, Dispatch, Execution Ports, Reorder Buffer (ROB), Loa"
+    },
+    "ranks": {
+      "1786102684.21783-TP-0.trace.json.gz": {
+        "gpu_busy_ms": 2558.737955078125,
+        "gpu_span_ms": 3518.670868652344,
+        "gpu_busy_frac": 0.7271887739980993,
+        "gpu_kernel_ms_total": 3631.613017001022,
+        "stages": {
+          "other GPU kernels": {
+            "ms": 1436.2618550000782,
+            "count": 72590
+          },
+          "norm / rope / elemwise": {
+            "ms": 652.8273450009442,
+            "count": 430374
+          },
+          "MoE experts (GPU int4)": {
+            "ms": 613.2004740000194,
+            "count": 48778
+          },
+          "attention (NSA / MLA)": {
+            "ms": 342.4502269999749,
+            "count": 37771
+          },
+          "dense GEMM (attn/MLP)": {
+            "ms": 234.64858599999997,
+            "count": 23072
+          },
+          "memcpy H<->D": {
+            "ms": 150.90287300000966,
+            "count": 62688
+          },
+          "sampling / draft logic": {
+            "ms": 118.87279099999526,
+            "count": 22755
+          },
+          "comm (NCCL all-reduce)": {
+            "ms": 82.44886600000045,
+            "count": 7132
+          }
+        },
+        "cpu_runtime_top": {
+          "cudaGraphLaunch": {
+            "ms": 1122.0924239999997,
+            "count": 123
+          },
+          "cudaStreamSynchronize": {
+            "ms": 612.295814,
+            "count": 715
+          },
+          "cudaLaunchKernel": {
+            "ms": 67.78059400000006,
+            "count": 16554
+          },
+          "cudaMemcpyAsync": {
+            "ms": 23.394560999999957,
+            "count": 3443
+          },
+          "cuLaunchKernelEx": {
+            "ms": 10.594884999999998,
+            "count": 1635
+          },
+          "cudaLaunchKernelExC": {
+            "ms": 4.213566000000004,
+            "count": 715
+          },
+          "cudaLaunchHostFunc": {
+            "ms": 2.296396999999999,
+            "count": 150
+          },
+          "cudaFuncSetAttribute": {
+            "ms": 1.1549189999999967,
+            "count": 1340
+          },
+          "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+            "ms": 1.0829860000000324,
+            "count": 3237
+          },
+          "cudaMemsetAsync": {
+            "ms": 0.9844880000000004,
+            "count": 86
+          },
+          "cudaFuncGetAttributes": {
+            "ms": 0.8270869999999994,
+            "count": 378
+          },
+          "cuLaunchKernel": {
+            "ms": 0.8164980000000001,
+            "count": 77
+          }
+        },
+        "cpu_blocked_ms": 613.805991,
+        "cuda_graph_launches": 123,
+        "n_gpu_events": 705160
+      },
+      "1786102684.21783-TP-1.trace.json.gz": {
+        "gpu_busy_ms": 3125.077470703125,
+        "gpu_span_ms": 3518.361416503906,
+        "gpu_busy_frac": 0.8882195717711183,
+        "gpu_kernel_ms_total": 4278.870490000808,
+        "stages": {
+          "other GPU kernels": {
+            "ms": 1530.921524000108,
+            "count": 72590
+          },
+          "comm (NCCL all-reduce)": {
+            "ms": 842.8163770000035,
+            "count": 7132
+          },
+          "MoE experts (GPU int4)": {
+            "ms": 589.9450879999575,
+            "count": 48778
+          },
+          "norm / rope / elemwise": {
+            "ms": 563.6525320007761,
+            "count": 411938
+          },
+          "attention (NSA / MLA)": {
+            "ms": 349.674328999984,
+            "count": 37771
+          },
+          "dense GEMM (attn/MLP)": {
+            "ms": 236.06846499999978,
+            "count": 23072
+          },
+          "sampling / draft logic": {
+            "ms": 117.16627999999879,
+            "count": 22755
+          },
+          "memcpy H<->D": {
+            "ms": 48.62589499998044,
+            "count": 46938
+          }
+        },
+        "cpu_runtime_top": {
+          "cudaStreamSynchronize": {
+            "ms": 1929.4440189999973,
+            "count": 715
+          },
+          "cudaGraphLaunch": {
+            "ms": 805.592526,
+            "count": 123
+          },
+          "cudaLaunchKernel": {
+            "ms": 66.09918400000002,
+            "count": 16404
+          },
+          "cudaMemcpyAsync": {
+            "ms": 19.779740999999987,
+            "count": 3068
+          },
+          "cuLaunchKernelEx": {
+            "ms": 10.87302999999999,
+            "count": 1635
+          },
+          "cudaLaunchKernelExC": {
+            "ms": 4.2955780000000034,
+            "count": 715
+          },
+          "cudaFuncSetAttribute": {
+            "ms": 1.2264269999999953,
+            "count": 1340
+          },
+          "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+            "ms": 1.1394070000000327,
+            "count": 3237
+          },
+          "cudaMemsetAsync": {
+            "ms": 0.919184,
+            "count": 86
+          },
+          "cudaFuncGetAttributes": {
+            "ms": 0.8651660000000011,
+            "count": 378
+          },
+          "cudaDeviceGetAttribute": {
+            "ms": 0.7782339999999964,
+            "count": 2747
+          },
+          "cuLaunchKernel": {
+            "ms": 0.7524379999999997,
+            "count": 77
+          }
+        },
+        "cpu_blocked_ms": 1930.8661549999972,
+        "cuda_graph_launches": 123,
+        "n_gpu_events": 670974
+      }
+    },
+    "files": [
+      "bench/profile_out/anatomy/torch_trace/1786102684.21783-TP-1.trace.json.gz",
+      "bench/profile_out/anatomy/torch_trace/1786102684.21783-TP-0.trace.json.gz"
+    ]
+  },
+  "canary": {
+    "skipped": true
+  },
+  "recheck": {
+    "tok_per_s": 48.10311436888,
+    "ms_per_step_mean": 69.29558256398077,
+    "ttft_s": 0.5559086799621582,
+    "drift_pct": 5.714871257876922
+  },
+  "analytic": {
+    "moe_layers": 75,
+    "dense_layers": 3,
+    "params_per_expert_M": 37.748736,
+    "bytes_per_expert_int4_MB": 19.464192,
+    "gpu_experts_resident": 100,
+    "coverage_assumed": 0.390625,
+    "coverage_uniform": 0.390625,
+    "experts_on_gpu_per_token_per_layer": 3.125,
+    "experts_on_cpu_per_token_per_layer": 4.875,
+    "gpu_bytes_per_token_MB": 20944.084992,
+    "cpu_bytes_per_token_MB": 7116.5952,
+    "gpu_flops_per_token_G": 50.459049984,
+    "cpu_ops_per_token_G": 27.6037632
+  },
+  "occupancy": {
+    "gpu_compute": {
+      "duty_cycle_pct": 94.325,
+      "kernel_busy_pct": 72.71887739980994,
+      "achieved_TFLOPs_per_gpu": 1.1367410136482852,
+      "peak_TFLOPs_per_gpu": 1979.0,
+      "flops_util_pct": 0.05744017249359703
+    },
+    "gpu_bandwidth": {
+      "duty_cycle_pct": 15.524999999999999,
+      "achieved_GBs_per_gpu": 471.82815394445925,
+      "peak_GBs_per_gpu": 3900.0,
+      "bw_util_pct": 12.098157793447673
+    },
+    "cpu_compute": {
+      "cores_busy": 74.42694863652731,
+      "n_cores": 80,
+      "core_util_pct": 93.03368579565914,
+      "cores_busy_per_node": {
+        "0": 37.51072118374963,
+        "1": 36.910989622548854
+      },
+      "achieved_TOPS_int8": 1.2437146466461395,
+      "peak_TOPS_int8": 27.648,
+      "tops_util_pct": 4.49838920227915,
+      "note": "core_util_pct counts cores as busy while they stall on DRAM (and while kt worker threads spin), so it is occupancy, not useful arithmetic -- compare with tops_util_pct"
+    },
+    "ram_bandwidth": {
+      "achieved_GBs": 320.64518233845786,
+      "measured_peak_GBs": null,
+      "bw_util_pct": null,
+      "canary_read_retained_pct": null,
+      "note": "achieved_GBs is analytic (bytes/token x tok/s) at the assumed GPU-expert coverage; the canary is the direct measurement"
+    },
+    "ssd_bandwidth": {
+      "read_MBs": 0.01822224596712908,
+      "write_MBs": 0.03644449193425816,
+      "per_device": {
+        "sda": {
+          "read_MB": 0.053248,
+          "write_MB": 0.126976,
+          "read_MBs": 0.013934658680745766,
+          "write_MBs": 0.03322880146947067
+        },
+        "sdb": {
+          "read_MB": 0.0,
+          "write_MB": 0.0,
+          "read_MBs": 0.0,
+          "write_MBs": 0.0
+        },
+        "sdc": {
+          "read_MB": 0.0,
+          "write_MB": 0.012288,
+          "read_MBs": 0.0,
+          "write_MBs": 0.0032156904647874848
+        },
+        "nvme0n1": {
+          "read_MB": 0.008192,
+          "write_MB": 0.0,
+          "read_MBs": 0.0021437936431916564,
+          "write_MBs": 0.0
+        },
+        "nvme1n1": {
+          "read_MB": 0.008192,
+          "write_MB": 0.0,
+          "read_MBs": 0.0021437936431916564,
+          "write_MBs": 0.0
+        }
+      },
+      "major_faults": 2,
+      "swap_in_pages": 4,
+      "swap_out_pages": 0
+    },
+    "budget": {
+      "compute_rank": "1786102684.21783-TP-0.trace.json.gz",
+      "profiled_step_ms": 85.82124069883766,
+      "measured_step_ms": 66.25257116375548,
+      "profiler_overhead_x": 1.2953646808169088,
+      "gpu_busy_ms_per_step": 48.17812599879317,
+      "gpu_busy_pct_of_step": 72.71887739980994,
+      "cpu_critical_ms_per_step": 18.074445164962306,
+      "cpu_critical_pct_of_step": 27.281122600190074,
+      "stage_ms_per_step": {
+        "other GPU kernels": 27.04317746962933,
+        "norm / rope / elemwise": 12.291996537000912,
+        "MoE experts (GPU int4)": 11.545867618159676,
+        "attention (NSA / MLA)": 6.447948353592296,
+        "dense GEMM (attn/MLP)": 4.418166041313708,
+        "memcpy H<->D": 2.841329497827522,
+        "sampling / draft logic": 2.23823947710625,
+        "comm (NCCL all-reduce)": 1.5524183891993555
+      },
+      "accept_length": 2.985074626865672,
+      "ms_per_token": 22.194611339858085,
+      "gpu_busy_ms_per_token": 16.139672209595712,
+      "cpu_critical_ms_per_token": 6.0549391302623725,
+      "spin_rank": {
+        "1786102684.21783-TP-0.trace.json.gz": 72.71887739980994,
+        "1786102684.21783-TP-1.trace.json.gz": 88.82195717711183
+      }
+    }
+  }
+}

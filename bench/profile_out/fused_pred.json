@@ -1,0 +1,62 @@
+[
+ {
+  "label": "FZ-base",
+  "tier": "2",
+  "ms_per_step": 66.81698499960476,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.76072703908682,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786088930.4703276,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "FZ-base",
+  "tier": "2",
+  "ms_per_step": 66.65185100064264,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.866669330988415,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786089815.729593,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "FZ-base",
+  "tier": "2",
+  "ms_per_step": 66.12943400250515,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.205312433713274,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786090636.9759426,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ }
+]

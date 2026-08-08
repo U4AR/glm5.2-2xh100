@@ -1,0 +1,22 @@
+[
+ {
+  "label": "G4-base",
+  "tier": "2",
+  "ms_per_step": 66.95004499852075,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.67574214783553,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786093569.4532013,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ }
+]

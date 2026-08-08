@@ -1,0 +1,36 @@
+{
+ "ts": 1785825357.8791645,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "8",
+  "runs": 1,
+  "tokens": 400,
+  "out": "bench/profile_out/stage0a_attribution_profiled.json"
+ },
+ "per_tier": {
+  "8": [
+   {
+    "ttft_s": 1.4059152999998332,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 225.26471099990886,
+    "ms_per_step_mean": 226.37562814493256,
+    "steps_per_s": 4.417436665751711,
+    "tok_per_s": 12.71204795899773,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   }
+  ]
+ },
+ "summary": {
+  "8": {
+   "ms_per_step": 225.26471099990886,
+   "spread_pct": 0.0,
+   "steps_per_s": 4.417436665751711,
+   "accept_length": 2.8776978417266186,
+   "tok_per_s": 12.71204795899773,
+   "n_runs": 1
+  }
+ }
+}

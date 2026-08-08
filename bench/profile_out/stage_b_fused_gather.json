@@ -1,0 +1,23 @@
+{
+ "verdict": "PASS",
+ "checks": {
+  "w13_weights": true,
+  "w2_weights": true,
+  "w13_scales_interleaved": true,
+  "w2_scales_interleaved": true
+ },
+ "n_tp": 2,
+ "experts": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "ms_per_call": 2.7552053833007815,
+ "ms_per_expert": 0.4592008972167969,
+ "layer_store_gb": 5.133828096,
+ "pin_gbs": 10.076165271505982,
+ "note": "interleave folded into the gather; no second host scale copy"
+}

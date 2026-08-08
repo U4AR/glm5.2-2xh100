@@ -1,0 +1,722 @@
+[
+ {
+  "label": "baseline-e104-noprefetch",
+  "tier": "2",
+  "ms_per_step": 66.81712699901254,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.57284071520808,
+  "runs": 3,
+  "ts": 1785915047.9649327,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "prefetch-e100-4slot-sel",
+  "tier": "2",
+  "ms_per_step": 97.12136249981995,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 38.23455752605232,
+  "runs": 3,
+  "ts": 1785915667.6702297,
+  "sample": "</think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think> 0\n0 0\n0 0\n0 0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,0\n0, 0,"
+ },
+ {
+  "label": "BISECT-gather-on-route-off",
+  "tier": "2",
+  "ms_per_step": 105.15807299998414,
+  "accept": 1.9607843137254901,
+  "tok_per_s": 18.64607688497515,
+  "runs": 2,
+  "ts": 1785916067.6771145,
+  "sample": "Write a detailed technical essay (                                                                                                                                                           \\0                                    "
+ },
+ {
+  "label": "PROBE-B-bump-only",
+  "tier": "2",
+  "ms_per_step": 81.50493500033917,
+  "accept": 2.857142857142857,
+  "tok_per_s": 35.82038701405592,
+  "runs": 2,
+  "ts": 1785916545.0014799,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PROBE-A-shm-store-only",
+  "tier": "2",
+  "ms_per_step": 66.42797950007662,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.81778810027224,
+  "runs": 2,
+  "ts": 1785916763.7996116,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "PROBE-C-pin-only-no-gather",
+  "tier": "2",
+  "ms_per_step": 76.49878300071578,
+  "accept": 1.9607843137254901,
+  "tok_per_s": 25.63162419861364,
+  "runs": 2,
+  "ts": 1785917087.7865536,
+  "sample": "Write a detailed technical essay (                                                                                                                                                           \\0                                    "
+ },
+ {
+  "label": "FIX-dtype-pin-only-nogather",
+  "tier": "2",
+  "ms_per_step": 72.53850500001136,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.38901889049869,
+  "runs": 2,
+  "ts": 1785917571.4267888,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "FULL-prefetch-e100-4slot",
+  "tier": "2",
+  "ms_per_step": 84.88173100067797,
+  "accept": 2.857142857142857,
+  "tok_per_s": 33.991733785228156,
+  "runs": 3,
+  "ts": 1785917848.751764,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key aspects to cover:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Implicit requirement:** Needs to be well-structured, accurate, and technically deep (not just a superficial overview"
+ },
+ {
+  "label": "COUNTERS-run",
+  "tier": "2",
+  "ms_per_step": 86.75528000094346,
+  "accept": 3.260869565217391,
+  "tok_per_s": 37.586986811430144,
+  "runs": 1,
+  "ts": 1785918482.5652466,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key aspects to cover:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Implicit requirement:** Needs to be well-structured, accurate, and technically deep (not just a superficial overview"
+ },
+ {
+  "label": "DEC-T0-nogather",
+  "tier": "2",
+  "ms_per_step": 66.64376499975333,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.87187041658635,
+  "runs": 3,
+  "ts": 1785919229.6928306,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T1-nowait-noroute",
+  "tier": "2",
+  "ms_per_step": 66.74196799940546,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.80878947363837,
+  "runs": 3,
+  "ts": 1785919477.574023,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T2-wait-noroute",
+  "tier": "2",
+  "ms_per_step": 66.2846270006412,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.1041553136479,
+  "runs": 3,
+  "ts": 1785919722.2425275,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T2b-depth2",
+  "tier": "2",
+  "ms_per_step": 66.48925700028485,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.97149623931903,
+  "runs": 3,
+  "ts": 1785919976.3758104,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T3-full",
+  "tier": "2",
+  "ms_per_step": 66.05363199923886,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.25489410144442,
+  "runs": 3,
+  "ts": 1785920249.3045373,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T3a-gpuonly",
+  "tier": "2",
+  "ms_per_step": 66.45210599890561,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.995520069595855,
+  "runs": 3,
+  "ts": 1785920495.9099996,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEC-T3b-cpuskiponly",
+  "tier": "2",
+  "ms_per_step": 66.7171730001428,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.82469907915226,
+  "runs": 3,
+  "ts": 1785920750.7484806,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PRED-P0-nogather",
+  "tier": "2",
+  "ms_per_step": 71.71294500039949,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.841382293349426,
+  "runs": 3,
+  "ts": 1785921131.056815,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PRED-P3b-cpuskiponly",
+  "tier": "2",
+  "ms_per_step": 83.90067199979967,
+  "accept": 2.5641025641025643,
+  "tok_per_s": 28.491732295694437,
+  "runs": 3,
+  "ts": 1785921845.4878883,
+  "sample": "1.  **Understand the Request:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Goal:** Provide a comprehensive, well-structured, and informative technical analysis covering the specified aspects.\n\n2.  **Deconstruct the Topic into Core Components:**\n    *   *Paral"
+ },
+ {
+  "label": "PRED2-P2-bytes-noroute",
+  "tier": "2",
+  "ms_per_step": 94.12529900146183,
+  "accept": 2.857142857142857,
+  "tok_per_s": 30.35467496468175,
+  "runs": 3,
+  "ts": 1785922214.5363507,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PRED2-P3-full",
+  "tier": "2",
+  "ms_per_step": 84.67379600187996,
+  "accept": 2.857142857142857,
+  "tok_per_s": 33.742940461526274,
+  "runs": 3,
+  "ts": 1785922472.8061333,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "PRED2-P0-nogather",
+  "tier": "2",
+  "ms_per_step": 71.67428699904121,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.862871006740214,
+  "runs": 3,
+  "ts": 1785922727.513263,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PRED2-P3b-cpuskiponly",
+  "tier": "2",
+  "ms_per_step": 84.14517899836937,
+  "accept": 2.7027027027027026,
+  "tok_per_s": 32.559512737507546,
+  "runs": 3,
+  "ts": 1785922980.526103,
+  "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in terms of parallelism, memory hierarchy, and scheduling. This is a technical/educational content request, so I should provide a thorough, well-structured essay with proper technical terminology, comparisons, and analysis.\n\nLet me plan the essay structure:\n\n1. Introduction - overview of the comparison\n2. Parallelism approach"
+ },
+ {
+  "label": "PROD-restore-check",
+  "tier": "2",
+  "ms_per_step": 65.59028099945863,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 42.350447893350314,
+  "runs": 3,
+  "ts": 1785923271.3700562,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "WHY-W2-wait",
+  "tier": "2",
+  "ms_per_step": 94.73928499983231,
+  "accept": 2.857142857142857,
+  "tok_per_s": 30.157952502469428,
+  "runs": 3,
+  "ts": 1785990236.7520692,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WHY-prod-restore",
+  "tier": "2",
+  "ms_per_step": 66.87120000015057,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.539949897279,
+  "runs": 2,
+  "ts": 1785990455.4098184,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "WHY-prod-restore2",
+  "tier": "2",
+  "ms_per_step": 66.57753799981947,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.72272891294179,
+  "runs": 2,
+  "ts": 1785993664.9328756,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "B8-P2-bytes-noroute",
+  "tier": "2",
+  "ms_per_step": 102.08172499915236,
+  "accept": 2.857142857142857,
+  "tok_per_s": 27.988779158723872,
+  "runs": 3,
+  "ts": 1785996410.352201,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "B8-P3-full",
+  "tier": "2",
+  "ms_per_step": 99.69325349993596,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 27.60519122624787,
+  "runs": 3,
+  "ts": 1785996674.6691995,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Target Audience:** Technical/Engineering level (requires depth, terminology, architectural concepts).\n\n2.  **Outline the Essay Structure:**\n    *   **Introduction:** Define the core philosophie"
+ },
+ {
+  "label": "B8-prod-restore",
+  "tier": "2",
+  "ms_per_step": 66.58238250020077,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.72238556196896,
+  "runs": 2,
+  "ts": 1785996897.0658197,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "FIX-P2-b64",
+  "tier": "2",
+  "ms_per_step": 91.95768300014606,
+  "accept": 2.857142857142857,
+  "tok_per_s": 31.070191896182497,
+  "runs": 3,
+  "ts": 1785999729.8600948,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "FIX-P2-b16",
+  "tier": "2",
+  "ms_per_step": 82.47999400009576,
+  "accept": 2.857142857142857,
+  "tok_per_s": 34.640434832470284,
+  "runs": 3,
+  "ts": 1785999990.2485213,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "FIX-P3-b16",
+  "tier": "2",
+  "ms_per_step": 72.97493199985183,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.316782209548755,
+  "runs": 3,
+  "ts": 1786000245.2084754,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "FIX-P3-b64",
+  "tier": "2",
+  "ms_per_step": 82.77179899960174,
+  "accept": 2.857142857142857,
+  "tok_per_s": 34.83592911354567,
+  "runs": 3,
+  "ts": 1786000493.642825,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "FIX-prod-restore",
+  "tier": "2",
+  "ms_per_step": 66.84818550093041,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.55359324280316,
+  "runs": 2,
+  "ts": 1786000714.3123496,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "TUNE-P3-b8",
+  "tier": "2",
+  "ms_per_step": 70.91193499945803,
+  "accept": 2.857142857142857,
+  "tok_per_s": 40.37734975250898,
+  "runs": 3,
+  "ts": 1786000950.6883607,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "TUNE-P2-b8",
+  "tier": "2",
+  "ms_per_step": 80.43779000036011,
+  "accept": 2.857142857142857,
+  "tok_per_s": 35.51990746053647,
+  "runs": 3,
+  "ts": 1786001207.3080986,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "TUNE-prod-restore",
+  "tier": "2",
+  "ms_per_step": 66.40655849969335,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.832190784302114,
+  "runs": 2,
+  "ts": 1786001648.294071,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "PSPLIT-baseline",
+  "tier": "2",
+  "ms_per_step": 66.97145299949625,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.66210047980216,
+  "runs": 3,
+  "ts": 1786001881.2950833,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PSPLIT-router-only",
+  "tier": "2",
+  "ms_per_step": 69.22381299955305,
+  "accept": 2.857142857142857,
+  "tok_per_s": 41.273988434605656,
+  "runs": 3,
+  "ts": 1786002136.2374141,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PSPLIT-prod-restore",
+  "tier": "2",
+  "ms_per_step": 66.6935890003515,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 41.64989472135133,
+  "runs": 2,
+  "ts": 1786002347.1482606,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "TUNE-P3-b4",
+  "tier": "2",
+  "ms_per_step": 71.52486099948874,
+  "accept": 2.857142857142857,
+  "tok_per_s": 40.23214203391668,
+  "runs": 3,
+  "ts": 1786002582.1503098,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "DEEP-baseline",
+  "tier": "2",
+  "ms_per_step": 67.07938399995328,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.59345698739343,
+  "runs": 3,
+  "ts": 1786012231.5472293,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DEEP-d1",
+  "tier": "2",
+  "ms_per_step": 73.53942899862886,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.21442080153287,
+  "runs": 3,
+  "ts": 1786012490.3981578,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "DEEP-d2",
+  "tier": "2",
+  "ms_per_step": 71.43077400178299,
+  "accept": 2.7027027027027026,
+  "tok_per_s": 37.83667110530316,
+  "runs": 3,
+  "ts": 1786012738.4962406,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & Structure:**\n    *   *Introduction:* Define CPUs and GPUs briefly, set the stage for the comparis"
+ },
+ {
+  "label": "CPF-d1",
+  "tier": "2",
+  "ms_per_step": 70.4318170028273,
+  "accept": 2.898550724637681,
+  "tok_per_s": 41.58018096382628,
+  "runs": 3,
+  "ts": 1786013627.3493173,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Implicit Goal:** Provide a comprehensive, accurate, and well-structured technical analysis comparing CPU and GPU architectur"
+ },
+ {
+  "label": "CPF-d2-k2",
+  "tier": "2",
+  "ms_per_step": 88.62645550107118,
+  "accept": 2.816901408450704,
+  "tok_per_s": 31.831877152728662,
+  "runs": 3,
+  "ts": 1786013885.7660403,
+  "sample": "1.  **Understand the Goal:** The user wants a *detailed technical essay* comparing modern CPUs and GPUs across three specific axes: *parallelism*, *memory hierarchy*, and *scheduling*.\n\n2.  **Deconstruct the Prompt:**\n    *   **Topic:** Modern CPUs vs. Modern GPUs.\n    *   **Axes of Comparison:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n3.  **Establ"
+ },
+ {
+  "label": "CPF-d2-k8",
+  "tier": "2",
+  "ms_per_step": 92.03690399954212,
+  "accept": 2.857142857142857,
+  "tok_per_s": 31.043448149419188,
+  "runs": 3,
+  "ts": 1786014138.6028664,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements to cover:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Implicit requirements:** Technical depth, accuracy, clear structure, comparative analysis.\n\n2.  **Initial Brainstor"
+ },
+ {
+  "label": "WALK-s0",
+  "tier": "2",
+  "ms_per_step": 66.59018799973637,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.90636418017274,
+  "runs": 3,
+  "ts": 1786075998.7977996,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s1",
+  "tier": "2",
+  "ms_per_step": 72.85117599985824,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.21889822545098,
+  "runs": 3,
+  "ts": 1786076254.654455,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s2",
+  "tier": "2",
+  "ms_per_step": 73.42173100005311,
+  "accept": 2.857142857142857,
+  "tok_per_s": 38.91413098311167,
+  "runs": 3,
+  "ts": 1786076510.727865,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s3",
+  "tier": "2",
+  "ms_per_step": 79.96863500011386,
+  "accept": 2.857142857142857,
+  "tok_per_s": 35.72829343828101,
+  "runs": 3,
+  "ts": 1786076776.7471125,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s4",
+  "tier": "2",
+  "ms_per_step": 86.57877899986488,
+  "accept": 2.857142857142857,
+  "tok_per_s": 33.00049839172849,
+  "runs": 3,
+  "ts": 1786077037.55714,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s5",
+  "tier": "2",
+  "ms_per_step": 89.91868900011468,
+  "accept": 2.857142857142857,
+  "tok_per_s": 31.774738810295748,
+  "runs": 3,
+  "ts": 1786077310.3825579,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s6",
+  "tier": "2",
+  "ms_per_step": 90.3019850002238,
+  "accept": 2.857142857142857,
+  "tok_per_s": 31.639867685475313,
+  "runs": 3,
+  "ts": 1786077558.862367,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "WALK-s0b",
+  "tier": "2",
+  "ms_per_step": 66.67452000056073,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.852094880005566,
+  "runs": 3,
+  "ts": 1786077802.9576986,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DROP-s3",
+  "tier": "2",
+  "ms_per_step": 74.97229399996286,
+  "accept": 2.857142857142857,
+  "tok_per_s": 38.10931618477984,
+  "runs": 3,
+  "ts": 1786079176.0978858,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "DROP-s6",
+  "tier": "2",
+  "ms_per_step": 87.70016099970235,
+  "accept": 2.857142857142857,
+  "tok_per_s": 32.5785360548261,
+  "runs": 3,
+  "ts": 1786079428.7161925,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "SEARCH-real",
+  "tier": "2",
+  "ms_per_step": 88.56262900008005,
+  "accept": 2.816901408450704,
+  "tok_per_s": 31.702771784080394,
+  "runs": 3,
+  "ts": 1786079690.3274484,
+  "sample": "1.  **Understand the Goal:** The user wants a *detailed technical essay* comparing modern CPUs and GPUs across three specific axes: *parallelism*, *memory hierarchy*, and *scheduling*.\n\n2.  **Deconstruct the Prompt:**\n    *   **Topic:** Modern CPUs vs. Modern GPUs.\n    *   **Axes of Comparison:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n3.  **Establ"
+ },
+ {
+  "label": "DROP-real",
+  "tier": "2",
+  "ms_per_step": 85.54685600029188,
+  "accept": 2.816901408450704,
+  "tok_per_s": 33.001245555784266,
+  "runs": 3,
+  "ts": 1786079943.8035321,
+  "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approaches to parallelism, memory hierarchy, and scheduling. I need to write a comprehensive, well-structured essay covering these three topics. Let me plan the structure:\n\n1. Introduction - context, why this matters, brief history\n2. Parallelism - SIMD, MIMD, latency vs throughput, warp/thread execution\n3. Memory hi"
+ },
+ {
+  "label": "FIX-base",
+  "tier": "2",
+  "ms_per_step": 66.7808119997062,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.78388913802706,
+  "runs": 3,
+  "ts": 1786080198.1482196,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "I3-base",
+  "tier": "2",
+  "ms_per_step": 66.78654099960113,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.78021910372512,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786082176.0280254,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "I3-direct-off",
+  "tier": "2",
+  "ms_per_step": 72.25267499961774,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.54376577971644,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786082430.7519867,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "I3-chain-off",
+  "tier": "2",
+  "ms_per_step": 72.31995900110633,
+  "accept": 2.857142857142857,
+  "tok_per_s": 39.506975620646436,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786082686.0122755,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PP-base",
+  "tier": "2",
+  "ms_per_step": 66.9647430004261,
+  "accept": 2.857142857142857,
+  "tok_per_s": 42.66637530625149,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786084156.066855,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "PP-pre",
+  "tier": "2",
+  "ms_per_step": 70.30664200101455,
+  "accept": 2.857142857142857,
+  "tok_per_s": 40.82864628284538,
+  "steps": [
+   64,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786084412.6315565,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical/Engineering (needs depth, precision, terminology).\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Outline the Essay Structure:**\n    *   **Introduc"
+ },
+ {
+  "label": "PP-post",
+  "tier": "2",
+  "ms_per_step": 69.98441549967538,
+  "accept": 2.816901408450704,
+  "tok_per_s": 40.25040987109152,
+  "steps": [
+   71,
+   72,
+   71
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786084667.9706519,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three specific dimensions: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience & Tone:** Technical essay. Needs to be detailed, accurate, and structured. Use appropriate terminology (SIMD, MIMD, warp, thread block, cache hierarchy, latency vs. throughput, etc.).\n\n3.  **Key"
+ }
+]

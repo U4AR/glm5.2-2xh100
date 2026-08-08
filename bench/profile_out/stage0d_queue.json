@@ -1,0 +1,145 @@
+{
+ "ts": 1785823210.2802572,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2",
+  "tiers": "0,8",
+  "runs": 5,
+  "tokens": 400,
+  "out": "bench/profile_out/stage0d_queue.json"
+ },
+ "per_tier": {
+  "0": [
+   {
+    "ttft_s": 0.41014531300015733,
+    "n_steps": 144,
+    "n_tokens": 400,
+    "accept_length": 2.7777777777777777,
+    "ms_per_step_median": 52.58138399995005,
+    "ms_per_step_mean": 52.637519146851226,
+    "steps_per_s": 18.997855829985863,
+    "tok_per_s": 52.77182174996073,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.40810587500027395,
+    "n_steps": 144,
+    "n_tokens": 400,
+    "accept_length": 2.7777777777777777,
+    "ms_per_step_median": 52.316377999886754,
+    "ms_per_step_mean": 52.38092405594292,
+    "steps_per_s": 19.09091941432721,
+    "tok_per_s": 53.03033170646448,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.41325227399966025,
+    "n_steps": 144,
+    "n_tokens": 400,
+    "accept_length": 2.7777777777777777,
+    "ms_per_step_median": 52.34359399992172,
+    "ms_per_step_mean": 52.455572377623554,
+    "steps_per_s": 19.063751564868618,
+    "tok_per_s": 52.95486545796838,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.4136809540000286,
+    "n_steps": 144,
+    "n_tokens": 400,
+    "accept_length": 2.7777777777777777,
+    "ms_per_step_median": 52.57198099980087,
+    "ms_per_step_mean": 52.56641190908976,
+    "steps_per_s": 19.02355446533874,
+    "tok_per_s": 52.84320684816317,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   },
+   {
+    "ttft_s": 0.4101543719998517,
+    "n_steps": 144,
+    "n_tokens": 400,
+    "accept_length": 2.7777777777777777,
+    "ms_per_step_median": 52.0629600000575,
+    "ms_per_step_mean": 52.166303573428124,
+    "steps_per_s": 19.169462497806123,
+    "tok_per_s": 53.248506938350346,
+    "sample": "\\92222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+   }
+  ],
+  "8": [
+   {
+    "ttft_s": 1.0902331400002367,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 179.07414899991636,
+    "ms_per_step_mean": 179.42435418840563,
+    "steps_per_s": 5.573379402831479,
+    "tok_per_s": 16.03850187865174,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.0840290729997832,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 178.25549450003564,
+    "ms_per_step_mean": 178.84748031883976,
+    "steps_per_s": 5.5913563792861565,
+    "tok_per_s": 16.090234184996135,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.0882616189996952,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 178.8710035002623,
+    "ms_per_step_mean": 179.0246321594214,
+    "steps_per_s": 5.585823514551339,
+    "tok_per_s": 16.074312272090186,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.0899040320000495,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 178.47794199997224,
+    "ms_per_step_mean": 178.77848075362556,
+    "steps_per_s": 5.593514363611239,
+    "tok_per_s": 16.096444211830903,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   },
+   {
+    "ttft_s": 1.0877386740003203,
+    "n_steps": 139,
+    "n_tokens": 400,
+    "accept_length": 2.8776978417266186,
+    "ms_per_step_median": 178.61015800031055,
+    "ms_per_step_mean": 178.9457578405798,
+    "steps_per_s": 5.588285590379212,
+    "tok_per_s": 16.08139738238622,
+    "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ.\n    *   **Key Areas of Focus:** Para"
+   }
+  ]
+ },
+ "summary": {
+  "0": {
+   "ms_per_step": 52.34359399992172,
+   "spread_pct": 0.9904249217073687,
+   "steps_per_s": 19.063751564868618,
+   "accept_length": 2.7777777777777777,
+   "tok_per_s": 52.95486545796838,
+   "n_runs": 5
+  },
+  "8": {
+   "ms_per_step": 178.61015800031055,
+   "spread_pct": 0.4583471114108184,
+   "steps_per_s": 5.588285590379212,
+   "accept_length": 2.8776978417266186,
+   "tok_per_s": 16.08139738238622,
+   "n_runs": 5
+  }
+ }
+}

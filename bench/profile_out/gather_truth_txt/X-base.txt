@@ -1,0 +1,10 @@
+1.  **Understand the Goal:** The user wants a step-by-step explanation of how a Mixture-of-Experts (MoE) Transformer routes a token through its experts, and why the router is trained with an auxiliary loss. The explanation needs to be clear, structured, and technically accurate.
+
+2.  **Deconstruct the Request:** Two main parts:
+    *   Part 1: Step-by-step routing of a token through experts.
+    *   Part 2: Why the router is trained with an auxiliary loss.
+
+3.  **Part 1: Routing a Token (Step-by-Step)**
+    *   *Context:* What is a MoE Transformer? It replaces a standard feed-forward network (FFN) in each transformer block with a MoE layer. The attention layers usually stay standard.
+    *   *Step 1: Input Token:* A token (represented as an embedding vector $x$) arrives at a MoE layer.
+    *

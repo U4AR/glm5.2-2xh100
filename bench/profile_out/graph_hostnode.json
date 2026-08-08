@@ -1,0 +1,32 @@
+{
+ "device": "NVIDIA H100 NVL",
+ "sms": 132,
+ "layers": 8,
+ "layer_mb": 16,
+ "blocks": 64,
+ "t_burn_per_layer_ms": 0.33825600147247314,
+ "t_pull_per_layer_ms": 0.3192319869995117,
+ "pull_gbs": 48.9455964198973,
+ "rows": [
+  {
+   "hostnode": false,
+   "cpu_us": 0,
+   "t_base_ms": 2.6875680685043335,
+   "t_gather_ms": 2.751919984817505,
+   "added_ms": 0.06435191631317139,
+   "gather_alone_ms": 2.5538558959960938,
+   "hidden_frac": 0.9748020566023081,
+   "per_layer_added_ms": 0.008043989539146423
+  },
+  {
+   "hostnode": true,
+   "cpu_us": 500,
+   "t_base_ms": 7.119904041290283,
+   "t_gather_ms": 7.157391786575317,
+   "added_ms": 0.03748774528503418,
+   "gather_alone_ms": 2.5538558959960938,
+   "hidden_frac": 0.9853211195886945,
+   "per_layer_added_ms": 0.0046859681606292725
+  }
+ ]
+}

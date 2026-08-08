@@ -1,0 +1,62 @@
+{
+ "label": "cpu-stage0c-prequant-e60-safe8",
+ "ts": 1785756201.413059,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2-top8",
+  "runs": 5,
+  "tokens": 400,
+  "warmup": 2,
+  "label": "cpu-stage0c-prequant-e60-safe8",
+  "out": "bench/profile_out/rates"
+ },
+ "runs": [
+  {
+   "ttft_s": 1.001914823998959,
+   "decode_s": 25.50045270800183,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 15.64678104223605,
+   "ms_per_token": 63.9109090426111,
+   "e2e_tok_per_s": 15.092991202277018
+  },
+  {
+   "ttft_s": 0.9969529459995101,
+   "decode_s": 25.419017806998454,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 15.69690863075543,
+   "ms_per_token": 63.70681154636204,
+   "e2e_tok_per_s": 15.142354742144153
+  },
+  {
+   "ttft_s": 0.9966780050017405,
+   "decode_s": 25.45547990200066,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 15.674424585043505,
+   "ms_per_token": 63.798195243109426,
+   "e2e_tok_per_s": 15.121639656253231
+  },
+  {
+   "ttft_s": 0.9970293950027553,
+   "decode_s": 25.393506656997488,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 15.712678260213846,
+   "ms_per_token": 63.64287382706137,
+   "e2e_tok_per_s": 15.156948658103609
+  },
+  {
+   "ttft_s": 0.9952282800004468,
+   "decode_s": 25.40024638199975,
+   "completion_tokens": 400,
+   "chunks": 139,
+   "tok_per_s": 15.708509043548377,
+   "ms_per_token": 63.65976536842042,
+   "e2e_tok_per_s": 15.15411278342546
+  }
+ ],
+ "median_tok_per_s": 15.69690863075543,
+ "spread_pct": 0.41981016471409566
+}

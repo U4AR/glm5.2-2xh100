@@ -1,0 +1,82 @@
+[
+ {
+  "label": "X-base",
+  "tier": "2",
+  "ms_per_step": 65.70340599864721,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.48546036109123,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786099189.752256,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "X-full",
+  "tier": "2",
+  "ms_per_step": 66.29759899806231,
+  "accept": 2.272727272727273,
+  "tok_per_s": 34.2806874920719,
+  "steps": [
+   88,
+   88,
+   88
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786099453.9794133,
+  "sample": "1.  **Deconstruct the Prompt:** The user wants a \"detailed technical essay\" comparing modern CPUs and GPUs across three specific axes: parallelism, memory hierarchy, and scheduling. The tone should be highly technical, analytical, and structured.\n\n2.  **Target Audience & Persona:** Target: highly technical computer science/engineering enthusiasts (e.g., PhD researchers, kernel developers, compiler"
+ },
+ {
+  "label": "X-drop",
+  "tier": "2",
+  "ms_per_step": 64.13813200015284,
+  "accept": 2.5316455696202533,
+  "tok_per_s": 39.47176961147264,
+  "steps": [
+   79,
+   79,
+   79
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786099715.7762027,
+  "sample": "1.  **Understand the Goal**: The user wants a detailed technical essay comparing modern CPUs and GPUs, specifically focusing on three areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Identify the Audience/Format**: Technical essay. Needs to be structured, rigorous, factual, and detailed. Not overly verbose or conversational. No \"I am... assistant\" stuff. No chain-of-thought stuff visib"
+ },
+ {
+  "label": "X-dbl",
+  "tier": "2",
+  "ms_per_step": 75.59993699942424,
+  "accept": 2.5316455696202533,
+  "tok_per_s": 33.4874031659515,
+  "steps": [
+   79,
+   79,
+   79
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786099992.6411395,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs.\n    *   **Key aspects:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical readers (software engineers, hardware enthusiasts, CS students).\n\n2.  **Outline the Essay Structure:**\n    *   **Introduction:** Define CPUs and GPUs, state the "
+ }
+]

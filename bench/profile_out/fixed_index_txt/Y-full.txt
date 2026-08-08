@@ -1,0 +1,10 @@
+1.  **Understand the Goal:** The user wants a step-by-step explanation of how a Mixture-of-Experts (MoE) transformer routes a token through its experts, and why the router is trained with an auxiliary loss.
+
+2.  **Deconstruct the Request:**
+    *   Part 1: Step-by-step routing process of a token.
+    *   Part 2: Explanation of the auxiliary loss and its purpose.
+
+3.  **Part 1: Routing Process (Step-by-Step):**
+    *   *Step 1: Input Token.* The transformer receives a sequence of tokens. Let's focus on a single token $x_t$ at a specific layer $l$. It has an embedding (hidden state) $h_t$.
+    *   *Step 2: Router Input.* The hidden state $h_t$ is fed into the router network.
+    *   *Step 3: Router Mechanism.* The router is usually a linear

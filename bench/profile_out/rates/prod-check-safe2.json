@@ -1,0 +1,44 @@
+{
+ "label": "prod-check-safe2",
+ "ts": 1785834408.8334656,
+ "args": {
+  "url": "http://localhost:8000",
+  "model": "GLM5.2-top2",
+  "runs": 3,
+  "tokens": 200,
+  "warmup": 2,
+  "label": "prod-check-safe2",
+  "out": "bench/profile_out/rates"
+ },
+ "runs": [
+  {
+   "ttft_s": 0.3683160090004094,
+   "decode_s": 4.789731152999593,
+   "completion_tokens": 200,
+   "chunks": 72,
+   "tok_per_s": 41.5472170865739,
+   "ms_per_token": 24.069000768842177,
+   "e2e_tok_per_s": 38.774364351188126
+  },
+  {
+   "ttft_s": 0.36918483800036483,
+   "decode_s": 4.790734190999501,
+   "completion_tokens": 200,
+   "chunks": 72,
+   "tok_per_s": 41.53851832854083,
+   "ms_per_token": 24.074041160801514,
+   "e2e_tok_per_s": 38.760298151183484
+  },
+  {
+   "ttft_s": 0.36951087299894425,
+   "decode_s": 4.7612203620010405,
+   "completion_tokens": 200,
+   "chunks": 72,
+   "tok_per_s": 41.79600708847773,
+   "ms_per_token": 23.925730462316785,
+   "e2e_tok_per_s": 38.980798416349046
+  }
+ ],
+ "median_tok_per_s": 41.5472170865739,
+ "spread_pct": 0.6197497160889411
+}

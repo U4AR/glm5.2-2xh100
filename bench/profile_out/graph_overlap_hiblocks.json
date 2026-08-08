@@ -1,0 +1,73 @@
+{
+ "device": "NVIDIA H100 NVL",
+ "sms": 132,
+ "move_mb": 64,
+ "burn_blocks": 132,
+ "burn_iters": 230420,
+ "t_compute_ms": 1.197376012802124,
+ "rows": [
+  {
+   "gather_blocks": 128,
+   "grid_total": 128,
+   "t_gather_ms": 1.257584035396576,
+   "gather_gbs": 49.698468047338714,
+   "t_both_ms": 1.2579360008239746,
+   "t_serial_ms": 2.4549600481987,
+   "overlap_frac": 0.9997060527155751
+  },
+  {
+   "gather_blocks": 256,
+   "grid_total": 256,
+   "t_gather_ms": 1.2580000162124634,
+   "gather_gbs": 49.68203433587586,
+   "t_both_ms": 1.322383999824524,
+   "t_serial_ms": 2.4553760290145874,
+   "overlap_frac": 0.9462291018663487
+  },
+  {
+   "gather_blocks": 512,
+   "grid_total": 512,
+   "t_gather_ms": 1.2577760219573975,
+   "gather_gbs": 49.69088208784199,
+   "t_both_ms": 1.4169600009918213,
+   "t_serial_ms": 2.4551520347595215,
+   "overlap_frac": 0.8670559813020655
+  },
+  {
+   "gather_blocks": 1024,
+   "grid_total": 1024,
+   "t_gather_ms": 1.2575680017471313,
+   "gather_gbs": 49.699101689267806,
+   "t_both_ms": 5.721328020095825,
+   "t_serial_ms": 2.4549440145492554,
+   "overlap_frac": -2.7279517633750743
+  },
+  {
+   "gather_blocks": 2048,
+   "grid_total": 2048,
+   "t_gather_ms": 1.25764799118042,
+   "gather_gbs": 49.69594070701606,
+   "t_both_ms": 3.6149920225143433,
+   "t_serial_ms": 2.455024003982544,
+   "overlap_frac": -0.9687583567147118
+  },
+  {
+   "gather_blocks": 4096,
+   "grid_total": 4096,
+   "t_gather_ms": 1.257375955581665,
+   "gather_gbs": 49.70669251511761,
+   "t_both_ms": 3.8041439056396484,
+   "t_serial_ms": 2.454751968383789,
+   "overlap_frac": -1.1269575495319841
+  },
+  {
+   "gather_blocks": 8192,
+   "grid_total": 8192,
+   "t_gather_ms": 1.257856011390686,
+   "gather_gbs": 49.68772215104333,
+   "t_both_ms": 3.7008159160614014,
+   "t_serial_ms": 2.45523202419281,
+   "overlap_frac": -1.0402612701031568
+  }
+ ]
+}

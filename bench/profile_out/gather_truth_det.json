@@ -1,0 +1,94 @@
+{
+ "X-base": {
+  "hashes": [
+   "5093e29512",
+   "5093e29512",
+   "5093e29512"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   802,
+   802,
+   802
+  ]
+ },
+ "X-full": {
+  "hashes": [
+   "a04083f148",
+   "a04083f148",
+   "a04083f148"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   826,
+   826,
+   826
+  ]
+ },
+ "X-drop": {
+  "hashes": [
+   "dacec2cf1d",
+   "dacec2cf1d",
+   "dacec2cf1d"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   951,
+   951,
+   951
+  ]
+ },
+ "X-dbl": {
+  "hashes": [
+   "287cf87e9e",
+   "287cf87e9e",
+   "287cf87e9e"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   832,
+   832,
+   832
+  ]
+ }
+}
