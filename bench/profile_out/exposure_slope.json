@@ -1,0 +1,82 @@
+[
+ {
+  "label": "S1-top0",
+  "tier": "0",
+  "ms_per_step": 56.447241997375386,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 65.61354589965465,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786183311.3376317,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "S2-top0",
+  "tier": "0",
+  "ms_per_step": 57.56265899981372,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 64.34212331497211,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786183561.1229436,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "S4-top0",
+  "tier": "0",
+  "ms_per_step": 61.95075300274766,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 59.78464383700769,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786183802.4917884,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "S8-top0",
+  "tier": "0",
+  "ms_per_step": 85.19970700217527,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 43.47085024141154,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786184060.1760404,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ }
+]

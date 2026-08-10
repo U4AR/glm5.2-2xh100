@@ -1,0 +1,117 @@
+{
+ "S-base": {
+  "hashes": [
+   "5093e29512",
+   "5093e29512",
+   "5093e29512"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   802,
+   802,
+   802
+  ]
+ },
+ "S-d1": {
+  "hashes": [
+   "45c4fbb027",
+   "45c4fbb027",
+   "45c4fbb027"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   748,
+   748,
+   748
+  ]
+ },
+ "S-d2": {
+  "hashes": [
+   "24ef5609c5",
+   "24ef5609c5",
+   "24ef5609c5"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   847,
+   847,
+   847
+  ]
+ },
+ "S-p1": {
+  "hashes": [
+   "5607768cbe",
+   "5607768cbe",
+   "5607768cbe"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   737,
+   737,
+   737
+  ]
+ },
+ "S-d2p1": {
+  "hashes": [
+   "3ac5bd3624",
+   "3ac5bd3624",
+   "3ac5bd3624"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   776,
+   776,
+   776
+  ]
+ }
+}

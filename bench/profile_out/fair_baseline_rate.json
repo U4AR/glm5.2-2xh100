@@ -1,0 +1,62 @@
+[
+ {
+  "label": "F104-plain",
+  "tier": "2",
+  "ms_per_step": 65.2676220001922,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 42.55981285436748,
+  "steps": [
+   72,
+   72,
+   72
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786163445.5240705,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & High-Level Structure:**\n    *   *Introduction:* Define the core difference (CPU = latency-oriented, GPU"
+ },
+ {
+  "label": "F100-idle",
+  "tier": "2",
+  "ms_per_step": 65.63290699978097,
+  "accept": 2.857142857142857,
+  "tok_per_s": 43.53216987863104,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786163698.2189248,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs regarding parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Audience:** Technical (likely software engineers, computer science students, or hardware enthusiasts). Needs precise terminology, architectural concepts, and clear comparisons.\n\n2.  **Outline the"
+ },
+ {
+  "label": "F100-fetch",
+  "tier": "2",
+  "ms_per_step": 64.04801100052282,
+  "accept": 2.857142857142857,
+  "tok_per_s": 44.60939243093021,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786163966.6177256,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs in three specific areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Deconstruct the Prompt:**\n    *   **Topic:** Modern CPUs vs. Modern GPUs.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n3.  **Initial Brainstorming & Kn"
+ }
+]

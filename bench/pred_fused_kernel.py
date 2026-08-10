@@ -116,7 +116,14 @@ extern "C" __global__ void k_pred_fused(
     bool* __restrict__ landed,          // [n_exp] out
     bool* __restrict__ landed_cpu,      // [n_exp] out
     int*  __restrict__ index,           // [n_exp] out: landing slot per expert
-    long* __restrict__ stats,           // [4] fetched, wanted, calls, skipped
+    long* __restrict__ stats,           // [5] fetched, wanted, calls, skipped,
+                                        //     reusable (see `reuse`)
+    long* __restrict__ hold,            // [n_slot] in/out: which expert each slot
+                                        // PHYSICALLY holds right now. Only the
+                                        // gather writes a slot, and slots are
+                                        // per-layer, so an entry stays true until
+                                        // this layer fetches over it. -1 = unknown.
+    int reuse,                          // 0 off, 1 measure only, 2 act
     int T, int n_exp, int n_slot, int topk, int topP,
     int slot_base,                      // ABSOLUTE index of landing slot 0 in
                                         // the layer's cutlass expert tensors.
@@ -232,8 +239,63 @@ extern "C" __global__ void k_pred_fused(
     // can never be covered completely, and a partially covered layer keeps its
     // CPU call anyway -- so the bytes would buy nothing.
     const bool skip = selective && (n_want > n_slot);
+    // REUSE. A slot's bytes survive to the next call -- nothing but this layer's
+    // own gather ever writes them -- so an expert still sitting in a slot and
+    // wanted again costs zero bytes to "fetch". `s_dem` is untouched by the pick
+    // loop below (only the register copy `d[]` is consumed), so it still carries
+    // the original demand and can be probed by expert id.
+    //
+    // Counted BEFORE any picking, and in mode 1 only counted: the whole point is
+    // to learn the hit rate before changing what the server does. Stage H15
+    // prices this at ~5.1 ms per expert/call, so the counter decides whether the
+    // path is worth building at all.
+    int reusable = 0;
+    unsigned keep_mask = 0;
+    if (reuse && lane == 0) {
+      int seen[16];
+      int n_seen = 0;
+      for (int k = 0; k < n_slot; ++k) {
+        const int h = (int)hold[k];
+        if (h < 0 || s_dem[h] <= 0) continue;
+        // Two slots can transiently hold the SAME expert (mode 1 re-fetches an
+        // expert a slot already had, into a different slot). Covering it twice
+        // would burn a slot and race two writers on index[h], so the duplicate
+        // is passed over and left for the fill pass to reclaim.
+        bool dup = false;
+        for (int s = 0; s < n_seen; ++s) if (seen[s] == h) { dup = true; break; }
+        if (dup) continue;
+        seen[n_seen++] = h;
+        ++reusable;
+        if (reuse >= 2) {
+          keep_mask |= (1u << k);
+          // The slot already holds this expert's bytes, so publish the routing
+          // and fetch NOTHING: sel[k] = -1 makes all four gather kernels
+          // early-out. Coverage identical, bytes zero.
+          if (route)   landed[h]     = true;
+          if (cpuskip) landed_cpu[h] = true;
+          index[h] = slot_base + k;
+          sel[k]   = -1;
+        }
+      }
+    }
+    reusable  = __shfl_sync(0xffffffff, reusable, 0);
+    keep_mask = __shfl_sync(0xffffffff, keep_mask, 0);
+    // Remove kept experts from the demand the fill pass sees, in whichever lane
+    // owns them, so the same expert is never fetched into a second slot.
+    if (keep_mask) {
+      for (int k = 0; k < n_slot; ++k) {
+        if (!(keep_mask & (1u << k))) continue;
+        const int h = (int)hold[k];
+        if (h >= 0 && h / 8 == lane) {
+#pragma unroll
+          for (int j = 0; j < 8; ++j) { if (h % 8 == j) d[j] = 0; }
+        }
+      }
+    }
     int fetched = 0;
     for (int k = 0; k < n_slot; ++k) {
+      // A kept slot is already published and must not be refilled.
+      if (keep_mask & (1u << k)) continue;
       int bv = 0, bi = INT_MAX;
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
@@ -265,19 +327,29 @@ extern "C" __global__ void k_pred_fused(
       if (pick >= 0) ++fetched;
     }
     if (lane == 0) {
+      // A slot is only overwritten when something was actually fetched into it,
+      // so `hold` tracks physical contents exactly. A slot that got no pick keeps
+      // its previous expert -- and keeping that entry is what makes the NEXT call
+      // able to reuse it.
+      if (reuse) {
+        for (int k = 0; k < n_slot; ++k) {
+          if (sel[k] >= 0) hold[k] = sel[k];
+        }
+      }
       stats[0] += route ? fetched : 0;
       stats[1] += n_want;
       stats[2] += 1;
       stats[3] += (fetched == 0) ? 1 : 0;
+      stats[4] += reusable;
     }
   }
 }
 
 void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident,
                 torch::Tensor sel, torch::Tensor landed, torch::Tensor landed_cpu,
-                torch::Tensor index, torch::Tensor stats,
+                torch::Tensor index, torch::Tensor stats, torch::Tensor hold,
                 long topk, long topP, long col_off, long slot_base,
-                long selective, long route, long cpuskip) {
+                long selective, long route, long cpuskip, long reuse) {
   const int T     = (int)logits.size(0);
   const int ld    = (int)logits.stride(0);
   const int n_exp = (int)resident.numel();
@@ -289,6 +361,11 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
   TORCH_CHECK(index.scalar_type() == torch::kInt, "index must be int32 -- "
               "logical_to_gpu_index is int32 and a silent promotion here "
               "corrupts cutlass's expert ids");
+  TORCH_CHECK(stats.numel() >= 5, "stats needs 5 slots (reusable is [4])");
+  TORCH_CHECK(hold.numel() == sel.numel(), "hold must be one entry per slot");
+  TORCH_CHECK(hold.scalar_type() == torch::kLong, "hold must be int64");
+  // The keep pass carries a 16-entry duplicate list and a 32-bit slot mask.
+  TORCH_CHECK(sel.numel() <= 16, "reuse keep-pass assumes at most 16 slots");
   TORCH_CHECK(n_exp == 256, "warp-per-token form assumes 256 experts");
   TORCH_CHECK(T <= 8, "one warp per token, 8 warps in the block");
   TORCH_CHECK(topk <= 64, "topk > 64 needs a bigger `chosen` array");
@@ -306,7 +383,8 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
       lp, bias.data_ptr<float>(),
       resident.data_ptr<bool>(), sel.data_ptr<long>(),
       landed.data_ptr<bool>(), landed_cpu.data_ptr<bool>(),
-      index.data_ptr<int>(), stats.data_ptr<long>(),
+      index.data_ptr<int>(), stats.data_ptr<long>(), hold.data_ptr<long>(),
+      (int)reuse,
       T, n_exp, n_slot, (int)topk, (int)topP, (int)slot_base, ld, bf16 ? 1 : 0,
       (int)selective, (int)route, (int)cpuskip);
 }
@@ -314,7 +392,8 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
 
 DECL = ("void pred_fused(torch::Tensor, torch::Tensor, torch::Tensor, "
         "torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, "
-        "torch::Tensor, long, long, long, long, long, long, long);")
+        "torch::Tensor, torch::Tensor, "
+        "long, long, long, long, long, long, long, long);")
 
 _K = None
 
@@ -394,16 +473,19 @@ def main():
         bias = torch.randn(a.n_exp, generator=g, device=dev) * 0.1
         return resident, logits, bias
 
-    def run_kernel(logits, bias, resident, selective, route, cpuskip, idx0, st0):
+    def run_kernel(logits, bias, resident, selective, route, cpuskip, idx0, st0,
+                   hold=None, reuse=0):
         sel = torch.full((a.n_slot,), -1, dtype=torch.int64, device=dev)
         landed = torch.zeros(a.n_exp, dtype=torch.bool, device=dev)
         landed_cpu = torch.zeros(a.n_exp, dtype=torch.bool, device=dev)
         index, stats = idx0.clone(), st0.clone()
+        if hold is None:
+            hold = torch.full((a.n_slot,), -1, dtype=torch.int64, device=dev)
         K.pred_fused(logits, bias, resident, sel, landed, landed_cpu, index,
-                     stats, a.topk, a.topP, 0, a.slot_base,
-                     selective, route, cpuskip)
+                     stats, hold, a.topk, a.topP, 0, a.slot_base,
+                     selective, route, cpuskip, reuse)
         torch.cuda.synchronize()
-        return sel, landed, landed_cpu, index, stats
+        return sel, landed, landed_cpu, index, stats, hold
 
     if a.verify:
         bad = 0
@@ -412,14 +494,99 @@ def main():
             for selective in (0, 1):
                 for route, cpuskip in ((1, 1), (0, 0), (1, 0)):
                     idx0 = torch.full((a.n_exp,), -1, dtype=torch.int32, device=dev)
-                    st0 = torch.zeros(4, dtype=torch.int64, device=dev)
+                    st0 = torch.zeros(5, dtype=torch.int64, device=dev)
                     psel, pdem, pwant = python_path(
                         logits, bias, resident, a.n_slot, a.topk, a.topP,
                         selective, route, cpuskip)
-                    ksel, klanded, klcpu, kindex, kstats = run_kernel(
+                    # A NON-EMPTY hold, seeded from the reference demand, so the
+                    # reuse counter is exercised on every trial rather than only
+                    # on the degenerate all -1 case. Two of the four slots are
+                    # deliberately experts the reference DID want and two are
+                    # arbitrary, so a kernel that counted everything or nothing
+                    # would fail.
+                    hold = torch.full((a.n_slot,), -1, dtype=torch.int64, device=dev)
+                    wanted_ids = torch.nonzero(pdem > 0).flatten()
+                    if wanted_ids.numel() >= 2:
+                        hold[0] = wanted_ids[0]
+                        hold[1] = wanted_ids[-1]
+                    hold[2 % a.n_slot] = (t * 7) % a.n_exp
+                    hold_in = hold.clone()
+                    ksel, klanded, klcpu, kindex, kstats, khold = run_kernel(
                         logits, bias, resident, selective, route, cpuskip,
-                        idx0, st0)
+                        idx0, st0, hold=hold, reuse=1)
                     tag = f"{selective}/{route}{cpuskip}"
+                    # Independent recomputation: count hold entries whose expert
+                    # the REFERENCE path found demand for. Different code,
+                    # different data structure, same claim.
+                    #
+                    # DISTINCT experts. An expert held in two slots at once --
+                    # which mode 1 produces, by re-fetching into a free slot
+                    # something an older slot still has -- is wanted once and can
+                    # skip one fetch, not two. Counting it twice would both
+                    # overstate the saving and imply two slots writing index[h].
+                    # The first version of this line did not dedupe and failed
+                    # trial 80, where the seeded arbitrary expert (80*7)%256=48
+                    # collided with a wanted one. The KERNEL was right.
+                    _seen, exp_reuse = set(), 0
+                    for h in hold_in.tolist():
+                        if h >= 0 and int(pdem[h]) > 0 and h not in _seen:
+                            _seen.add(h)
+                            exp_reuse += 1
+                    if int(kstats[4]) != exp_reuse:
+                        bad += 1
+                        print(f"trial {t} reusable/{tag}: kernel {int(kstats[4])} "
+                              f"vs reference {exp_reuse}")
+                    # Mode 1 must not change WHAT is selected -- it only counts.
+                    # And `hold` must end up describing the slots' real contents:
+                    # overwritten where a fetch landed, preserved everywhere else.
+                    for k in range(a.n_slot):
+                        want_h = int(ksel[k]) if int(ksel[k]) >= 0 else int(hold_in[k])
+                        if int(khold[k]) != want_h:
+                            bad += 1
+                            print(f"trial {t} hold/{tag}: slot {k} is "
+                                  f"{int(khold[k])}, expected {want_h}")
+
+                    # ---- mode 2: same hold, acting on it -------------------
+                    # Reuse is only sound if it changes BYTES and not COVERAGE.
+                    # Both are asserted here against a reference built from the
+                    # incumbent's demand, not from the kernel's own bookkeeping.
+                    hold2 = hold_in.clone()
+                    s2, l2, lc2, i2, st2, h2 = run_kernel(
+                        logits, bias, resident, selective, route, cpuskip,
+                        idx0, st0, hold=hold2, reuse=2)
+                    exp_kept, seen = {}, set()
+                    for k in range(a.n_slot):
+                        h = int(hold_in[k])
+                        if h >= 0 and int(pdem[h]) > 0 and h not in seen:
+                            seen.add(h)
+                            exp_kept[k] = h
+                    for k, h in exp_kept.items():
+                        if int(s2[k]) != -1:
+                            bad += 1
+                            print(f"trial {t} keep/{tag}: slot {k} holds wanted "
+                                  f"expert {h} but still fetches {int(s2[k])}")
+                        if int(i2[h]) != a.slot_base + k:
+                            bad += 1
+                            print(f"trial {t} keepidx/{tag}: expert {h} -> "
+                                  f"{int(i2[h])}, expected {a.slot_base + k}")
+                        if route and not bool(l2[h]):
+                            bad += 1
+                            print(f"trial {t} keeplanded/{tag}: expert {h} unrouted")
+                        if int(h2[k]) != h:
+                            bad += 1
+                            print(f"trial {t} keephold/{tag}: slot {k} lost {h}")
+                    # An expert must never be kept AND fetched: that wastes a
+                    # slot and races two writers on index[].
+                    fetched2 = {int(x) for x in s2.tolist() if int(x) >= 0}
+                    if fetched2 & set(exp_kept.values()):
+                        bad += 1
+                        print(f"trial {t} dup/{tag}: {fetched2 & set(exp_kept.values())} "
+                              f"both kept and fetched")
+                    # THE invariant. Freed slots may cover MORE, never less.
+                    if route and int(l2.sum()) < int(klanded.sum()):
+                        bad += 1
+                        print(f"trial {t} coverage/{tag}: mode 2 covers "
+                              f"{int(l2.sum())} < mode 1 {int(klanded.sum())}")
                     # Compare by the DEMAND each side selected, not by the ids:
                     # demand is a small integer count so ties are the normal
                     # case, and two tie orders give different-but-equally-correct
@@ -466,11 +633,15 @@ def main():
         landed = torch.zeros(a.n_exp, dtype=torch.bool, device=dev)
         landed_cpu = torch.zeros(a.n_exp, dtype=torch.bool, device=dev)
         index = torch.full((a.n_exp,), -1, dtype=torch.int32, device=dev)
-        stats = torch.zeros(4, dtype=torch.int64, device=dev)
+        stats = torch.zeros(5, dtype=torch.int64, device=dev)
+        hold = torch.full((a.n_slot,), -1, dtype=torch.int64, device=dev)
 
         def fused():
+            # reuse=1 (measure) is what the server will run first, so time THAT,
+            # not a mode nothing uses.
             K.pred_fused(logits, bias, resident, sel, landed, landed_cpu,
-                         index, stats, a.topk, a.topP, 0, a.slot_base, 1, 1, 1)
+                         index, stats, hold, a.topk, a.topP, 0, a.slot_base,
+                         1, 1, 1, 1)
 
         # The incumbent, in place where pf_issue is in place, so the comparison
         # is launch count against launch count and not allocator against

@@ -1721,3 +1721,607 @@ reboot: F104-plain = `9e49a7738c` (production's hash from the previous day),
 F100-idle = `5093e29512` (every 100-expert baseline), F100-fetch = `45c4fbb027`
 (yesterday's Y-full). The rig is stable across days; the rule about subtracting
 only within a run still stands, but the baselines are not drifting.
+
+## Stage H13 -- naming the floor: the gather is the biggest kernel on the card
+
+Stage H12 left the step split as `52.68 GPU floor + 1.76 predictor + 9.24 gather
++ 0.21 CPU`, with the floor -- 82% of the step -- never opened. The torch trace
+from A-full was already on disk; the classifier in `profile_occupancy.py` had
+binned 35.03 ms/step of it into a bucket literally called **"other GPU kernels"**
+(1,770 kernels/step, ~20 us each), which is not a decomposition, it is a name for
+the part that was not decomposed.
+
+Streaming the raw chrome trace by kernel name closes it. TP-0, per decode step
+(profiled boot, 73.54 ms/step median -- profiling inflates everything ~14%, so
+read the SHAPE, not the absolute values):
+
+| kernel | ms/step | launches/step | us each |
+|---|---|---|---|
+| `k_w13_weights`  (gather) | 17.22 | 74 | 233 |
+| cutlass `GemmUniversal<GroupProblemShape...>` | 11.68 | 156 | 75 |
+| `k_w2_weights`   (gather) | 10.50 | 74 | 142 |
+| cutlass `GemmUniversal<cute::tuple>` | 6.24 | 334 | 19 |
+| `_w8a8_block_fp8_matmul` | 2.51 | 83 | 30 |
+| `k_w13_scales`   (gather) | 1.97 | 74 | 27 |
+| `ncclDevKernel_AllReduce` | 1.94 | 170 | 11 |
+| `bitonicSortKVInPlace` | 1.83 | 385 | 5 |
+| `k_w2_scales`    (gather) | 1.77 | 74 | 24 |
+| `k_pred_fused` | 0.69 | 74 | 9.4 |
+
+**The four gather kernels sum to 31.46 ms/step of GPU kernel time.** That is the
+largest single subsystem in the trace -- larger than every cutlass MoE GEMM added
+together (17.92 ms). The unnamed bucket reconciles: 31.46 gather + 0.69 predictor
++ ~2.9 unattributed ~= the 35.03 that had no name.
+
+Two things follow, and only the first is a conclusion:
+
+1. **The prefetch is not a cheap side effect; it is the busiest thing on the
+   GPU.** It survives at all because it runs on a side stream and ~71% of it
+   hides behind compute. 9.24 ms is what leaks out. Anything that shrinks the
+   BYTES shrinks the biggest kernel on the card, which is why fetch-fewer (S-p1)
+   and reuse-across-steps are worth measuring and not just the shadow (S-d2).
+
+2. **`k_pred_fused` costs 0.69 ms/step of GPU time, but the predictor was
+   measured at 1.76 ms/step end-to-end.** The ~1.1 ms difference is NOT attributed
+   -- candidates are the widened gate GEMM, the merge into
+   `logical_to_gpu_index`, and graph-node scheduling. Not a root cause yet.
+
+What this does NOT say: the remaining ~52.68 ms floor is still mostly unopened.
+`bitonicSortKVInPlace` (385/step) and `gatherTopK` (77/step) are the tier
+substitution search, consistent with TODO item 1's 6.55 ms, but the two cutlass
+buckets and the 10,497 elementwise kernels per step have not been attributed to
+call sites.
+
+## Stage H14 -- depth is nearly free; BYTES are what the prefetch pays for
+
+Stage H12 left the prefetch at +1.9% and named the exposed gather (9.24 ms) as
+the thing to attack. Two independent ways to attack it were written into
+`bench/depth_shadow.sh`: buy more shadow (predict two layers ahead) or move
+fewer bytes (fetch one expert instead of ~1.8). One boot each, tier 2, three
+runs, all deterministic.
+
+| row | ms/step | fetched/call | wanted/call | layers skipped | hash |
+|---|---|---|---|---|---|
+| S-base  (off)          | 65.77 | -- | -- | -- | `5093e29512` |
+| S-d1    (depth 1, P=2) | **64.29** | 1.59 | 1.84 | 20.0% | `45c4fbb027` |
+| S-p1    (depth 1, P=1) | 64.50 | 0.84 | 0.84 | 41.2% | `5607768cbe` |
+| S-d2    (depth 2, P=2) | 65.82 | 1.75 | 2.12 | 18.2% | `24ef5609c5` |
+| S-d2p1  (depth 2, P=1) | 64.87 | 0.86 | 0.87 | 40.0% | `3ac5bd3624` |
+
+S-d1 reproduces Stage H12's 64.05 to within 0.24 ms and S-base reproduces 65.63
+to within 0.14, both in the same direction -- the box did not move and the rows
+are comparable.
+
+**The shadow hypothesis is refuted, and not for the reason it was set up to
+test.** It assumed depth trades ACCURACY for COVER at constant bytes. Bytes did
+not stay constant: predicting from a hidden state two layers early spreads the
+router's top-P over more distinct non-resident experts, so demand rose from 1.84
+to 2.12 per call and 10% more bytes went on the wire. Depth bought shadow and
+spent it in the same move.
+
+**S-d2p1 is the row that makes the table interpretable.** With bytes pinned at
+~0.85/call, depth 1 -> 2 costs 0.37 ms. With bytes free to move, the same depth
+change cost 1.53 ms.
+
+> **CORRECTED IN H15.** The sentence that stood here -- "depth per se is nearly
+> free; the 1.16 ms difference tracks the extra 0.16 experts/call" -- was wrong
+> in its ATTRIBUTION, and wrong in the way this project keeps being wrong: it was
+> a slope drawn through points that differ in two variables at once. Measuring
+> cost directly at tier 0 gives cost(d1P2) = 10.84 ms and cost(d2P2) = 10.85 ms.
+> Depth adds NO byte cost whatsoever. Depth-2's entire penalty is COVERAGE --
+> residual CPU 0.59 -> 2.81 ms, a 2.22 ms gap against a 2.23 ms measured net
+> difference. The conclusion "depth 2 is dead" survives; the reason given for it
+> did not.
+
+That slope (~1.16 ms per 0.16 experts/call) predicts S-p1's 47% byte cut should
+have saved ~5 ms. It lost 0.21. Both can only hold if P=1's coverage collapse --
+41.2% of layer-calls skipped against 20.0% -- gave ~5.6 ms of CPU work back.
+Consistent, but it is a slope through four points that differ in two variables at
+once, so it is **NOT a root cause**. `bench/cost_isolate.sh` measures it directly:
+every config at tier 0 as well as tier 2, where the prefetch can save nothing and
+its cost stands alone.
+
+### What this rules in
+
+If cost really does track bytes while benefit tracks coverage, then every lever
+that trades one for the other is a wash -- which is exactly what the whole table
+shows. The only move left is one that cuts bytes at **zero** coverage cost:
+**reuse**. Slots persist across calls and nothing but the gather writes them, so
+an expert still sitting in a slot can be re-used by publishing
+`index[e] = slot_base + k` while setting `sel[k] = -1`; all four gather kernels
+already early-out on `sel[slot] < 0`, so the bytes simply do not move. Coverage
+is unchanged by construction.
+
+Its ceiling is the hit rate, which is NOT yet measured. The blend column in
+`chain_predict` is suggestive but does not answer it: unioning the prediction
+with "what this layer needed on the previous token" lifts recall only 79.5% ->
+82.0% at P=2, which means persistence is either weak or redundant with the
+predictor -- and those imply opposite reuse ceilings. Measure it in the kernel
+(`stats[4] += kept`, computed but not acted on) before building the path.
+
+## Stage H15 -- cost rides on BYTES, benefit is already saturated, and the idea has a ceiling
+
+Stage H14 ended in a wall of ties and could not say why, because every row moved
+cost and benefit at once. `bench/cost_isolate.sh` measures each configuration at
+tier 0 AND tier 2 in the SAME boot. At tier 0 every expert is substituted with a
+resident one, so the prefetch has nothing to avoid and everything it adds over
+the prefetch-off floor is pure cost.
+
+    floor        = C-off  top0                    52.90 ms
+    CPU exposed  = C-off  top2 - C-off top0       13.31 ms
+    cost(cfg)    = cfg    top0 - floor
+    residual(cfg)= cfg    top2 - cfg  top0        (CPU the prefetch did NOT avoid)
+
+| cfg | fetched/call | top0 | cost | top2 | residual | benefit | **net** |
+|---|---|---|---|---|---|---|---|
+| C-off  | -- | 52.90 | -- | 66.21 | 13.31 | -- | -- |
+| C-d1P2 | 1.78 | 63.74 | 10.84 | 64.33 | **0.59** | 12.72 | **+1.88** |
+| C-d1P1 | 0.85 | 58.98 | 6.08 | 64.97 | 5.99 | 7.32 | +1.24 |
+| C-d2P2 | 1.86 | 63.75 | 10.85 | 66.56 | 2.81 | 10.50 | -0.35 |
+| C-nogather | 0 moved | 54.54 | **1.64** | 67.75 | 13.21 | 0.10 | -1.54 |
+
+`C-nogather` runs the predictor with `ROUTE=1` but `GATHER=0`; its counter still
+reports 1.85 "fetched/call" because that counter records what WOULD be fetched.
+Zero bytes moved. Its benefit of 0.10 ms is the model's degenerate point checking
+out: no transfer, no saving.
+
+`C-d2P2` costs the SAME as `C-d1P2` (10.85 vs 10.84) while residual triples. Depth
+does not cost bytes; it costs accuracy. This is what corrected H14.
+
+**Two findings, and they reframe the whole effort.**
+
+**1. The benefit side is done.** At the shipped setting the prefetch removes
+**95.6%** of the CPU expert path (13.31 -> 0.59 ms). Better coverage, deeper
+lookahead and more slots are all competing over a remaining 0.59 ms. This is why
+H14 was a wall of ties: those knobs were fighting for nothing.
+
+**2. Cost is linear in BYTES, not in layers.** Two points give
+
+    cost(f) = 1.73 ms  +  5.12 ms x f          f = experts fetched per layer-call
+
+**`C-nogather` then measured the intercept directly instead of by extrapolation:
+1.64 ms with zero bytes on the wire.** Anchored on that, the slope is consistent
+across every row -- 5.22, 5.17, 4.95 ms per expert/call at f = 0.85, 1.78, 1.86 --
+so the model is
+
+    cost(f) = 1.64 ms + ~5.1 ms x f          measured at four points, not fitted
+
+and 1.64 independently matches the 1.76 ms the profiler attributes to the
+predictor by a completely different route.
+
+5.1 ms per expert/call is 69 us per expert per layer of EXPOSED step time against
+~267 us of actual gather kernel time (Stage H13): about a quarter of each transfer
+fails to hide. Besides reuse, that exposed quarter is the only remaining lever --
+and depth-2 has already shown that the naive way to buy shadow costs more coverage
+than the shadow is worth.
+
+That model reproduces the tie exactly. P=2 -> P=1 cuts cost by 4.76 and gives back
+4.93 of CPU: a 0.2 ms net LOSS, which is precisely the 64.29 -> 64.50 that read as
+noise in H14. It was not noise. It was two large numbers cancelling.
+
+### The ceiling
+
+Benefit can never exceed 13.31 ms -- that is the entire CPU expert path. So:
+
+  - **breakeven needs f < 2.26.** Fetching more than ~2.3 experts per layer-call
+    loses money no matter how perfect the prediction is. Any scheme that widens
+    the fetch set is dead on arrival, which retroactively kills the "reach = wider
+    fetch set (P=4)" direction from the chain-prediction stage.
+  - at today's f = 1.78: net 1.88 ms (2.8%)
+  - reuse at a 26% hit rate (f -> 1.32): net ~4.2 ms (**6.4%**)
+  - bytes entirely free (f -> 0): net 11.58 ms (**17.5%**) -- the absolute
+    physical ceiling for prefetching on this machine, unreachable by construction.
+
+**Every knob tried so far slides along the cost/benefit trade-off. Only reuse
+moves the curve** -- identical coverage, fewer bytes -- because a slot's contents
+survive to the next call and re-fetching them buys nothing.
+
+### A counter read wrong, recorded so it is not read that way again
+
+The "% of layer-calls skipped" counter is NOT comparable across P. At P=1
+fetched == wanted exactly (1.06 / 1.06), so slot pressure blocks nothing and the
+32.0% are calls that wanted nothing at all; at P=2 (1.78 / 2.28) the 20.3% mixes
+those with genuine slot-pressure blocking. Residual milliseconds are the
+comparable quantity. A single counter name covering two different events is how
+20.3% skipped and 0.59 ms residual came to look contradictory.
+
+## Stage H16 -- slot REUSE: 41.9% of every fetch was redundant
+
+Stage H15 left exactly one lever: cut bytes without touching coverage. Slots are
+this layer's own trailing experts, nothing but this layer's gather ever writes
+them, and their contents survive across calls, steps, prefill and graph replays.
+So an expert still sitting in a slot and wanted again can be routed by publishing
+`index[e] = slot_base + k` while setting `sel[k] = -1` -- all four gather kernels
+already early-out on a negative slot, so the bytes simply do not move.
+
+**Measured before built.** `KT_PREFETCH_REUSE=1` is a measure-only mode: the
+kernel probes how many slots hold a wanted expert, adds it to `stats[4]`, and
+selects exactly as before. It cost nothing (64.38 vs 64.33 ms/step) and reported
+
+    reuse 0.67/call = 41.9% of fetches already resident in a slot
+
+That refuted the estimate it was run to check. `persist` in the chain sweep
+(24.6%) was treated as an UPPER bound on reuse; it is not a bound at all.
+`persist` looks one step back, while `hold` is a small cache whose entries
+survive until something overwrites them, so an expert wanted intermittently over
+several steps keeps paying off. The proxy and the mechanism measure different
+things.
+
+**Acting on it (`KT_PREFETCH_REUSE=2`), one boot, both tiers:**
+
+| | C-off | C-d1P2 | R-act (reuse) |
+|---|---|---|---|
+| fetched/call | -- | 1.78 | **1.18** |
+| tier-0 cost | -- | 10.84 | **7.78** |
+| tier-2 step | 66.21 | 64.33 | **62.16** |
+| residual CPU | 13.31 | 0.59 | 1.48 |
+| **net** | -- | +1.88 | **+4.05 ms (6.1%)** |
+
+The cost model predicted this exactly: df = 0.60 experts/call x 5.1 ms = 3.06 ms,
+and the measured drop was 10.84 - 7.78 = **3.06**. Fifth confirmation.
+
+### Two costs of the win
+
+**Coverage regressed, 0.59 -> 1.48 ms.** A slot is kept whenever its expert has
+ANY demand, but the fill pass picks by HIGHEST demand -- so a low-demand held
+expert can crowd out a higher-demand one. It gave back 0.89 of the 3.06 gained.
+Fix: rank-limit the keep decision instead of accepting any non-zero demand.
+
+**Output became history-dependent.** 3 distinct completions in 3 greedy repeats.
+This is NOT corruption, and the proof is not just that the prose is coherent:
+the **tier-0 rows are perfectly deterministic** (accept 3.704, 60.67/60.68/60.74).
+At tier 0 nothing runs on the CPU, so no reuse decision changes which device
+computes what, and the variation disappears. If `hold` ever claimed bytes a slot
+did not have, tier 0 would be corrupt too. What varies is only the CPU/GPU split:
+`hold` carries slot contents across requests, so an identical prompt meets
+different slot state and a given expert lands on the CPU int4 kernel in one run
+and the cutlass GPU kernel in another. Same expert, computed once, correct
+weights, different arithmetic -- and after ~78 layers that flips a token.
+
+The real loss is methodological: "same prompt, same hash" has been this project's
+primary bug detector all week, and reuse removes it. Clearing `hold` at prefill
+would restore per-request reproducibility at little cost -- a request is ~200
+decode steps against one boundary -- but that is UNMEASURED and must not be
+assumed.
+
+### Counter caveat
+
+`stats[3]` counts `fetched == 0`, which under reuse can mean "fully covered for
+free". Its jump from 20.3% to 33.6% is NOT more skipping. Same defect as the
+P-comparison warning in H15: one counter name covering two different events.
+
+## Stage H17 -- GPU-ONLY experts, and the discovery that a SLOT is worse than a RESIDENT
+
+New mode (`KT_GPU_ONLY=1`). One line in the substitution:
+
+    keep_mask &= (resident | prefetch-landed)[ids]
+
+Keep the genuine expert when it is on the GPU or the link carried it in time;
+substitute the rest from the resident pool. The CPU expert path becomes zero BY
+CONSTRUCTION rather than by 95.6% coverage. Requires `KT_PREFETCH_SELECTIVE=0`:
+the all-or-nothing rule assumes a partially covered layer still pays its CPU
+call, and here there is no CPU call, so every landed expert is one fewer
+substitution.
+
+**Slot ladder at CONSTANT VRAM (residents + slots = 104), full routing:**
+
+| config | residents | slots | top8 | top2 | top0 |
+|---|---|---|---|---|---|
+| G-ref (CPU path) | 104 | 0 | 146.11 | 65.19 | **53.31** |
+| G-s4  | 100 | 4  | **61.58** | 61.05 | 61.91 |
+| G-s8  | 96  | 8  | 85.07 | 84.61 | 63.22 |
+| G-s16 | 88  | 16 | 132.33 | 124.93 | **154.05** |
+
+**FEWER SLOTS IS BETTER, monotonically.** A slot is strictly worse than a
+resident expert on three counts at once: it consumes a resident expert, it costs
+~10 ms per fetch past the knee, and it only pays when the prediction is right. A
+resident expert costs 0 ms/step forever and is never wrong. This kills the "more
+slots = more coverage = better" premise the mode was built on.
+
+### The cost model is CONVEX, and we are at the knee
+
+| source | f (fetched/call) | cost over floor | ms per expert |
+|---|---|---|---|
+| cost_isolate | 0 -> 1.86 | 1.64 -> 10.85 | **~5.1** |
+| G-s4 | 1.87 | 8.27 | 4.4 |
+| G-s8 | 3.17 | 31.76 | 10.0 |
+| G-s16 | 7.70 | 79.02 | 10.3 |
+
+`cost = 1.64 + 5.1 x f` was only ever the IN-SHADOW regime. A layer offers ~200 us
+of cover; once the transfer exceeds it the marginal expert is ~half exposed
+instead of a quarter and the slope doubles. Stage H15's linear model must not be
+extrapolated past f ~ 2.
+
+### G-s16 top0 = 154.05 ms, WORSE than the CPU path
+
+The mode's worst case and a real design defect: the predictor works off the
+genuine router, not off `keep_mask`, so at top0 it fetches 7.70 experts/call that
+substitution then discards -- 100.7 ms of pure waste. **The fetch must be gated on
+the tier actually keeping something.** Unfixed.
+
+### What this leaves
+
+`G-s4-top8 = 61.58 ms` is the best configuration measured, running FULL-routing
+intent against the previous best coherent configs at 62.16 (safe2+reuse) and
+65.19 (safe2). Same speed, strictly less substitution damage -- because `safe2`
+substitutes ranks 2..7 even when the genuine expert is ALREADY RESIDENT, and
+`s.scatter_(1, ids, neg)` then excludes it from being its own replacement. We hold
+the right expert in VRAM and deliberately swap it out. GPU-only keeps it free.
+
+Every "move bytes better" lever is now measured and dead: deeper prediction
+(-12 coverage points), wider fetch (breakeven f < 2.29), more slots (above).
+The remaining 53.31 -> 61.58 gap is the cost of moving ~1.9 experts/layer, and
+only two things attack it: make them RESIDENT (adaptive placement -- now worth
+5-10 ms per expert instead of the ~0 it was worth when CPU submit/sync
+dominated), or HIDE the transfer (74% already hides; the exposed 26% is the gap).
+
+### Two measurement notes
+
+**Accept length is NOT a coherence proxy.** Degenerate-repetitive output INFLATES
+it (top0 at 3.571) while G-s8 top0 collapsed to 1.005. Non-monotone, unusable.
+That 1.005 cliff on a 4-expert residency change is unattributed and smells like a
+draft-path defect at 8 slots.
+
+**"Whole-layer coverage 34.6%" was MISLEADING** and is corrected in H18 below:
+53.8% of layer-calls need nothing at all, and dividing by all calls scores those
+as failures. Coverage over layers that actually need something is **75.0%**.
+
+## Stage H18 -- the coverage statistic I had been quoting was wrong
+
+Every stage above quotes "whole-layer coverage ~35%" and treats it as the number
+that governs. It divides `full` by `calls`, but **53.8% of layer-calls need
+NOTHING** -- every expert they want is already resident -- and those are scored as
+failures by that denominator.
+
+Over layer-calls that actually need something (`full / active`), 528 steps, P=2:
+
+| arm | 1 layer ahead | 2 ahead |
+|---|---|---|
+| direct (shipped) | **75.0%** | 63.1% |
+| post | 77.0% | 66.3% |
+| chain (walk) | 75.9% | 68.6% |
+
+So only **11.6% of layer-calls end up short** (46.2% need something x 25% missed).
+That finally reconciles with the 95.6% of CPU time the prefetch removes, which
+never made sense against "34.6% coverage" and which I never questioned.
+
+**The consequence is that PREDICTION IS NOT THE BOTTLENECK.** Three quarters of
+the layers that need covering are covered, one layer ahead, by the cheap direct
+predictor. Walking the hidden state through the experts adds +0.9 points at d=1
+and +5.5 at d=2 for 17.45 ms/step. Depth 2 loses 12 points. Neither is worth
+buying. The binding constraint is, and has been all along, the LINK.
+
+## Stage H19 -- coherence, and a detector that had to be caught failing first
+
+`G-s4-top8` at 61.58 ms/step is only interesting if the output survives. Checked
+at 1200 tokens (4-5k characters), all four tiers from ONE boot of the GPU-only
+configuration, with the detector required to fail on the known-bad case first.
+
+| tier | zlib ratio | distinct 8-grams | verdict |
+|---|---|---|---|
+| top0 | **0.019** | 0.013 | **DEGENERATE** |
+| top2 | 0.402 | 0.749 | clean |
+| top4 | 0.440 | 0.831 | clean |
+| top8 | 0.436 | 0.797 | clean |
+
+**GPU-ONLY MODE AT FULL ROUTING IS COHERENT AT 61.58 ms/step.** The 53.31 ms floor
+is not reachable coherently: top0 emits `</think>` roughly four hundred times.
+
+### The detector failed its own calibration first, twice
+
+**Attempt 1: a 300-character eyeball.** top0's prefix reads as ordinary prose.
+Substitution damage is a slow collapse, so a prefix proves nothing.
+
+**Attempt 2: whitespace tokenisation.** The degenerate sample was `</think>`x400 --
+3286 characters containing exactly TWO whitespace characters. It collapsed to 3
+"words" and scored `repeat_ratio 0.000, window_ttr 1.000, verdict clean`. The one
+failure mode the check existed to catch was the one it structurally could not
+see, and it would have certified the mode as coherent.
+
+Fixed with character-level signals that cannot be evaded by deleting spaces:
+zlib compression ratio (0.019 degenerate vs 0.40-0.44 real prose), longest run
+without whitespace, and distinct character 8-grams.
+
+**The gate is what saved it.** `coherence_run.sh` refuses to read any row as a
+pass unless top0 scores degenerate ON THAT BOOT. Both broken detectors were
+caught by that rule and by nothing else. Same shape as the depth-0 control in the
+prediction sweep and the `--slot-base` default in the kernel test: make the test
+carry a case whose answer is known independently, and refuse to judge the unknown
+case until the known one comes out right. [[test-independent-validation]]
+
+## Stage H20 -- depth in GPU-only mode: the lead-time hypothesis is dead
+
+Depth was rejected in H14/H15, but for a reason that does not apply here: at
+safe2 a missed prediction falls through to the CPU, and depth 2's coverage loss
+cost 2.22 ms of residual CPU. **GPU-only mode has no CPU fallback** -- a miss
+becomes a substitution, which costs zero time -- so depth keeps its benefit
+(more shadow) and loses its penalty. Worth re-testing, and it was.
+
+| depth | top8 ms/step | top0 | fetched/call | coverage | coherence |
+|---|---|---|---|---|---|
+| 1 | 61.63 | 61.88 | 1.89 | 75.0% | clean |
+| 2 | **61.09** | 61.59 | 1.83 | 63.1% | clean |
+| 3 | 61.46 | 61.41 | 1.83 | ~58% | clean |
+
+D1 reproduced the slot ladder's 61.58 to within 0.05 ms, so the rows are readable.
+
+**FLAT.** Total spread 0.54 ms, inside the within-config run-to-run spread. And
+non-monotone -- down at 2, back up at 3 -- which is the signature of noise, not of
+a mechanism. Depth is a WASH here, not the small win two points alone suggested.
+
+**Why lead time was never the constraint, and it was checkable in advance:**
+at 61.63 ms/step over 75 MoE layers a layer is **~820 us**. The transfer is
+1.89 experts x ~267 us = **~500 us**. It already fits inside ONE layer's shadow.
+Depth 1 was never short of time, so buying more could not help. The "~200 us of
+cover" figure in `depth_shadow.sh` was computed against a different step time and
+was wrong by 4x; that error is what made the shadow hypothesis look plausible
+through two stages.
+
+**So the ~6.6 ms of exposed transfer is CONTENTION, not scheduling.** The gather
+is not waiting for its turn -- it runs concurrently and something serialises it
+anyway. Candidates, none tested: HBM write bandwidth against the MoE GEMMs, the
+per-layer `wait_event` draining the pipeline, or the 8-block grid starved of SMs
+while cutlass occupies them.
+
+All three depths stayed coherent (top8 zlib 0.434/0.450/0.444) with the top0 gate
+armed every time, so 12-17 points of extra substitution did not break the output.
+Coverage has more slack than expected; TIME does not.
+
+## Stage H21 -- ROOT CAUSE: the gather and the MoE GEMMs fight over SMs
+
+The 53.31 -> 61.09 gap, attributed. Seven boots, one variable each, all at TIER 0
+where the prefetch can save nothing, VRAM identical throughout (100 resident +
+4 slots), so every millisecond over the floor is cost.
+
+| row | config | tier-0 ms | delta | attribution |
+|---|---|---|---|---|
+| E0 | nothing on, slots allocated | 53.35 | -- | floor (matches the 53.31 reference) |
+| E1 | + predictor | 55.16 | +1.81 | **predictor** |
+| E3 | + gather + join (ROUTE=0) | 62.03 | +6.87 | **the gather** |
+| E4 | + route (shipped) | 62.07 | +0.04 | routing/masks -- FREE |
+| E5 | E4 with BLOCKS=1 | 83.89 | +21.82 | -- |
+| E6 | E4 with BLOCKS=32 | 70.27 | +8.20 | -- |
+
+f = 1.91 fetched/call in E4, E5 and E6 alike: **identical bytes, different grids.**
+
+### The U-shape is the evidence
+
+    blocks   1  ->  gather 28.73 ms
+    blocks   8  ->  gather  6.91 ms     <- optimum
+    blocks  32  ->  gather 15.11 ms
+
+More blocks is WORSE. That rules out SM starvation (the hypothesis this ladder
+was built to test) and identifies the opposite: **the gather kernel and the
+cutlass MoE GEMMs compete for the same SMs.** Two opposing effects produce the
+curve -- too few blocks and the transfer is slow enough to be exposed; too many
+and it starves the compute it is supposed to hide behind. 8 blocks is the balance
+point and 6.87 ms is what the competition costs AT ITS OWN OPTIMUM.
+
+### What this explains that nothing else did
+
+**Why depth did nothing** (H20). The problem was never WHEN the transfer starts.
+
+**Why the shadow model gave a negative shadow.** Exposure is not
+`max(0, transfer - window)`. Transfer and compute are concurrent and MUTUALLY
+SLOWING, so there is no window to overrun. The "~200 us of cover" figure that
+drove two stages of work was not merely mis-computed -- the model it belonged to
+was wrong.
+
+**Why the barrier was never the cost.** `KT_PREFETCH_WAIT=0` -- the code's own
+probe for exactly this -- turns out to be UNUSABLE under CUDA graphs: removing
+the join leaves the forked pf_stream unjoined and capture fails with
+`cudaErrorStreamCaptureUnjoined`. It is an eager-only knob. The blocks sweep
+answered the question instead, and better: a barrier is indifferent to grid size,
+and this varies 4x with it.
+
+### The fix this points at, untested
+
+The gather is a COPY, and copies do not need SMs -- GPUs have dedicated copy
+engines that move bytes at zero SM cost. It is a kernel only because it also
+interleaves and converts fp32 scales to bf16 into cutlass layout while copying.
+Splitting it into a DMA (copy engine, free) plus a small HBM-local transform, or
+pre-transforming host-side so the wire format needs no conversion, removes the
+contention instead of re-balancing it. Nothing about that is measured yet.
+
+Cheap check first: the grid was swept 1/8/32 only, and 8 was tuned for the OLD
+byte-granular kernel. The true optimum for the uint4 kernel may be 4, 6 or 12.
+
+## Stage H22 -- resident-only passes the gate; the slope fit kills the barrier and the DMA fix
+
+Two ladders, 2026-08-08, both in GPU-only mode (`KT_GPU_ONLY=1`, tier per-request,
+one boot per row where it matters).
+
+### Resident-only (prefetch OFF entirely) is COHERENT at floor speed
+
+`bench/resident_only_coherence.sh`. Keep any genuine expert that is GPU-resident,
+substitute the rest, move nothing:
+
+    Ronly-top8   53.48 ms/step   1200-tok coherence: CLEAN  (zlib 0.447, loop 22, distinct8 0.760)
+    Ronly-top4   53.22 ms/step   CLEAN (0.429 / 23 / 0.710)
+    Ronly-top2   53.36 ms/step   DEGENERATE (0.095, loop x75)
+    Ronly-top0   53.50 ms/step   DEGENERATE (0.019) -- calibration gate PASSES
+
+Keeping ~3.2 mid-rank genuine experts per token for FREE beats keeping 2
+top-by-weight experts for 12 ms (safe2), and it beats keeping none (top0
+degenerates on this same boot, so the detector's verdict means something).
+RANK vs COUNT is answered: COUNT wins at equal speed, but only above ~3 --
+top2-eligibility (fewer genuine survivors per token) still degenerates.
+**Floor speed + coherence exists with no prefetch machinery at all.**
+
+### The slope fit: no barrier, superlinear contention
+
+`bench/exposure_slope.sh`, full machinery, tier 0, f walked via KT_PREFETCH_SLOTS
+(reuse mode 2 active, so f = experts actually FETCHED per layer-call):
+
+    slots  f      ms/step   cost over predictor row (55.16)
+    1      0.37   56.45     +1.29
+    2      0.84   57.56     +2.40
+    4      1.99   61.95     +6.79
+    8      4.71   85.20     +30.04
+
+Intercept ~0.3-0.4 ms, i.e. **the join/barrier costs nothing**; H21's E3-E2=0
+subtraction is confirmed by an independent method. The cost is per-byte and
+SUPERLINEAR: marginal price 2.4 -> 3.8 -> 8.6 ms/expert as concurrent copy
+warps rise. Consequences:
+
+- Scheduling tricks (start earlier, join later, depth) cannot help: there is no
+  stall to hide, every in-flight byte taxes the GEMMs directly.
+- The only cheap operating points are SMALL f. slots=1 + reuse = coverage
+  1.0/call at +1.29 ms; the full pipeline (GPU-only + n+1 predictor + live
+  movement) lands at 56.45 ms vs the 53.35 floor.
+- Reading the kernels again (`expert_stream_kernels.py`): w13/w2 weights are
+  ALREADY pure uint4 copies; only the scales (~3% of bytes) transform in
+  flight. So the "strip the math" half of the H21 fix is a no-op; the SM
+  residency of the copy loop itself is the tax. A true copy-engine DMA is
+  blocked in-graph because memcpy nodes have capture-time-fixed source
+  addresses and the expert id is chosen on-device per step.
+- Stream priority is also a dead end: pf_stream and the compute stream are both
+  priority 0, which is CUDA's LOWEST priority; the gather cannot be demoted
+  further without raising sglang's main stream.
+
+Remaining lever: the fine blocks sweep (B2/4/6/12/16, running as this is
+written) -- rebalance the same tax, worth ms not tens.
+
+### Fine blocks sweep: 8 was already the optimum
+
+`bench/blocks_fine.sh`, slots=4, tier0 (tier8 rows track within noise):
+
+    blocks   2      4      6      8      12     16     (1)     (32)
+    ms/step  66.93  62.97  62.46  61.95  62.50  64.62  (81.4)  (68.5)
+
+Monotone into 8 from both sides. The "8 was tuned for the old kernel" hunch is
+REFUTED; there is no free grid win. The gather's cost at its own optimum stands
+at ~6.8 ms @ f=1.9, ~1.3 ms @ f=0.37 (slots=1 + reuse).
+
+### Stage H23 -- the full pipeline through the gate at its best operating point
+
+`bench/pipeline_gate.sh`: GPU-only + n+1 fused predictor + 1 landing slot +
+reuse mode 2 + blocks 8. Speed is tier-independent, as designed:
+
+    Gate-top8  56.34   Gate-top4  56.34   Gate-top2  56.23   Gate-top0  56.33
+    f = 0.31 fetched/call, 69% of coverage free via reuse
+
+1200-token coherence (calibration valid: top8 clean, top0 degenerate):
+
+    tier8  CLEAN   (zlib 0.458, loop 25, distinct8 0.740)
+    tier4  local collapse: 1319-char `\_\_\_...` run mid-LaTeX; rest healthy
+           (zlib 0.331, distinct8 0.574 -- flagged on longest_nows alone)
+    tier2  CLEAN   (zlib 0.412) -- DEGENERATE in resident-only on this prompt
+    tier0  DEGENERATE (0.019) -- gate passes
+
+VERDICT. The movement's +2.9 ms (53.48 -> 56.34) buys real quality margin:
+tier2 eligibility goes from degenerate to clean, i.e. the coverage the fetch
+adds (~1 expert/layer-call, mostly reused) moves the coherence cliff left.
+tier4's single local collapse against tier2's clean row says these one-prompt
+rows sit near the cliff and order by noise, not by K; a verdict finer than
+"clean vs degenerate at top8/top0" needs more prompts.
+
+The two shippable operating points, both measured and gated on the same
+detector:
+
+    resident-only (no movement)   53.48 ms  top8 clean, quality floor lower
+    full pipeline (slots=1+reuse) 56.34 ms  top8 clean, tier2 also clean
+
+Both are user-hypothesis-conformant: base 53, + small predictor tax, + movement
+that runs concurrently and costs only its SM contention (H22: superlinear, so
+exactly one slot is the right amount of movement).

@@ -1,0 +1,82 @@
+[
+ {
+  "label": "Gate-top8",
+  "tier": "8",
+  "ms_per_step": 56.34461949921388,
+  "accept": 2.857142857142857,
+  "tok_per_s": 50.72248961885587,
+  "steps": [
+   70,
+   70,
+   65
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786186009.2671409,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three specific dimensions: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience & Tone:** Technical, detailed, essay format. Needs to be structured, logically flowing, and use appropriate terminology (e.g., SIMD, SIMT, warp, thread block, cache hierarchy, latency vs. throug"
+ },
+ {
+  "label": "Gate-top4",
+  "tier": "4",
+  "ms_per_step": 56.33993149967864,
+  "accept": 2.73972602739726,
+  "tok_per_s": 48.723743787393595,
+  "steps": [
+   71,
+   73,
+   73
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786186023.4139504,
+  "sample": "1.  **Understand the Request:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Target Audience:** Technical/Engineering level (needs terminology, architecture concepts, historical context, and nuanced comparisons).\n\n2.  **Deconstruct the Topic into Key Areas:**\n    *   Pa"
+ },
+ {
+  "label": "Gate-top2",
+  "tier": "2",
+  "ms_per_step": 56.225051997898845,
+  "accept": 2.4096385542168677,
+  "tok_per_s": 42.8290052354449,
+  "steps": [
+   80,
+   96,
+   83
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786186040.0067873,
+  "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approaches to parallelism, memory hierarchy, and scheduling. I should cover:\n\n1. Parallelism: SIMD vs SIMT, warp scheduling, etc.\n2. Memory hierarchy: caches vs shared memory, register files\n3. Scheduling: thread scheduling vs warp scheduling, latency hiding\n\nLet me write a thorough essay with clear structure.# Moder"
+ },
+ {
+  "label": "Gate-top0",
+  "tier": "0",
+  "ms_per_step": 56.33331699937116,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 65.74623865562624,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786186051.2676775,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ }
+]

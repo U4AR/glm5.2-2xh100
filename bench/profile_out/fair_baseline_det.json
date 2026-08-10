@@ -1,0 +1,71 @@
+{
+ "F104-plain": {
+  "hashes": [
+   "9e49a7738c",
+   "9e49a7738c",
+   "9e49a7738c"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   852,
+   852,
+   852
+  ]
+ },
+ "F100-idle": {
+  "hashes": [
+   "5093e29512",
+   "5093e29512",
+   "5093e29512"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   802,
+   802,
+   802
+  ]
+ },
+ "F100-fetch": {
+  "hashes": [
+   "45c4fbb027",
+   "45c4fbb027",
+   "45c4fbb027"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   748,
+   748,
+   748
+  ]
+ }
+}

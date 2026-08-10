@@ -15,8 +15,8 @@
 #
 # Waits for bench/walk_fix.sh to finish first so the two never share the GPU.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 
 while pgrep -f "bash bench/walk_fix.sh" >/dev/null 2>&1; do sleep 30; done
 echo "=== walk_fix.sh finished, starting drop-accuracy run ==="

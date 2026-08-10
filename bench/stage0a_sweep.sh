@@ -30,7 +30,8 @@
 # makes the launcher delete the decoy and leaves the real sentinel standing, so
 # the no-CPU boot is deterministic instead of racing the launcher's rm.
 set -uo pipefail
-cd /data/models/RunGLM
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 M=logs/stage0a_sweep.log
 say() { echo "$@" | tee -a "$M"; }
 
@@ -77,7 +78,7 @@ sweep() {  # NAME  skip_cpu(0|1)
   setsid env MODE=safe KEEP=8 GPU_EXPERTS="$GPU_N" MTP=1 \
     KT_CPU_EXPERT_OPTS=none \
     KT_SKIP_CPU_FILE=/tmp/kt_skip_cpu_decoy \
-    TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     bash run_fast.sh > "$L" 2>&1 < /dev/null &
   disown
   wait_ready "$L" || { say "   BOOT FAILED"; grep -E "Error|Traceback|out of memory|Killed" "$L" | tail -6 | tee -a "$M"; return 1; }

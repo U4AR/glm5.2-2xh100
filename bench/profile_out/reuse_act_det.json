@@ -1,0 +1,25 @@
+{
+ "R-act": {
+  "hashes": [
+   "03f19a2fb3",
+   "ad2e01720f",
+   "01dc4d44a9"
+  ],
+  "distinct": 3,
+  "steps": [
+   null,
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200,
+   200
+  ],
+  "lens": [
+   774,
+   798,
+   772
+  ]
+ }
+}

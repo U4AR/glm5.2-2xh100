@@ -1,0 +1,22 @@
+[
+ {
+  "label": "R-measure",
+  "tier": "2",
+  "ms_per_step": 64.38251300096454,
+  "accept": 2.857142857142857,
+  "tok_per_s": 44.37762249354966,
+  "steps": [
+   70,
+   70,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786168368.0755336,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs in three specific areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Deconstruct the Prompt:**\n    *   **Topic:** Modern CPUs vs. Modern GPUs.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n3.  **Initial Brainstorming & Kn"
+ }
+]

@@ -27,8 +27,8 @@
 # tensor. Latency-bound collectives at ~30-50 us would be 2-4 ms on their own,
 # and the walk does not actually need the reduce -- it only feeds a router.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 OUT=bench/profile_out/prefetch_rate.json
 
 boot () {
@@ -41,7 +41,7 @@ boot () {
   env "$@" GPU_EXPERTS=100 KT_STORE_SHM=1 KT_PREFETCH_SLOTS=4 KT_PREFETCH_BLOCKS=8 \
     KT_PREFETCH_GATHER=0 KT_PREFETCH_ROUTE=0 KT_PREFETCH_CPUSKIP=0 \
     RUNGLM_TOPK_MODE=safe2 MTP=1 MEM_FRACTION=0.94 \
-    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     nohup ./run_fast.sh > "$SP/walk_$label.log" 2>&1 &
   for i in $(seq 1 300); do
     curl -s -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break
@@ -64,7 +64,7 @@ pkill -f sglang.launch_server >/dev/null 2>&1 || true
 sleep 8
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -lt 4000 ]; do sleep 5; done
 rm -f /dev/shm/ktstore_*
-KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
   nohup ./run_fast.sh > "$SP/walk_prod.log" 2>&1 &
 for i in $(seq 1 300); do
   curl -s -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break

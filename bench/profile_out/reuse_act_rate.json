@@ -1,0 +1,42 @@
+[
+ {
+  "label": "R-act-top0",
+  "tier": "0",
+  "ms_per_step": 60.67646200062882,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 61.04020540395583,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786169017.1752706,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "R-act-top2",
+  "tier": "2",
+  "ms_per_step": 62.16431599932548,
+  "accept": 2.7027027027027026,
+  "tok_per_s": 43.476754457203846,
+  "steps": [
+   74,
+   79,
+   68
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786169032.9233618,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs, specifically focusing on three areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience & Tone:** Technical, academic/detailed, objective. Use appropriate terminology (SIMD, MIMD, warp, thread block, cache, TLB, SM, ALU, etc.). Structure it logically with clear headings and tr"
+ }
+]

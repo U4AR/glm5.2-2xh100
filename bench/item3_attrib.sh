@@ -13,8 +13,8 @@
 #
 # Waits for the accuracy run so the two never share the GPU.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 OUT=bench/profile_out/prefetch_rate.json
 
 while pgrep -f "bash bench/drop_acc.sh" >/dev/null 2>&1 ||
@@ -31,7 +31,7 @@ boot () {
   echo "=== booting $label: $* ==="
   env "$@" GPU_EXPERTS=100 KT_STORE_SHM=1 KT_PREFETCH_SLOTS=4 KT_PREFETCH_BLOCKS=8 \
     RUNGLM_TOPK_MODE=safe2 MTP=1 MEM_FRACTION=0.94 \
-    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     nohup ./run_fast.sh > "$SP/i3_$label.log" 2>&1 &
   for i in $(seq 1 300); do
     curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break
@@ -53,7 +53,7 @@ pkill -f sglang.launch_server >/dev/null 2>&1 || true
 sleep 8
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -lt 4000 ]; do sleep 5; done
 rm -f /dev/shm/ktstore_*
-KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
   nohup ./run_fast.sh > "$SP/i3_prod.log" 2>&1 &
 for i in $(seq 1 300); do
   curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break

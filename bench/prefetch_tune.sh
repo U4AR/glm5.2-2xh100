@@ -26,8 +26,8 @@
 #   P3  full path, OLD kernel          84.67 ms   33.74
 # Break-even for the full path is the 66.64 baseline.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 OUT=bench/profile_out/prefetch_rate.json
 
 boot () {
@@ -41,7 +41,7 @@ boot () {
     KT_PRED_LOOKAHEAD=1 KT_PREFETCH_DEPTH=1 \
     GPU_EXPERTS=100 KT_STORE_SHM=1 \
     RUNGLM_TOPK_MODE=safe2 MTP=1 \
-    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     nohup ./run_fast.sh > "$SP/tune_$label.log" 2>&1 &
   for i in $(seq 1 300); do
     curl -s -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break
@@ -67,7 +67,7 @@ pkill -f sglang.launch_server >/dev/null 2>&1 || true
 sleep 8
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -lt 4000 ]; do sleep 5; done
 rm -f /dev/shm/ktstore_*
-KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
   nohup ./run_fast.sh > "$SP/tune_prod.log" 2>&1 &
 for i in $(seq 1 300); do
   curl -s -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break

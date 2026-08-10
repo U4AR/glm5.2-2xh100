@@ -1,0 +1,78 @@
+{
+ "G-ref": {
+  "hashes": [
+   "ac7d9da6dc",
+   "ac7d9da6dc"
+  ],
+  "distinct": 1,
+  "steps": [
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200
+  ],
+  "lens": [
+   794,
+   794
+  ]
+ },
+ "G-s4": {
+  "hashes": [
+   "b33dad9d2b",
+   "b08e8b3010"
+  ],
+  "distinct": 2,
+  "steps": [
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200
+  ],
+  "lens": [
+   756,
+   861
+  ]
+ },
+ "G-s8": {
+  "hashes": [
+   "68055f51e1",
+   "30a467d88a"
+  ],
+  "distinct": 2,
+  "steps": [
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200
+  ],
+  "lens": [
+   763,
+   755
+  ]
+ },
+ "G-s16": {
+  "hashes": [
+   "6401cbbab3",
+   "8569663d0c"
+  ],
+  "distinct": 2,
+  "steps": [
+   null,
+   null
+  ],
+  "tokens": [
+   200,
+   200
+  ],
+  "lens": [
+   784,
+   732
+  ]
+ }
+}

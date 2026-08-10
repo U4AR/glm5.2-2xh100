@@ -1,0 +1,46 @@
+{
+ "tier0.txt": {
+  "words": 3,
+  "loop": 1,
+  "repeat_ratio": 0.0,
+  "punct_run": 0,
+  "window_ttr": 1.0,
+  "zlib": 0.0186,
+  "longest_nows": 3277,
+  "distinct8": 0.013,
+  "verdict": "DEGENERATE (compresses to 0.019, 3277 chars w/o whitespace, distinct 8-grams 0.013)"
+ },
+ "tier2.txt": {
+  "words": 792,
+  "loop": 1,
+  "repeat_ratio": 0.443,
+  "punct_run": 2,
+  "window_ttr": 0.67,
+  "zlib": 0.4118,
+  "longest_nows": 34,
+  "distinct8": 0.787,
+  "verdict": "clean"
+ },
+ "tier4.txt": {
+  "words": 286,
+  "loop": 1,
+  "repeat_ratio": 0.185,
+  "punct_run": 1,
+  "window_ttr": 0.82,
+  "zlib": 0.3308,
+  "longest_nows": 1319,
+  "distinct8": 0.574,
+  "verdict": "DEGENERATE (1319 chars w/o whitespace)"
+ },
+ "tier8.txt": {
+  "words": 723,
+  "loop": 1,
+  "repeat_ratio": 0.355,
+  "punct_run": 1,
+  "window_ttr": 0.74,
+  "zlib": 0.4582,
+  "longest_nows": 25,
+  "distinct8": 0.856,
+  "verdict": "clean"
+ }
+}

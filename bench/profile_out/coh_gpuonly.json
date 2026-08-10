@@ -1,0 +1,79 @@
+{
+ "tier0.txt": {
+  "words": 3,
+  "loop": 1,
+  "repeat_ratio": 0.0,
+  "punct_run": 0,
+  "window_ttr": 1.0,
+  "zlib": 0.0186,
+  "longest_nows": 3277,
+  "distinct8": 0.013,
+  "verdict": "DEGENERATE (compresses to 0.019, 3277 chars w/o whitespace, distinct 8-grams 0.013)"
+ },
+ "tier2.txt": {
+  "words": 714,
+  "loop": 1,
+  "repeat_ratio": 0.429,
+  "punct_run": 1,
+  "window_ttr": 0.66,
+  "zlib": 0.402,
+  "longest_nows": 18,
+  "distinct8": 0.749,
+  "verdict": "clean"
+ },
+ "tier4.txt": {
+  "words": 716,
+  "loop": 1,
+  "repeat_ratio": 0.363,
+  "punct_run": 1,
+  "window_ttr": 0.76,
+  "zlib": 0.4396,
+  "longest_nows": 23,
+  "distinct8": 0.831,
+  "verdict": "clean"
+ },
+ "tier8.txt": {
+  "words": 642,
+  "loop": 1,
+  "repeat_ratio": 0.343,
+  "punct_run": 1,
+  "window_ttr": 0.78,
+  "zlib": 0.4359,
+  "longest_nows": 20,
+  "distinct8": 0.797,
+  "verdict": "clean"
+ },
+ "real_reuse.txt": {
+  "words": 123,
+  "loop": 1,
+  "repeat_ratio": 0.317,
+  "punct_run": 1,
+  "window_ttr": 0.71,
+  "zlib": 0.553,
+  "longest_nows": 18,
+  "distinct8": 0.883,
+  "verdict": "clean"
+ },
+ "synthetic_loop.txt": {
+  "words": 18,
+  "loop": 6,
+  "repeat_ratio": 0.833,
+  "punct_run": 0,
+  "window_ttr": 0.167,
+  "zlib": 0.2958,
+  "longest_nows": 3,
+  "distinct8": 0.188,
+  "verdict": "DEGENERATE (loop x6, repeat 0.83)"
+ },
+ "synthetic_punct.txt": {
+  "words": 13,
+  "loop": 12,
+  "repeat_ratio": 0.846,
+  "punct_run": 12,
+  "window_ttr": 0.154,
+  "zlib": 0.5714,
+  "longest_nows": 4,
+  "distinct8": 0.286,
+  "verdict": "DEGENERATE (loop x12, repeat 0.85, punct run 12)"
+ }
+}

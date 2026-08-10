@@ -1,0 +1,122 @@
+[
+ {
+  "label": "D1-top8",
+  "tier": "8",
+  "ms_per_step": 61.63493900021422,
+  "accept": 2.898550724637681,
+  "tok_per_s": 46.722318279001726,
+  "steps": [
+   69,
+   66,
+   70
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179075.30054,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Elements:** Parallelism (thread-level, data-level, instruction-level), Memory hierarchy (caches, registers, shared memory), Scheduling (hardware vs. software, context switching, granularity"
+ },
+ {
+  "label": "D1-top0",
+  "tier": "0",
+  "ms_per_step": 61.88069899872062,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 59.85232493544195,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179087.6757746,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "D2-top8",
+  "tier": "8",
+  "ms_per_step": 61.08749199847807,
+  "accept": 2.898550724637681,
+  "tok_per_s": 47.22283282083722,
+  "steps": [
+   69,
+   70,
+   66
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179389.7155652,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & Structuring:**\n    *   *Introduction:* Define the core philosophical difference (Latency-oriented vs. Thro"
+ },
+ {
+  "label": "D2-top0",
+  "tier": "0",
+  "ms_per_step": 61.59051599752274,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 60.13431846962724,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179402.090541,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "D3-top8",
+  "tier": "8",
+  "ms_per_step": 61.46414400063804,
+  "accept": 2.9411764705882355,
+  "tok_per_s": 47.85190647994226,
+  "steps": [
+   70,
+   62,
+   68
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179703.0682416,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Target Audience:** Technical readers (software engineers, computer architecture enthusiasts, CS students).\n\n2.  **Outline the Essay Structure:**\n    *   **Introduction:** Define the core purpos"
+ },
+ {
+  "label": "D3-top0",
+  "tier": "0",
+  "ms_per_step": 61.408483001287095,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 60.31257446346746,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786179715.374117,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ }
+]

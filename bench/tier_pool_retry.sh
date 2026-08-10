@@ -20,8 +20,8 @@
 # head-of-line blocking shows up as a LOSS rather than a smaller win. Those two
 # failures look different and the counters distinguish them.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 OUT=bench/profile_out/latency_split.json
 
 while pgrep -f "bash bench/tier_pool.sh" >/dev/null 2>&1; do sleep 20; done
@@ -33,7 +33,7 @@ run_tiers () {
   echo "=== booting $prefix: $* ==="
   env "$@" GPU_EXPERTS=100 KT_STORE_SHM=1 \
     RUNGLM_TOPK_MODE=safe2 MTP=1 MEM_FRACTION=0.92 \
-    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     nohup ./run_fast.sh > "$SP/tp_$prefix.log" 2>&1 &
   for i in $(seq 1 300); do
     curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break
@@ -57,7 +57,7 @@ run_tiers WIDE92 KT_PRED_LOOKAHEAD=1 KT_PREFETCH_DEPTH=1 KT_PRED_POINT=post \
 
 echo "=== restoring production ==="
 bash bench/_kill_servers.sh >/dev/null
-KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
   nohup ./run_fast.sh > "$SP/tpr_prod.log" 2>&1 &
 for i in $(seq 1 300); do
   curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break

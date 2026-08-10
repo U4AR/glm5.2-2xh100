@@ -22,8 +22,8 @@
 # comparison isolates what prefetch does to the TARGET MODEL ALONE, and the
 # timing comparison gives the step-rate verdict with nothing to confound it.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 DET=bench/profile_out/why_accept_det.json
 RATE=bench/profile_out/why_accept_rate.json
 TXT=bench/profile_out/why_accept_txt
@@ -35,7 +35,7 @@ boot () {
   echo "=== booting $label (MTP=$mtp): $* ==="
   env "$@" GPU_EXPERTS=100 KT_STORE_SHM=1 KT_PREFETCH_SLOTS=4 KT_PREFETCH_BLOCKS=8 \
     RUNGLM_TOPK_MODE=safe2 MTP="$mtp" MEM_FRACTION=0.94 \
-    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+    KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
     nohup ./run_fast.sh > "$SP/w_$label.log" 2>&1 &
   for i in $(seq 1 300); do
     curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break
@@ -61,7 +61,7 @@ boot W1-full 1 $ON
 
 echo "=== restoring production ==="
 bash bench/_kill_servers.sh >/dev/null
-KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR=/cache/nvme0/triton-cache \
+KT_GPU_PREFILL_THRESHOLD=0 TRITON_CACHE_DIR="$TRITON_CACHE_DIR" \
   nohup ./run_fast.sh > "$SP/w_prod.log" 2>&1 &
 for i in $(seq 1 300); do
   curl -sf -m 3 http://127.0.0.1:8000/health_generate >/dev/null 2>&1 && break

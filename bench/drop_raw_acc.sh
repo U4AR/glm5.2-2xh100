@@ -22,8 +22,8 @@
 # Same boot, same trajectory, all arms together, so nothing is compared across
 # reboots. Waits for the item-3 queue to clear.
 set -uo pipefail
-cd /data/models/RunGLM
-SP=/data/tmp/claude-1002/-data-models-RunGLM/0f5c5fd4-e086-4ca7-84f8-858b327967bf/scratchpad
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, wherever it is
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 
 while pgrep -f "bash bench/retry_queue.sh" >/dev/null 2>&1 ||
       pgrep -f "bash bench/item3_attrib.sh" >/dev/null 2>&1; do sleep 30; done
