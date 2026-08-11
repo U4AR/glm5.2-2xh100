@@ -1,0 +1,602 @@
+[
+ {
+  "id": "bd14ba82d1fe",
+  "task": "zebra_puzzle",
+  "gt": "1, filmmaking, police-officer, journalist",
+  "pred": "1, filmmaking, police-officer, journalist",
+  "score": 1.0,
+  "sec": 47.0,
+  "gen_toks": 912,
+  "tok_s": 19.4
+ },
+ {
+  "id": "20d48b97e524",
+  "task": "zebra_puzzle",
+  "gt": "freelancer, animation, thriller, 1",
+  "pred": "freelancer, animation, thriller, 1",
+  "score": 1.0,
+  "sec": 31.6,
+  "gen_toks": 498,
+  "tok_s": 15.8
+ },
+ {
+  "id": "b1b1678a4f29",
+  "task": "zebra_puzzle",
+  "gt": "architect, skiing, musical, 2",
+  "pred": "architect, skiing, musical, 2",
+  "score": 1.0,
+  "sec": 30.8,
+  "gen_toks": 497,
+  "tok_s": 16.1
+ },
+ {
+  "id": "743aa0ae2d51",
+  "task": "zebra_puzzle",
+  "gt": "canadian, 2, chef, thai",
+  "pred": "canadian, 2, chef, thai",
+  "score": 1.0,
+  "sec": 62.3,
+  "gen_toks": 966,
+  "tok_s": 15.5
+ },
+ {
+  "id": "84650f1042ab",
+  "task": "zebra_puzzle",
+  "gt": "1, fisherman, coffee, musician",
+  "pred": "1, fisherman, coffee, musician",
+  "score": 1.0,
+  "sec": 27.4,
+  "gen_toks": 426,
+  "tok_s": 15.6
+ },
+ {
+  "id": "d977e70d05f7",
+  "task": "zebra_puzzle",
+  "gt": "superhero, 2, spy, classical",
+  "pred": "superhero, 2, spy, classical",
+  "score": 1.0,
+  "sec": 35.5,
+  "gen_toks": 571,
+  "tok_s": 16.1
+ },
+ {
+  "id": "fe37c4db2b25",
+  "task": "zebra_puzzle",
+  "gt": "crime, animation, jet-ski, tram",
+  "pred": "crime, animation, jet-ski, tram",
+  "score": 1.0,
+  "sec": 45.0,
+  "gen_toks": 758,
+  "tok_s": 16.9
+ },
+ {
+  "id": "56ecba920668",
+  "task": "zebra_puzzle",
+  "gt": "gardening, lacrosse, scooter, cooking",
+  "pred": "gardening, lacrosse, scooter, cooking",
+  "score": 1.0,
+  "sec": 138.2,
+  "gen_toks": 2327,
+  "tok_s": 16.8
+ },
+ {
+  "id": "f615242a775b",
+  "task": "zebra_puzzle",
+  "gt": "2, thai, milk, chinese",
+  "pred": "2, thai, milk, chinese",
+  "score": 1.0,
+  "sec": 137.0,
+  "gen_toks": 2201,
+  "tok_s": 16.1
+ },
+ {
+  "id": "f2a25baff529",
+  "task": "zebra_puzzle",
+  "gt": "skateboarding, chess, 2, mouse",
+  "pred": "skateboarding, chess, 2, mouse",
+  "score": 1.0,
+  "sec": 127.2,
+  "gen_toks": 2051,
+  "tok_s": 16.1
+ },
+ {
+  "id": "c2b235761e06",
+  "task": "zebra_puzzle",
+  "gt": "jet-ski, orange, bus, watermelon",
+  "pred": "jet-ski, orange, bus, watermelon",
+  "score": 1.0,
+  "sec": 228.2,
+  "gen_toks": 3510,
+  "tok_s": 15.4
+ },
+ {
+  "id": "9e3c878ffe6e",
+  "task": "zebra_puzzle",
+  "gt": "cauliflower, nigerian, video-games, brazilian",
+  "pred": "cauliflower, nigerian, video-games, brazilian",
+  "score": 1.0,
+  "sec": 277.0,
+  "gen_toks": 5381,
+  "tok_s": 19.4
+ },
+ {
+  "id": "c89fdda34dcd",
+  "task": "zebra_puzzle",
+  "gt": "d&b, 3, hamster, ice-hockey",
+  "pred": "d&b, 3, hamster, ice-hockey",
+  "score": 1.0,
+  "sec": 62.6,
+  "gen_toks": 1068,
+  "tok_s": 17.1
+ },
+ {
+  "id": "320bb578a63d",
+  "task": "zebra_puzzle",
+  "gt": "1, animation, martial-arts, 3",
+  "pred": "1, animation, martial-arts, 3",
+  "score": 1.0,
+  "sec": 112.1,
+  "gen_toks": 1805,
+  "tok_s": 16.1
+ },
+ {
+  "id": "51c63d38da59",
+  "task": "zebra_puzzle",
+  "gt": "drama, 3, 2, cricket",
+  "pred": "drama, 3, 2, cricket",
+  "score": 1.0,
+  "sec": 246.9,
+  "gen_toks": 3913,
+  "tok_s": 15.9
+ },
+ {
+  "id": "c24b803db62a",
+  "task": "zebra_puzzle",
+  "gt": "1, spanish, soy-milk, juice",
+  "pred": "1, spanish, soy-milk, juice",
+  "score": 1.0,
+  "sec": 92.6,
+  "gen_toks": 1488,
+  "tok_s": 16.1
+ },
+ {
+  "id": "363d6a519f6c",
+  "task": "zebra_puzzle",
+  "gt": "2, folk, manager, project-manager",
+  "pred": "2, folk, manager, project-manager",
+  "score": 1.0,
+  "sec": 130.1,
+  "gen_toks": 2502,
+  "tok_s": 19.2
+ },
+ {
+  "id": "95af6ecc7071",
+  "task": "zebra_puzzle",
+  "gt": "tram, motorbike, 2, russian",
+  "pred": "tram, motorbike, 2, russian",
+  "score": 1.0,
+  "sec": 65.2,
+  "gen_toks": 1131,
+  "tok_s": 17.3
+ },
+ {
+  "id": "b7b7e331df46",
+  "task": "zebra_puzzle",
+  "gt": "crime, 1, 2, family",
+  "pred": "crime, 1, 2, family",
+  "score": 1.0,
+  "sec": 355.7,
+  "gen_toks": 5722,
+  "tok_s": 16.1
+ },
+ {
+  "id": "04207d464539",
+  "task": "zebra_puzzle",
+  "gt": "1, australian, bus, salsa",
+  "pred": "1, australian, bus, salsa",
+  "score": 1.0,
+  "sec": 277.5,
+  "gen_toks": 4469,
+  "tok_s": 16.1
+ },
+ {
+  "id": "59979242f243",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "3",
+  "score": 1.0,
+  "sec": 156.7,
+  "gen_toks": 2789,
+  "tok_s": 17.8
+ },
+ {
+  "id": "95ef46b58759",
+  "task": "spatial",
+  "gt": "2",
+  "pred": "",
+  "score": 0.0,
+  "sec": 418.5,
+  "gen_toks": 8000,
+  "tok_s": 19.1
+ },
+ {
+  "id": "efb9d081389f",
+  "task": "spatial",
+  "gt": "1",
+  "pred": "",
+  "score": 0.0,
+  "sec": 405.3,
+  "gen_toks": 8000,
+  "tok_s": 19.7
+ },
+ {
+  "id": "3d118e7c265b",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "4",
+  "score": 1.0,
+  "sec": 61.7,
+  "gen_toks": 1059,
+  "tok_s": 17.2
+ },
+ {
+  "id": "36a9c56b7291",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "4",
+  "score": 1.0,
+  "sec": 32.2,
+  "gen_toks": 602,
+  "tok_s": 18.7
+ },
+ {
+  "id": "e8611ce73837",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "4",
+  "score": 1.0,
+  "sec": 100.8,
+  "gen_toks": 1776,
+  "tok_s": 17.6
+ },
+ {
+  "id": "a0f4b0be2055",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "4",
+  "score": 1.0,
+  "sec": 141.8,
+  "gen_toks": 2467,
+  "tok_s": 17.4
+ },
+ {
+  "id": "e0df6bab9a48",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "3",
+  "score": 1.0,
+  "sec": 112.2,
+  "gen_toks": 2023,
+  "tok_s": 18.0
+ },
+ {
+  "id": "456279a44cb6",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "",
+  "score": 0.0,
+  "sec": 422.1,
+  "gen_toks": 8000,
+  "tok_s": 19.0
+ },
+ {
+  "id": "92e4b2cc3b6a",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "3",
+  "score": 1.0,
+  "sec": 258.8,
+  "gen_toks": 4837,
+  "tok_s": 18.7
+ },
+ {
+  "id": "cc2313de96fe",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "",
+  "score": 0.0,
+  "sec": 406.6,
+  "gen_toks": 8000,
+  "tok_s": 19.7
+ },
+ {
+  "id": "f2a76bdd345c",
+  "task": "spatial",
+  "gt": "3",
+  "pred": "",
+  "score": 0.0,
+  "sec": 348.1,
+  "gen_toks": 8000,
+  "tok_s": 23.0
+ },
+ {
+  "id": "0b02d4ab897f",
+  "task": "spatial",
+  "gt": "2",
+  "pred": "",
+  "score": 0.0,
+  "sec": 421.2,
+  "gen_toks": 8000,
+  "tok_s": 19.0
+ },
+ {
+  "id": "1985f3a3dbdf",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "",
+  "score": 0.0,
+  "sec": 429.8,
+  "gen_toks": 8000,
+  "tok_s": 18.6
+ },
+ {
+  "id": "4f78225af266",
+  "task": "spatial",
+  "gt": "6",
+  "pred": "6",
+  "score": 1.0,
+  "sec": 403.5,
+  "gen_toks": 7369,
+  "tok_s": 18.3
+ },
+ {
+  "id": "09719ca5e81c",
+  "task": "spatial",
+  "gt": "10",
+  "pred": "0",
+  "score": 0.0,
+  "sec": 438.5,
+  "gen_toks": 8000,
+  "tok_s": 18.2
+ },
+ {
+  "id": "f8e84ee53942",
+  "task": "spatial",
+  "gt": "10",
+  "pred": "",
+  "score": 0.0,
+  "sec": 416.5,
+  "gen_toks": 8000,
+  "tok_s": 19.2
+ },
+ {
+  "id": "a0383235b91e",
+  "task": "spatial",
+  "gt": "13",
+  "pred": "",
+  "score": 0.0,
+  "sec": 430.1,
+  "gen_toks": 8000,
+  "tok_s": 18.6
+ },
+ {
+  "id": "fd87ac63ae22",
+  "task": "spatial",
+  "gt": "4",
+  "pred": "4",
+  "score": 1.0,
+  "sec": 227.2,
+  "gen_toks": 4470,
+  "tok_s": 19.7
+ },
+ {
+  "id": "a168a29cf156",
+  "task": "spatial",
+  "gt": "triangle",
+  "pred": "triangle",
+  "score": 1.0,
+  "sec": 49.3,
+  "gen_toks": 950,
+  "tok_s": 19.3
+ },
+ {
+  "id": "0daa7ca38bee",
+  "task": "web_of_lies_v2",
+  "gt": "no, yes, yes",
+  "pred": "no, yes, yes",
+  "score": 1.0,
+  "sec": 126.4,
+  "gen_toks": 2573,
+  "tok_s": 20.4
+ },
+ {
+  "id": "9ee37b9a04ab",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, yes",
+  "pred": "yes, no, yes",
+  "score": 1.0,
+  "sec": 80.6,
+  "gen_toks": 1601,
+  "tok_s": 19.9
+ },
+ {
+  "id": "d7071c9ff5d9",
+  "task": "web_of_lies_v2",
+  "gt": "no, no, yes",
+  "pred": "no, no, yes",
+  "score": 1.0,
+  "sec": 102.9,
+  "gen_toks": 2131,
+  "tok_s": 20.7
+ },
+ {
+  "id": "92bb60ed8fe8",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, no",
+  "pred": "yes, no, no",
+  "score": 1.0,
+  "sec": 111.8,
+  "gen_toks": 2281,
+  "tok_s": 20.4
+ },
+ {
+  "id": "36febbb33b3d",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, yes",
+  "pred": "yes, no, yes",
+  "score": 0.0,
+  "sec": 386.6,
+  "gen_toks": 8000,
+  "tok_s": 20.7
+ },
+ {
+  "id": "bfcc5037c3e2",
+  "task": "web_of_lies_v2",
+  "gt": "no, yes, yes",
+  "pred": "no, yes, yes",
+  "score": 1.0,
+  "sec": 92.9,
+  "gen_toks": 1855,
+  "tok_s": 20.0
+ },
+ {
+  "id": "b183db3494f4",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, yes",
+  "pred": "yes, no, yes",
+  "score": 1.0,
+  "sec": 70.0,
+  "gen_toks": 1445,
+  "tok_s": 20.6
+ },
+ {
+  "id": "d3cc53402d89",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, no",
+  "pred": null,
+  "score": 0.0,
+  "sec": 371.0,
+  "gen_toks": 8000,
+  "tok_s": 21.6
+ },
+ {
+  "id": "52e3efe25269",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, no",
+  "pred": "yes, no, no",
+  "score": 1.0,
+  "sec": 151.0,
+  "gen_toks": 3124,
+  "tok_s": 20.7
+ },
+ {
+  "id": "ebae339b57ef",
+  "task": "web_of_lies_v2",
+  "gt": "yes, no, no",
+  "pred": "yes, no, no",
+  "score": 1.0,
+  "sec": 103.6,
+  "gen_toks": 1999,
+  "tok_s": 19.3
+ },
+ {
+  "id": "45e0ba5954d2",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, no",
+  "pred": "yes, yes, no",
+  "score": 1.0,
+  "sec": 196.4,
+  "gen_toks": 3911,
+  "tok_s": 19.9
+ },
+ {
+  "id": "3e9ebe08c3bb",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, yes",
+  "pred": null,
+  "score": 0.0,
+  "sec": 391.7,
+  "gen_toks": 8000,
+  "tok_s": 20.4
+ },
+ {
+  "id": "252a0ed99715",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, no",
+  "pred": "yes, yes, no",
+  "score": 1.0,
+  "sec": 70.0,
+  "gen_toks": 1358,
+  "tok_s": 19.4
+ },
+ {
+  "id": "d19e22a567cb",
+  "task": "web_of_lies_v2",
+  "gt": "no, yes, no",
+  "pred": "yes, no, yes",
+  "score": 0.0,
+  "sec": 185.8,
+  "gen_toks": 3689,
+  "tok_s": 19.9
+ },
+ {
+  "id": "d7c4df37a14b",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, yes",
+  "pred": "yes, no, yes",
+  "score": 0.0,
+  "sec": 405.2,
+  "gen_toks": 8000,
+  "tok_s": 19.7
+ },
+ {
+  "id": "448411c3001b",
+  "task": "web_of_lies_v2",
+  "gt": "no, no, no",
+  "pred": null,
+  "score": 0.0,
+  "sec": 414.0,
+  "gen_toks": 8000,
+  "tok_s": 19.3
+ },
+ {
+  "id": "6957dbbcf706",
+  "task": "web_of_lies_v2",
+  "gt": "no, no, no",
+  "pred": "no, no, no",
+  "score": 1.0,
+  "sec": 114.8,
+  "gen_toks": 2327,
+  "tok_s": 20.3
+ },
+ {
+  "id": "c008e3fd2202",
+  "task": "web_of_lies_v2",
+  "gt": "yes, yes, no",
+  "pred": "yes, yes, no",
+  "score": 1.0,
+  "sec": 124.7,
+  "gen_toks": 2523,
+  "tok_s": 20.2
+ },
+ {
+  "id": "a228a34488b7",
+  "task": "web_of_lies_v2",
+  "gt": "no, no, no",
+  "pred": "no, no, no",
+  "score": 1.0,
+  "sec": 372.9,
+  "gen_toks": 8000,
+  "tok_s": 21.5
+ },
+ {
+  "id": "c4cb06e7b75e",
+  "task": "web_of_lies_v2",
+  "gt": "no, yes, yes",
+  "pred": "no, yes, yes",
+  "score": 1.0,
+  "sec": 135.2,
+  "gen_toks": 2234,
+  "tok_s": 16.5
+ }
+]

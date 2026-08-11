@@ -1,0 +1,162 @@
+[
+ {
+  "label": "AG_A-top8",
+  "tier": "8",
+  "ms_per_step": 56.47112199994808,
+  "accept": 2.6666666666666665,
+  "tok_per_s": 47.221775878104886,
+  "steps": [
+   75,
+   68,
+   76
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786338783.4982193,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs, specifically focusing on three key areas: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience/Tone:** Technical, detailed, academic/engineering tone. Needs to be structured logically with clear headings, deep dives into architecture, and comparisons.\n\n3.  **Key Topics to Cover:*"
+ },
+ {
+  "label": "AG_A-top4",
+  "tier": "4",
+  "ms_per_step": 56.53079699959562,
+  "accept": 2.5641025641025643,
+  "tok_per_s": 45.651187321737154,
+  "steps": [
+   73,
+   79,
+   78
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786338798.5111468,
+  "sample": "1.  **Understand the Goal:** The user wants a \"detailed technical essay\" comparing modern CPUs and GPUs across three specific dimensions: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience/Tone:** Technical, academic/essay style, detailed, authoritative. Needs to sound like a hardware architecture expert or a textbook author. Avoid overly casual language, but use precise termino"
+ },
+ {
+  "label": "AG_A-top2",
+  "tier": "2",
+  "ms_per_step": 56.36296200009383,
+  "accept": 2.4096385542168677,
+  "tok_per_s": 42.605728522488214,
+  "steps": [
+   83,
+   99,
+   64
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786338814.631233,
+  "sample": "The user wants a detailed technical essay comparing modern CPUs and GPUs in their approach to parallelism, memory hierarchy, and scheduling. I should produce a thorough, well-structured essay covering these three topics with concrete examples, architecture details, and references to real hardware (e.g., NVIDIA Ampere, Intel Sapphire Lake, AMD Zen). I'll aim for about 1500-2000 words, organized in "
+ },
+ {
+  "label": "AG_A-top0",
+  "tier": "0",
+  "ms_per_step": 56.576339000457665,
+  "accept": 3.7037037037037037,
+  "tok_per_s": 65.46382762012479,
+  "steps": [
+   54,
+   54,
+   54
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786338825.9734135,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think>Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, mem"
+ },
+ {
+  "label": "AG_B-top8",
+  "tier": "8",
+  "ms_per_step": 57.034000999919954,
+  "accept": 2.9411764705882355,
+  "tok_per_s": 51.56882594633968,
+  "steps": [
+   74,
+   67,
+   68
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786340957.620327,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs.\n    *   **Key Areas:** Parallelism, Memory hierarchy, Scheduling.\n    *   **Format:** Detailed technical essay.\n\n2.  **Target Audience & Style:**\n    *   Technical, academic/engineering tone.\n    *   Needs depth: architectural details, specific terminology (SIMT, warp, thread block, LLC, NUMA, etc.), and c"
+ },
+ {
+  "label": "AG_B-top4",
+  "tier": "4",
+  "ms_per_step": 57.0227039997917,
+  "accept": 2.816901408450704,
+  "tok_per_s": 49.39659618773464,
+  "steps": [
+   78,
+   71,
+   69
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786340972.1031115,
+  "sample": "1.  **Understand the Prompt:** The user wants a \"detailed technical essay\" comparing modern CPUs and GPUs across three specific dimensions: parallelism, memory hierarchy, and scheduling.\n\n2.  **Deconstruct the Subject:** I need to cover three main areas for both CPUs and GPUs, and contrast them.\n    *   **Parallelism:** How they execute multiple things at once. (CPU: ILP, TLP, SMT; GPU: SIMT/SIMD,"
+ },
+ {
+  "label": "AG_B-top2",
+  "tier": "2",
+  "ms_per_step": 57.591684999351855,
+  "accept": 2.5974025974025974,
+  "tok_per_s": 44.798071821581715,
+  "steps": [
+   73,
+   82,
+   77
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786340987.733072,
+  "sample": "1.  **Understand the Goal:** The user wants a \"detailed technical essay\" comparing modern CPUs and GPUs across three specific axes: parallelism, memory hierarchy, and scheduling. The essay needs to be technical, detailed, and presumably well-structured.\n\n2.  **Deconstruct the Axes:**\n    *   **Parallelism:** How CPUs and GPUs handle parallel execution. CPUs rely on few cores with deep pipelines, S"
+ },
+ {
+  "label": "AG_B-top0",
+  "tier": "0",
+  "ms_per_step": 56.12384000050952,
+  "accept": 2.5316455696202533,
+  "tok_per_s": 45.10820303096278,
+  "steps": [
+   82,
+   58,
+   79
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786341002.1169407,
+  "sample": "</think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think>"
+ }
+]

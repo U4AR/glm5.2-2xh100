@@ -107,17 +107,30 @@ def ask(base, model, prompt, max_tokens, timeout):
     return txt, ctoks, dt
 
 
-def load_questions(category, task, limit):
-    """Pull the LiveBench split from HF (downloads on first run) -> list of dicts."""
+def load_questions(category, task, limit, per_task_limit=0):
+    """Pull the LiveBench split from HF (downloads on first run) -> list of dicts.
+
+    --limit takes the first N of the file, and the file is ORDERED BY TASK, so
+    `--limit 3` is three zebra puzzles and nothing else. For comparing two
+    server configurations that is the wrong sample: it measures one task and
+    calls it the benchmark. --per-task-limit takes the first N of EACH task, so
+    every configuration sees the same stratified subset in the same order.
+    """
     try:
         from datasets import load_dataset
     except ImportError:
         sys.exit("Need the 'datasets' package:  pip install datasets")
     ds = load_dataset(f"livebench/{category}", split="test")
     qs = []
+    seen = {}
     for r in ds:
         if task and r["task"] != task:
             continue
+        if per_task_limit:
+            n = seen.get(r["task"], 0)
+            if n >= per_task_limit:
+                continue
+            seen[r["task"]] = n + 1
         turns = r["turns"]
         if isinstance(turns, str):
             turns = json.loads(turns)
@@ -139,13 +152,15 @@ def main():
     ap.add_argument("--task", default=None,
                     help="restrict to one task (zebra_puzzle|spatial|web_of_lies_v2)")
     ap.add_argument("--limit", type=int, default=0, help="only first N questions")
+    ap.add_argument("--per-task-limit", type=int, default=0,
+                    help="first N of EACH task (stratified; use this to compare configs)")
     ap.add_argument("--max-tokens", type=int, default=8000)
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="livebench_results.json")
     a = ap.parse_args()
     base = a.base.rstrip("/")
 
-    qs = load_questions(a.category, a.task, a.limit)
+    qs = load_questions(a.category, a.task, a.limit, a.per_task_limit)
     print(f"model={a.model}  base={base}  category={a.category}"
           f"{'  task=' + a.task if a.task else ''}  n={len(qs)}\n")
 

@@ -22,6 +22,7 @@ Run:  python3 doc_ui.py [ui_port] [document_path]
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -110,6 +111,7 @@ PAGE = r"""<!doctype html>
   .ctrls input[type=number] { width:70px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:3px 6px; }
   select { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:3px 6px; font:inherit; font-size:12px; }
   .stat { color:#3fb950; margin-left:auto; font-variant-numeric:tabular-nums; }
+  .stat.warn { color:#d29922; }
   .err { color:#f85149; }
 </style></head>
 <body>
@@ -303,6 +305,15 @@ async function run(text, warm){
     const parts = ['TTFT ' + ttft.toFixed(1) + 's'];
     if(rate) parts.push(rate.toFixed(1) + ' tok/s');
     if(usage) parts.push(usage.prompt_tokens.toLocaleString() + ' prompt tok');
+    // The document alone is ~533.8k of a 548,864-token window, so a chat has
+    // only ~15k of headroom for ALL turns. Surface it: running out is a prime
+    // suspect for late-conversation misbehaviour, and it is invisible otherwise.
+    if(usage){
+      const head = 548864 - usage.prompt_tokens;
+      parts.push(head.toLocaleString() + ' headroom');
+      if(head < 8000) stat.className = 'stat warn';
+      else stat.className = 'stat';
+    }
     stat.textContent = parts.join(' · ');
 
     // A warm prefix answers in seconds; a cold one takes minutes, so TTFT is a
@@ -491,8 +502,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         client_gone = False
+        # Tee the SSE stream to a transcript so a failure seen in the browser can
+        # be re-read exactly, instead of reconstructed from memory. Chasing a
+        # repetition bug without the offending text is guesswork.
+        seen = []
         try:
             for chunk in upstream:
+                seen.append(chunk)
                 self.wfile.write(chunk)
                 self.wfile.flush()
         except Exception:
@@ -502,6 +518,62 @@ class Handler(BaseHTTPRequestHandler):
             upstream.close()
             if client_gone:
                 self._abort_upstream(rid)
+            try:
+                self._log_turn(body, messages, model, b"".join(seen), client_gone)
+            except Exception:
+                pass  # logging must never break the response path
+
+    def _log_turn(self, body, messages, model, raw, client_gone):
+        """Append one turn to logs/doc_ui_transcript.jsonl.
+
+        Stores the assembled reasoning/answer plus the sizes that matter for the
+        context-window theory (prompt tokens vs the 548,864 ceiling), and the
+        history depth, so the failing turn can be identified later.
+        """
+        if body.get("warm"):
+            return
+        reason, content, usage, finish = [], [], None, None
+        for line in raw.decode("utf-8", "replace").splitlines():
+            if not line.startswith("data: "):
+                continue
+            payload = line[6:].strip()
+            if payload == "[DONE]":
+                continue
+            try:
+                obj = json.loads(payload)
+            except Exception:
+                continue
+            if obj.get("usage"):
+                usage = obj["usage"]
+            for ch in obj.get("choices") or []:
+                d = ch.get("delta") or {}
+                if d.get("reasoning_content"):
+                    reason.append(d["reasoning_content"])
+                if d.get("content"):
+                    content.append(d["content"])
+                if ch.get("finish_reason"):
+                    finish = ch["finish_reason"]
+        rec = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "model": model,
+            "rid": body.get("rid"),
+            "temperature": body.get("temperature"),
+            "max_tokens": body.get("max_tokens"),
+            "frequency_penalty": body.get("frequency_penalty"),
+            "history_turns": len(body.get("history") or []),
+            "question": next((m["content"] for m in reversed(messages)
+                              if m["role"] == "user"), None),
+            "usage": usage,
+            "finish_reason": finish,
+            "client_aborted": client_gone,
+            "reasoning": "".join(reason),
+            "content": "".join(content),
+        }
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "logs", "doc_ui_transcript.jsonl")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

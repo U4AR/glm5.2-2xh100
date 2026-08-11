@@ -1,0 +1,18 @@
+[
+ {
+  "label": "AI-C-adaptive-only",
+  "tier": "8",
+  "ms_per_step": 54.30859700027213,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 51.14803053674649,
+  "steps": [
+   180
+  ],
+  "completion_tokens": [
+   500
+  ],
+  "runs": 1,
+  "ts": 1786340528.9972498,
+  "sample": "1.  **Understand the Prompt:**\n    *   **Topic:** Differences between modern CPUs and GPUs in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Deconstruct the Topic & Plan the Essay Structure:**\n    *   *Introduction:* Brief overview of the fundamental architectura"
+ }
+]

@@ -123,6 +123,18 @@ extern "C" __global__ void k_pred_fused(
                                         // gather writes a slot, and slots are
                                         // per-layer, so an entry stays true until
                                         // this layer fetches over it. -1 = unknown.
+    int* __restrict__ hold_score,       // [n_slot] in/out: how useful each slot's
+                                        // resident has proven. Aged LFU: +HIT on
+                                        // a call that reuses it, -1 on a call
+                                        // that does not, floored at 0. Eviction
+                                        // takes the MINIMUM instead of the
+                                        // lowest slot index -- without it the
+                                        // victim is positional, so slot 0 churns
+                                        // every call while the last slot is
+                                        // nearly immortal, and an expert reused
+                                        // ten times running is discarded as
+                                        // readily as one fetched once and never
+                                        // wanted again.
     int reuse,                          // 0 off, 1 measure only, 2 act
     int T, int n_exp, int n_slot, int topk, int topP,
     int slot_base,                      // ABSOLUTE index of landing slot 0 in
@@ -292,10 +304,33 @@ extern "C" __global__ void k_pred_fused(
         }
       }
     }
+    // ---- rank the slots before evicting any of them --------------------
+    // `order` lists the refillable slots WEAKEST FIRST, so the strongest
+    // remaining demand lands on the least useful resident. Selection sort in
+    // lane 0: n_slot <= 16, and this runs once per layer-call against a fetch
+    // that costs milliseconds, so its handful of comparisons are free.
+    //
+    // Ties break to the lower slot index, which reproduces the old positional
+    // behaviour exactly when every score is equal -- notably on the first call
+    // after boot, when nothing has proven anything yet.
+    int order[16];
+    int n_order = 0;
+    if (lane == 0) {
+      for (int k = 0; k < n_slot; ++k)
+        if (!(keep_mask & (1u << k))) order[n_order++] = k;
+      for (int a = 0; a < n_order; ++a) {
+        int best = a;
+        for (int b = a + 1; b < n_order; ++b) {
+          const int sb = hold_score[order[b]], sbest = hold_score[order[best]];
+          if (sb < sbest || (sb == sbest && order[b] < order[best])) best = b;
+        }
+        const int t = order[a]; order[a] = order[best]; order[best] = t;
+      }
+    }
+    n_order = __shfl_sync(0xffffffff, n_order, 0);
     int fetched = 0;
-    for (int k = 0; k < n_slot; ++k) {
-      // A kept slot is already published and must not be refilled.
-      if (keep_mask & (1u << k)) continue;
+    for (int oi = 0; oi < n_order; ++oi) {
+      const int k = __shfl_sync(0xffffffff, order[oi], 0);
       int bv = 0, bi = INT_MAX;
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
@@ -335,6 +370,23 @@ extern "C" __global__ void k_pred_fused(
         for (int k = 0; k < n_slot; ++k) {
           if (sel[k] >= 0) hold[k] = sel[k];
         }
+        // Age the ranking. Proving useful is worth several calls of decay, so a
+        // genuinely hot resident survives a stretch of misses instead of being
+        // evicted by the first challenger that shows up. A fresh arrival starts
+        // at GRACE > 0 so it is not thrown out on the very next call before it
+        // has had any chance to be reused -- which would reduce this to the
+        // positional churn it replaces.
+        const int HIT = 4, GRACE = 2, CAP = 1024;
+        for (int k = 0; k < n_slot; ++k) {
+          if (keep_mask & (1u << k)) {
+            const int s = hold_score[k] + HIT;
+            hold_score[k] = s > CAP ? CAP : s;
+          } else if (sel[k] >= 0) {
+            hold_score[k] = GRACE;
+          } else if (hold_score[k] > 0) {
+            hold_score[k] -= 1;
+          }
+        }
       }
       stats[0] += route ? fetched : 0;
       stats[1] += n_want;
@@ -348,6 +400,7 @@ extern "C" __global__ void k_pred_fused(
 void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident,
                 torch::Tensor sel, torch::Tensor landed, torch::Tensor landed_cpu,
                 torch::Tensor index, torch::Tensor stats, torch::Tensor hold,
+                torch::Tensor hold_score,
                 long topk, long topP, long col_off, long slot_base,
                 long selective, long route, long cpuskip, long reuse) {
   const int T     = (int)logits.size(0);
@@ -364,6 +417,10 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
   TORCH_CHECK(stats.numel() >= 5, "stats needs 5 slots (reusable is [4])");
   TORCH_CHECK(hold.numel() == sel.numel(), "hold must be one entry per slot");
   TORCH_CHECK(hold.scalar_type() == torch::kLong, "hold must be int64");
+  TORCH_CHECK(hold_score.numel() == sel.numel(),
+              "hold_score must be one entry per slot");
+  TORCH_CHECK(hold_score.scalar_type() == torch::kInt,
+              "hold_score must be int32");
   // The keep pass carries a 16-entry duplicate list and a 32-bit slot mask.
   TORCH_CHECK(sel.numel() <= 16, "reuse keep-pass assumes at most 16 slots");
   TORCH_CHECK(n_exp == 256, "warp-per-token form assumes 256 experts");
@@ -384,7 +441,7 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
       resident.data_ptr<bool>(), sel.data_ptr<long>(),
       landed.data_ptr<bool>(), landed_cpu.data_ptr<bool>(),
       index.data_ptr<int>(), stats.data_ptr<long>(), hold.data_ptr<long>(),
-      (int)reuse,
+      hold_score.data_ptr<int>(), (int)reuse,
       T, n_exp, n_slot, (int)topk, (int)topP, (int)slot_base, ld, bf16 ? 1 : 0,
       (int)selective, (int)route, (int)cpuskip);
 }
@@ -392,7 +449,7 @@ void pred_fused(torch::Tensor logits, torch::Tensor bias, torch::Tensor resident
 
 DECL = ("void pred_fused(torch::Tensor, torch::Tensor, torch::Tensor, "
         "torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, "
-        "torch::Tensor, torch::Tensor, "
+        "torch::Tensor, torch::Tensor, torch::Tensor, "
         "long, long, long, long, long, long, long, long);")
 
 _K = None

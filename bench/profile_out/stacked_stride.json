@@ -1,0 +1,122 @@
+[
+ {
+  "label": "SS-unstacked-top8",
+  "tier": "8",
+  "ms_per_step": 57.467396998617915,
+  "accept": 2.9411764705882355,
+  "tok_per_s": 51.17774788352794,
+  "steps": [
+   68,
+   78,
+   68
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786347976.5748253,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Target Audience:** Technical readers (software engineers, computer architecture enthusiasts, CS students).\n\n2.  **Outline the Essay Structure:**\n    *   **Title:** Needs to be descriptive and t"
+ },
+ {
+  "label": "SS-unstacked-top0",
+  "tier": "0",
+  "ms_per_step": 56.777941001200816,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 48.85009886230509,
+  "steps": [
+   74,
+   70,
+   72
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786347990.7744548,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduling.</think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></thin"
+ },
+ {
+  "label": "SS-stacked-top8",
+  "tier": "8",
+  "ms_per_step": 56.6313959989202,
+  "accept": 2.7027027027027026,
+  "tok_per_s": 47.73690020515622,
+  "steps": [
+   72,
+   74,
+   74
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786348426.2313845,
+  "sample": "1.  **Deconstruct the Prompt:**\n    *   **Topic:** How modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, and scheduling.\n    *   **Format:** Detailed technical essay.\n    *   **Key Areas:** Parallelism, Memory Hierarchy, Scheduling.\n\n2.  **Initial Brainstorming & Structuring:**\n    *   *Introduction:* Define the context. CPUs are latency-oriented (general-purpose), GP"
+ },
+ {
+  "label": "SS-stacked-top0",
+  "tier": "0",
+  "ms_per_step": 56.11995949948323,
+  "accept": 3.508771929824561,
+  "tok_per_s": 62.26277728251129,
+  "steps": [
+   57,
+   57,
+   82
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786348439.585462,
+  "sample": "Write a detailed technical essay about how modern CPUs and GPUs differ in their approach to parallelism, memory hierarchy, the scheduled.</think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think></think"
+ },
+ {
+  "label": "SS-s4-top8",
+  "tier": "8",
+  "ms_per_step": 54.51113999879453,
+  "accept": 2.7777777777777777,
+  "tok_per_s": 50.85968584798439,
+  "steps": [
+   76,
+   72,
+   69
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786348887.827542,
+  "sample": "1.  **Understand the Goal:** The user wants a detailed technical essay comparing modern CPUs and GPUs across three specific dimensions: parallelism, memory hierarchy, and scheduling.\n\n2.  **Target Audience/Tone:** Technical essay, detailed, rigorous, suitable for an audience interested in computer architecture (e.g., software engineers, CS students, hardware enthusiasts). Tone should be objective,"
+ },
+ {
+  "label": "SS-s4-top0",
+  "tier": "0",
+  "ms_per_step": 54.453749498861725,
+  "accept": 3.508771929824561,
+  "tok_per_s": 65.63331459471696,
+  "steps": [
+   57,
+   53,
+   58
+  ],
+  "completion_tokens": [
+   200,
+   200,
+   200
+  ],
+  "runs": 3,
+  "ts": 1786348899.1545424,
+  "sample": "This request is a detailed technical essay about how modern CPUs and GPUs differ in the approach to parallelism, memory hierarchy, the scheduling. The request is the request request request request request request request request request request request request request request request request request request request request request request request request request request request request request re"
+ }
+]

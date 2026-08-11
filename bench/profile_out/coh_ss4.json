@@ -1,0 +1,24 @@
+{
+ "tier0.txt": {
+  "words": 896,
+  "loop": 1,
+  "repeat_ratio": 0.972,
+  "punct_run": 0,
+  "window_ttr": 0.2,
+  "zlib": 0.0321,
+  "longest_nows": 18,
+  "distinct8": 0.034,
+  "verdict": "DEGENERATE (compresses to 0.032, distinct 8-grams 0.034, repeat 0.97, local ttr 0.20)"
+ },
+ "tier8.txt": {
+  "words": 717,
+  "loop": 1,
+  "repeat_ratio": 0.363,
+  "punct_run": 1,
+  "window_ttr": 0.75,
+  "zlib": 0.4511,
+  "longest_nows": 21,
+  "distinct8": 0.844,
+  "verdict": "clean"
+ }
+}
