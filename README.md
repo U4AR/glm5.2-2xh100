@@ -1,5 +1,21 @@
 # RunGLM — GLM‑5.2 (754B) on two GPUs
 
+> **📦 ARCHIVE — read this first.**
+> This is a backup of an active research project, frozen 2026-08-11. It works, but
+> it is a lab notebook, not a product.
+>
+> - **[CHANGES.md](CHANGES.md)** — exactly which upstream code we modified and why.
+>   Nearly all the speed is patches to SGLang and ktransformers, not new code.
+> - **[STATUS_OF_FINDINGS.md](STATUS_OF_FINDINGS.md)** — which conclusions in these
+>   documents are solid, which are provisional, and which were later **refuted**.
+>   Several claims in the other `.md` files are superseded; that file is the index
+>   of record and wins any disagreement.
+> - **[patches/](patches/)** — machine-generated diffs against pristine upstream.
+> - **[PINS.txt](PINS.txt)** — the exact external revisions this was built against.
+>
+> Paths (`/data/models/…`, `/cache/nvme0`) and the 2×H100 / Zen4 assumptions are
+> specific to the machine this ran on.
+
 Portable deployment now auto-detects conservative TP2 profiles. The first
 non-H100 target is **2× L40/L40S with sufficient host RAM**; the measured
 performance reference remains 2× H100 NVL. For a fresh machine:

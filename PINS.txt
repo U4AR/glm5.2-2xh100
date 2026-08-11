@@ -1,0 +1,21 @@
+# Exact external revisions this archive was built against.
+# Recorded 2026-08-11 at archival time.
+
+ktransformers (ours)    https://github.com/U4AR/ktransformers  branch glm52-work
+                        49a9bd87c00adfde03b20792e127fabc4a3d892c
+ktransformers (upstream) https://github.com/kvcache-ai/ktransformers
+                        6c9c95601d9767e41a70111f6dd6bcf712702c42
+sglang (upstream, via ktransformers/third_party/sglang)
+                        51032b71279d9038058563f8d2e758d99b278ef4
+                        installed into the venv as sglang_kt-0.0.0.dev0
+kt_kernel               0.6.2.post3
+custom_flashinfer       fd94393fb5b8ba8bae9c0bd6ab1c2a429d81ac76
+llama.cpp               a94e6ff8774b7c9f950d9545baf0ce35e8d1ed2f
+pybind11                bb05e0810b87e74709d9f4c4545f1f57a1b386f5
+
+model weights           GLM-5.2 W4AFP8, NOT in this repo.
+                        fetch with int4_scripts/download_w4afp8.py (~373 GB)
+
+hardware this ran on    2x NVIDIA H100 (80 GB), AMD Zen4 host, ~373 GB RAM
+                        Zen4 has avx512_vnni and NOT avx_vnni -- the CPU MoE
+                        kernel selection depends on this.
