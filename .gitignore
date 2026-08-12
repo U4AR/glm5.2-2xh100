@@ -66,3 +66,13 @@ bench/profile_out/*.pt
 # Excluded because a nested .git breaks the parent repo and they are 134 MB.
 bench/deepswe/deep-swe/
 bench/swebenchpro_upstream/
+
+# Overlays found untracked during the 2026-08-12 teardown audit. setup.sh only
+# restores files that `git ls-files '.venv/**'` returns, so an untracked overlay
+# is silently lost on rebuild even when it sits in backup/.
+#   scheduler.py      bounds generation by the KV pool, not just model context
+#   schedule_policy.py handles a single request that cannot fit the pool
+#   glm4_moe.py       inert (GlmMoeDsa routes via deepseek_v2) but kept whole
+!.venv/lib/python3.12/site-packages/sglang/srt/managers/scheduler.py
+!.venv/lib/python3.12/site-packages/sglang/srt/managers/schedule_policy.py
+!.venv/lib/python3.12/site-packages/sglang/srt/models/glm4_moe.py
