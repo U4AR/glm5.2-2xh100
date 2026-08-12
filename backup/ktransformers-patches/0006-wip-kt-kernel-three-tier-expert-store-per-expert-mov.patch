@@ -1,0 +1,1018 @@
+From 49a9bd87c00adfde03b20792e127fabc4a3d892c Mon Sep 17 00:00:00 2001
+From: BEL <bel@H100-VM1.mzqbi1zdpcje1jsioelsqu3tog.rx.internal.cloudapp.net>
+Date: Tue, 11 Aug 2026 05:47:14 +0000
+Subject: [PATCH 6/6] [wip](kt-kernel): three-tier expert store, per-expert
+ movement, shm staging
+
+Working-tree state as of the expert-streaming-hybrid experiments. Snapshotted
+for backup; not all of this is validated.
+
+- cpu_expert_opts.h / cpu_expert_profile.h: per-expert options + timing profile
+- expert_store_shm.h: shared-memory expert store so all 256 experts can be
+  staged (the shipped dynamic-update path evicts into MISSING weights)
+- task_queue / worker_pool / cpuinfer: queue-depth control for the CPU submit
+  path; head-of-line blocking is what made streaming cost +31.7% decode
+- moe_base / rawint4_packed_avx512vnni-moe: per-expert promote/evict hooks
+- ext_bindings / amx.py: python side of the above
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ kt-kernel/cpu_backend/cpu_expert_opts.h       |  34 ++++
+ kt-kernel/cpu_backend/cpu_expert_profile.h    |  55 ++++++
+ kt-kernel/cpu_backend/cpuinfer.h              |   3 +
+ kt-kernel/cpu_backend/expert_store_shm.h      | 109 +++++++++++
+ kt-kernel/cpu_backend/task_queue.cpp          |  70 ++++++-
+ kt-kernel/cpu_backend/task_queue.h            |  16 +-
+ kt-kernel/cpu_backend/worker_pool.cpp         |   9 +-
+ kt-kernel/ext_bindings.cpp                    |  33 +++-
+ kt-kernel/operators/avx2/moe_base.hpp         | 102 ++++++++++-
+ .../avx2/rawint4_packed_avx512vnni-moe.hpp    | 171 +++++++++++++++++-
+ kt-kernel/python/utils/amx.py                 |  37 +++-
+ 11 files changed, 603 insertions(+), 36 deletions(-)
+ create mode 100644 kt-kernel/cpu_backend/cpu_expert_opts.h
+ create mode 100644 kt-kernel/cpu_backend/cpu_expert_profile.h
+ create mode 100644 kt-kernel/cpu_backend/expert_store_shm.h
+
+diff --git a/kt-kernel/cpu_backend/cpu_expert_opts.h b/kt-kernel/cpu_backend/cpu_expert_opts.h
+new file mode 100644
+index 0000000..8698ca3
+--- /dev/null
++++ b/kt-kernel/cpu_backend/cpu_expert_opts.h
+@@ -0,0 +1,34 @@
++#ifndef CPUINFER_CPU_EXPERT_OPTS_H
++#define CPUINFER_CPU_EXPERT_OPTS_H
++
++#include <cstdlib>
++#include <string>
++#include <string_view>
++
++// Restart-scoped switches used to isolate the CPU expert optimizations. Parse
++// once so CUDA graph capture and replay always use the same implementation.
++inline bool kt_cpu_expert_opt_enabled(std::string_view option) {
++  static const std::string options = [] {
++    const char* value = std::getenv("KT_CPU_EXPERT_OPTS");
++    return value == nullptr ? std::string() : std::string(value);
++  }();
++
++  if (options.empty() || options == "none") return false;
++  if (options == "all") return true;
++
++  size_t begin = 0;
++  while (begin < options.size()) {
++    size_t end = options.find(',', begin);
++    if (end == std::string::npos) end = options.size();
++    size_t first = options.find_first_not_of(" \t", begin);
++    size_t last = end == begin ? std::string::npos : options.find_last_not_of(" \t", end - 1);
++    if (first != std::string::npos && first < end && last != std::string::npos &&
++        std::string_view(options).substr(first, last - first + 1) == option) {
++      return true;
++    }
++    begin = end + 1;
++  }
++  return false;
++}
++
++#endif  // CPUINFER_CPU_EXPERT_OPTS_H
+diff --git a/kt-kernel/cpu_backend/cpu_expert_profile.h b/kt-kernel/cpu_backend/cpu_expert_profile.h
+new file mode 100644
+index 0000000..917c103
+--- /dev/null
++++ b/kt-kernel/cpu_backend/cpu_expert_profile.h
+@@ -0,0 +1,55 @@
++#ifndef KTRANSFORMERS_CPU_EXPERT_PROFILE_H
++#define KTRANSFORMERS_CPU_EXPERT_PROFILE_H
++
++#include <atomic>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++
++// Attribution-only counters for the CPU expert path. Enabled runs emit/reset
++// one 1,000-job window at a time so model-load work does not contaminate every
++// later decode sample. Absolute benchmarks always leave this disabled.
++struct KTCpuExpertProfile {
++  static inline std::atomic<unsigned long long> submit_callback_ns{0};
++  static inline std::atomic<unsigned long long> queue_delay_ns{0};
++  static inline std::atomic<unsigned long long> worker_execution_ns{0};
++  static inline std::atomic<unsigned long long> activation_quant_ns{0};
++  static inline std::atomic<unsigned long long> gemm_ns{0};
++  static inline std::atomic<unsigned long long> sync_wait_ns{0};
++  static inline std::atomic<unsigned long long> completed_jobs{0};
++
++  static bool enabled() {
++    static const bool value = [] {
++      const char* env = std::getenv("KT_CPU_EXPERT_PROFILE");
++      return env != nullptr && env[0] != '\0' && env[0] != '0';
++    }();
++    return value;
++  }
++
++  static unsigned long long now_ns() {
++    return (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(
++               std::chrono::steady_clock::now().time_since_epoch())
++        .count();
++  }
++
++  static void add(std::atomic<unsigned long long>& counter, unsigned long long value) {
++    if (enabled()) counter.fetch_add(value, std::memory_order_relaxed);
++  }
++
++  static void finish_job() {
++    if (!enabled()) return;
++    const auto jobs = completed_jobs.fetch_add(1, std::memory_order_relaxed) + 1;
++    if (jobs % 1000 != 0) return;
++    auto take_ms = [](std::atomic<unsigned long long>& counter) {
++      return counter.exchange(0, std::memory_order_relaxed) / 1.0e6;
++    };
++    std::fprintf(stderr,
++                 "[kt-cpu-profile] jobs=1000 submit_cb=%.3fms queue_delay=%.3fms "
++                 "worker=%.3fms quant=%.3fms gemm=%.3fms sync_wait=%.3fms\n",
++                 take_ms(submit_callback_ns), take_ms(queue_delay_ns), take_ms(worker_execution_ns),
++                 take_ms(activation_quant_ns), take_ms(gemm_ns), take_ms(sync_wait_ns));
++    std::fflush(stderr);
++  }
++};
++
++#endif
+diff --git a/kt-kernel/cpu_backend/cpuinfer.h b/kt-kernel/cpu_backend/cpuinfer.h
+index 28f23bb..798f482 100644
+--- a/kt-kernel/cpu_backend/cpuinfer.h
++++ b/kt-kernel/cpu_backend/cpuinfer.h
+@@ -29,6 +29,7 @@
+ #endif
+ 
+ #include "./vendors/vendor.h"
++#include "cpu_expert_profile.h"
+ #include "llama.cpp/ggml-impl.h"
+ #include "task_queue.h"
+ #include "worker_pool.h"
+@@ -102,7 +103,9 @@ class CPUInfer {
+ 
+   static void sync_(void* sync_args) {
+     SyncArgs* args = (SyncArgs*)sync_args;
++    const auto start = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
+     args->cpuinfer->task_queue_->sync(args->allow_n_pending);
++    if (start) KTCpuExpertProfile::add(KTCpuExpertProfile::sync_wait_ns, KTCpuExpertProfile::now_ns() - start);
+   }
+ 
+   void sync(size_t allow_n_pending = 0) {
+diff --git a/kt-kernel/cpu_backend/expert_store_shm.h b/kt-kernel/cpu_backend/expert_store_shm.h
+new file mode 100644
+index 0000000..42482ce
+--- /dev/null
++++ b/kt-kernel/cpu_backend/expert_store_shm.h
+@@ -0,0 +1,109 @@
++/**
++ * Cross-process backing for the CPU expert store.
++ *
++ * The store is normally std::aligned_alloc'd into the owning process's private
++ * heap. That is fine for the CPU kernel, which is the only consumer -- but it
++ * makes the bytes unreachable from any OTHER process. Under TP>1 sglang runs
++ * one process per rank and kt only builds its store on rank 0, so a rank-1 GPU
++ * cannot map those pages and cannot gather an expert out of them.
++ *
++ * Routing the same allocations through a named POSIX shm segment fixes that
++ * without changing anything the CPU kernel sees: the pointers are still
++ * page-aligned, still bump-allocated in the same order, still first-touch
++ * (so `numa_set_localalloc` places pages on the touching thread's node exactly
++ * as with aligned_alloc), and still lazily populated -- ftruncate reserves
++ * address space, not physical memory, so an unstaged expert costs nothing.
++ *
++ * Off unless KT_STORE_SHM=1, so the default deployment keeps the private heap.
++ *
++ * Origin: expert-streaming-hybrid (Stage C, per-card gather needs BOTH ranks'
++ * PCIe links; one link cannot carry the traffic).
++ */
++
++#ifndef CPUINFER_EXPERT_STORE_SHM_H
++#define CPUINFER_EXPERT_STORE_SHM_H
++
++#include <fcntl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <stdexcept>
++#include <string>
++
++class ExpertStoreShm {
++ public:
++  // One segment per (layer, TP partition). The name is derived, not random, so
++  // a reader in another process can reconstruct it from the same two integers
++  // plus the owner's pid -- which Python passes across ranks anyway.
++  static std::string make_name(int pid, int layer_idx, int tp_part) {
++    char buf[128];
++    std::snprintf(buf, sizeof(buf), "/ktstore_%d_l%d_t%d", pid, layer_idx, tp_part);
++    return std::string(buf);
++  }
++
++  ExpertStoreShm() = default;
++
++  ~ExpertStoreShm() {
++    if (base_ && base_ != MAP_FAILED) ::munmap(base_, size_);
++    if (fd_ >= 0) ::close(fd_);
++    // The name is unlinked immediately after every rank has opened it (see the
++    // Python side); if that never happened, drop it here so a crashed run does
++    // not leak a multi-GB segment into /dev/shm.
++    if (!name_.empty() && owner_) ::shm_unlink(name_.c_str());
++  }
++
++  void create(int layer_idx, int tp_part, size_t bytes) {
++    name_ = make_name(::getpid(), layer_idx, tp_part);
++    owner_ = true;
++    ::shm_unlink(name_.c_str());  // stale segment from a previous crashed run
++    fd_ = ::shm_open(name_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
++    if (fd_ < 0) throw std::runtime_error("shm_open failed for " + name_);
++    if (::ftruncate(fd_, (off_t)bytes) != 0) {
++      throw std::runtime_error("ftruncate failed for " + name_);
++    }
++    base_ = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
++    if (base_ == MAP_FAILED) throw std::runtime_error("mmap failed for " + name_);
++    size_ = bytes;
++    cursor_ = 0;
++  }
++
++  // Page-aligned bump allocation, mirroring the aligned_alloc(kPageSize, n)
++  // calls it replaces. Returns nullptr if this segment was never created, so a
++  // caller can fall back to the private heap.
++  void* take(size_t bytes, size_t page) {
++    if (base_ == nullptr) return nullptr;
++    size_t off = (cursor_ + page - 1) & ~(page - 1);
++    if (off + bytes > size_) {
++      throw std::runtime_error("expert store shm exhausted: " + name_);
++    }
++    cursor_ = off + bytes;
++    last_offset_ = off;
++    return (void*)((uint8_t*)base_ + off);
++  }
++
++  bool active() const { return base_ != nullptr; }
++  const std::string& name() const { return name_; }
++  size_t size() const { return size_; }
++  size_t last_offset() const { return last_offset_; }
++  void* base() const { return base_; }
++
++  static bool enabled() {
++    const char* e = std::getenv("KT_STORE_SHM");
++    return e && e[0] == '1';
++  }
++
++ private:
++  std::string name_;
++  int fd_ = -1;
++  void* base_ = nullptr;
++  size_t size_ = 0;
++  size_t cursor_ = 0;
++  size_t last_offset_ = 0;
++  bool owner_ = false;
++};
++
++#endif  // CPUINFER_EXPERT_STORE_SHM_H
+diff --git a/kt-kernel/cpu_backend/task_queue.cpp b/kt-kernel/cpu_backend/task_queue.cpp
+index 5650929..932d77e 100644
+--- a/kt-kernel/cpu_backend/task_queue.cpp
++++ b/kt-kernel/cpu_backend/task_queue.cpp
+@@ -8,6 +8,8 @@
+  * @Copyright (c) 2024 by KVCache.AI, All Rights Reserved.
+  **/
+ #include "task_queue.h"
++#include "cpu_expert_opts.h"
++#include "cpu_expert_profile.h"
+ 
+ #include <pthread.h>
+ #include <sched.h>
+@@ -17,7 +19,15 @@
+ #include <thread>
+ 
+ TaskQueue::TaskQueue() : done(false), pending(0) {
+-  Node* dummy = new Node();
++  if (kt_cpu_expert_opt_enabled("queue")) {
++    node_pool = std::make_unique<Node[]>(kNodePoolSize);
++    free_nodes.reserve(kNodePoolSize);
++    for (size_t i = 0; i < kNodePoolSize; ++i) {
++      node_pool[i].pooled = true;
++      free_nodes.push_back(&node_pool[i]);
++    }
++  }
++  Node* dummy = acquire_node();
+   head.store(dummy, std::memory_order_relaxed);
+   tail.store(dummy, std::memory_order_relaxed);
+   workerThread = std::thread(&TaskQueue::worker, this);
+@@ -34,14 +44,53 @@ TaskQueue::~TaskQueue() {
+   Node* node = head.load(std::memory_order_relaxed);
+   while (node) {
+     Node* next = node->next.load(std::memory_order_relaxed);
+-    delete node;
++    if (!node->pooled) delete node;
+     node = next;
+   }
+ }
+ 
+ void TaskQueue::enqueue(std::function<void()> task) {
++  Node* node = acquire_node();
++  node->task = std::move(task);
++  push_node(node);
++}
++
++void TaskQueue::enqueue_raw(void (*task)(void*), void* context) {
++  Node* node = acquire_node();
++  node->raw_task = task;
++  node->raw_context = context;
++  push_node(node);
++}
++
++TaskQueue::Node* TaskQueue::acquire_node() {
++  std::lock_guard<std::mutex> lock(node_pool_mtx);
++  if (!node_pool) return new Node();
++  if (free_nodes.empty()) return new Node();
++  Node* node = free_nodes.back();
++  free_nodes.pop_back();
++  node->task = nullptr;
++  node->raw_task = nullptr;
++  node->raw_context = nullptr;
++  node->next.store(nullptr, std::memory_order_relaxed);
++  return node;
++}
++
++void TaskQueue::release_node(Node* node) {
++  node->task = nullptr;
++  node->raw_task = nullptr;
++  node->raw_context = nullptr;
++  node->next.store(nullptr, std::memory_order_relaxed);
++  if (!node->pooled) {
++    delete node;
++    return;
++  }
++  std::lock_guard<std::mutex> lock(node_pool_mtx);
++  free_nodes.push_back(node);
++}
++
++void TaskQueue::push_node(Node* node) {
++  node->enqueue_ns = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
+   pending.fetch_add(1, std::memory_order_acq_rel);
+-  Node* node = new Node(task);
+   Node* prev = tail.exchange(node, std::memory_order_acq_rel);
+   prev->next.store(node, std::memory_order_release);
+   {
+@@ -63,10 +112,18 @@ void TaskQueue::worker() {
+   while (!done.load(std::memory_order_acquire)) {
+     Node* next = curr->next.load(std::memory_order_acquire);
+     if (next) {
+-      if (next->task) {
++      const auto work_start = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
++      if (work_start) KTCpuExpertProfile::add(KTCpuExpertProfile::queue_delay_ns, work_start - next->enqueue_ns);
++      if (next->raw_task) {
++        next->raw_task(next->raw_context);
++      } else if (next->task) {
+         next->task();
+       }
+-      delete curr;
++      if (work_start) {
++        KTCpuExpertProfile::add(KTCpuExpertProfile::worker_execution_ns,
++                                KTCpuExpertProfile::now_ns() - work_start);
++      }
++      release_node(curr);
+       curr = next;
+       head.store(curr, std::memory_order_release);
+       {
+@@ -74,6 +131,7 @@ void TaskQueue::worker() {
+         pending.fetch_sub(1, std::memory_order_acq_rel);
+       }
+       cv.notify_all();
++      KTCpuExpertProfile::finish_job();
+     } else {
+       std::unique_lock<std::mutex> lock(mtx);
+       cv.wait(lock, [&] {
+@@ -82,4 +140,4 @@ void TaskQueue::worker() {
+       });
+     }
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/kt-kernel/cpu_backend/task_queue.h b/kt-kernel/cpu_backend/task_queue.h
+index e4f21f9..32e4cd4 100644
+--- a/kt-kernel/cpu_backend/task_queue.h
++++ b/kt-kernel/cpu_backend/task_queue.h
+@@ -14,6 +14,7 @@
+ #include <condition_variable>
+ #include <functional>
+ #include <mutex>
++#include <memory>
+ #include <queue>
+ #include <thread>
+ #include <vector>
+@@ -24,17 +25,24 @@ class TaskQueue {
+   ~TaskQueue();
+ 
+   void enqueue(std::function<void()>);
++  void enqueue_raw(void (*task)(void*), void* context);
+ 
+   void sync(size_t allow_n_pending);
+ 
+  private:
+   struct Node {
+     std::function<void()> task;
++    void (*raw_task)(void*) = nullptr;
++    void* raw_context = nullptr;
++    bool pooled = false;
++    unsigned long long enqueue_ns = 0;
+     std::atomic<Node*> next;
+     Node() : task(nullptr), next(nullptr) {}
+     Node(const std::function<void()>& t) : task(t), next(nullptr) {}
+   };
+ 
++  static constexpr size_t kNodePoolSize = 256;
++
+   std::atomic<Node*> head;
+   std::atomic<Node*> tail;
+   std::atomic<bool> done;
+@@ -42,8 +50,14 @@ class TaskQueue {
+   std::thread workerThread;
+   std::mutex mtx;
+   std::condition_variable cv;
++  std::unique_ptr<Node[]> node_pool;
++  std::vector<Node*> free_nodes;
++  std::mutex node_pool_mtx;
+ 
+   void worker();
++  Node* acquire_node();
++  void release_node(Node* node);
++  void push_node(Node* node);
+ };
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/kt-kernel/cpu_backend/worker_pool.cpp b/kt-kernel/cpu_backend/worker_pool.cpp
+index 05d7066..5a8fb30 100644
+--- a/kt-kernel/cpu_backend/worker_pool.cpp
++++ b/kt-kernel/cpu_backend/worker_pool.cpp
+@@ -21,6 +21,7 @@
+ #include <stdexcept>
+ 
+ #include "hwloc.h"
++#include "cpu_expert_opts.h"
+ 
+ thread_local int WorkerPool::thread_local_id = -1;
+ 
+@@ -183,8 +184,12 @@ void InNumaPool::process_tasks(int thread_id) {
+       break;
+     }
+ 
+-    int block = (rem + worker_count - 1) / worker_count;
+-    block = 1;
++    int block = 1;
++    if (kt_cpu_expert_opt_enabled("scheduler")) {
++      // The old unconditional `block = 1` discarded this guided policy and
++      // made every small output shard contend on curr_.
++      block = (rem + worker_count - 1) / worker_count;
++    }
+     int task_id = curr_.fetch_add(block, std::memory_order_acq_rel);
+     if (task_id >= end_) {
+       break;
+diff --git a/kt-kernel/ext_bindings.cpp b/kt-kernel/ext_bindings.cpp
+index f4a81dd..516815d 100644
+--- a/kt-kernel/ext_bindings.cpp
++++ b/kt-kernel/ext_bindings.cpp
+@@ -22,6 +22,7 @@
+ #include <cstring>
+ 
+ #include "cpu_backend/cpuinfer.h"
++#include "cpu_backend/cpu_expert_opts.h"
+ #include "cpu_backend/worker_pool.h"
+ #include "operators/common.hpp"
+ 
+@@ -233,10 +234,24 @@ class MOEBindings {
+       intptr_t output;
+       bool incremental;
+     };
++    static void work(void* args) {
++      Args* args_ = (Args*)args;
++      args_->moe->forward_binding(args_->qlen, args_->k, args_->expert_ids, args_->weights, args_->input,
++                                  args_->output, args_->incremental);
++    }
+     static void inner(void* args) {
+       Args* args_ = (Args*)args;
+-      args_->cpuinfer->enqueue(&TP_MOE<T>::forward_binding, args_->moe, args_->qlen, args_->k, args_->expert_ids,
+-                               args_->weights, args_->input, args_->output, args_->incremental);
++      const auto profile_start = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
++      if (kt_cpu_expert_opt_enabled("queue")) {
++        args_->cpuinfer->task_queue_->enqueue_raw(&work, args_);
++      } else {
++        args_->cpuinfer->enqueue(&TP_MOE<T>::forward_binding, args_->moe, args_->qlen, args_->k, args_->expert_ids,
++                                 args_->weights, args_->input, args_->output, args_->incremental);
++      }
++      if (profile_start) {
++        KTCpuExpertProfile::add(KTCpuExpertProfile::submit_callback_ns,
++                                KTCpuExpertProfile::now_ns() - profile_start);
++      }
+     }
+     static std::pair<intptr_t, intptr_t> cpuinfer_interface(std::shared_ptr<TP_MOE<T>> moe, intptr_t qlen, int k,
+                                                             intptr_t expert_ids, intptr_t weights, intptr_t input,
+@@ -534,6 +549,20 @@ void bind_moe_module(py::module_& moe_module, const char* name) {
+     moe_cls.def("release_expert_task", &ReleaseExpertBindings::cpuinfer_interface, py::arg("expert_id"));
+   }
+ 
++  // Expert-streaming hybrid: hand Python the CPU store's addressing so it can
++  // pin the pages once at boot and gather experts out of them in place at decode
++  // time. These are plain reads of already-loaded pointers, so unlike the
++  // load/release pair they do NOT go through cpuinfer->enqueue — there is no
++  // work to schedule against the CPU backend and nothing to race.
++  // Origin: expert-streaming-hybrid (Stage C in-graph UVA gather).
++  if constexpr (requires { &MoeClass::expert_store_ptrs; }) {
++    moe_cls.def("expert_store_ptrs", &MoeClass::expert_store_ptrs);
++    moe_cls.def("expert_store_bytes", &MoeClass::expert_store_bytes);
++    moe_cls.def("expert_store_shm_names", &MoeClass::expert_store_shm_names);
++    moe_cls.def("expert_store_shm_sizes", &MoeClass::expert_store_shm_sizes);
++    moe_cls.def("expert_store_offsets", &MoeClass::expert_store_offsets);
++  }
++
+   if constexpr (requires { &MoeClass::write_weight_scale_to_buffer; }) {
+     struct WriteTopKWeightScaleToBufferBindings {
+       struct Args {
+diff --git a/kt-kernel/operators/avx2/moe_base.hpp b/kt-kernel/operators/avx2/moe_base.hpp
+index f583b77..0d8093b 100644
+--- a/kt-kernel/operators/avx2/moe_base.hpp
++++ b/kt-kernel/operators/avx2/moe_base.hpp
+@@ -29,6 +29,8 @@
+ #include <vector>
+ 
+ #include "../../cpu_backend/shared_mem_buffer.h"
++#include "../../cpu_backend/expert_store_shm.h"
++#include "../../cpu_backend/cpu_expert_opts.h"
+ #include "../../cpu_backend/worker_pool.h"
+ #include "../common.hpp"
+ #include "../moe-tp.hpp"
+@@ -65,6 +67,13 @@ class AVX2_MOE_BASE {
+ 
+   std::vector<void*> owned_aligned_allocs_;
+ 
++  // Cross-process backing for this partition's expert store (KT_STORE_SHM=1).
++  // `expert_shm_offsets_` is 3 entries per expert -- gate, up, down -- in
++  // allocation order, so another process can rebuild every pointer from its own
++  // mapping base. Offsets, not pointers: the reader maps at a different address.
++  ExpertStoreShm store_shm_;
++  std::vector<size_t> expert_shm_offsets_;
++
+   // Three-tier expert store: the page-aligned extent of each expert's three
+   // BufferB allocations, so one expert can be dropped from host RAM without
+   // touching its neighbours. Populated in the constructor alongside the allocs.
+@@ -121,6 +130,20 @@ class AVX2_MOE_BASE {
+     for (int i = 0; i < config_.max_len; i++) {
+       m_local_pos_[i].resize(config_.num_experts_per_tok);
+     }
++    // Size and create the shared segment before the per-expert loop, since the
++    // bump allocator needs its full extent up front. ftruncate reserves address
++    // space only -- physical pages still arrive on first touch, so an expert
++    // that is never staged (a GPU-tier one) costs nothing here, exactly as with
++    // the private-heap path.
++    if (ExpertStoreShm::enabled()) {
++      const size_t gate_up_b =
++          page_round_up(buffer_b_required_size(config_.intermediate_size, config_.hidden_size));
++      const size_t down_b =
++          page_round_up(buffer_b_required_size(config_.hidden_size, config_.intermediate_size));
++      const size_t total = config_.expert_num * (2 * gate_up_b + down_b) + kPageSize;
++      store_shm_.create(config_.layer_idx, tp_part_idx, total);
++    }
++
+     m_expert_id_map_.resize(config_.expert_num);
+     m_local_num_.resize(config_.expert_num);
+     m_local_input_ptr_.resize(config_.expert_num);
+@@ -147,19 +170,43 @@ class AVX2_MOE_BASE {
+       const size_t down_bytes =
+           page_round_up(buffer_b_required_size(config_.hidden_size, config_.intermediate_size));
+ 
+-      void* gate_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
+-      if (!gate_bb_ptr) throw std::runtime_error("aligned_alloc failed for gate BufferB");
+-      owned_aligned_allocs_.push_back(gate_bb_ptr);
++      // KT_STORE_SHM=1 carves these out of a named POSIX segment instead of the
++      // private heap, so a GPU in ANOTHER process (rank 1 under TP>1) can map
++      // and gather from them. Same alignment, same order, same first-touch NUMA
++      // placement; only the backing changes. Falls through to aligned_alloc
++      // when the segment is inactive, which is the default.
++      // Origin: expert-streaming-hybrid (Stage C per-card gather).
++      if (store_shm_.active() && expert_shm_offsets_.empty()) {
++        expert_shm_offsets_.reserve(config_.expert_num * 3);
++      }
++      void* gate_bb_ptr = store_shm_.take(gate_up_bytes, kPageSize);
++      if (gate_bb_ptr) {
++        expert_shm_offsets_.push_back(store_shm_.last_offset());
++      } else {
++        gate_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
++        if (!gate_bb_ptr) throw std::runtime_error("aligned_alloc failed for gate BufferB");
++        owned_aligned_allocs_.push_back(gate_bb_ptr);
++      }
+       gate_bb_.push_back(make_buffer_b(config_.intermediate_size, config_.hidden_size, gate_bb_ptr));
+ 
+-      void* up_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
+-      if (!up_bb_ptr) throw std::runtime_error("aligned_alloc failed for up BufferB");
+-      owned_aligned_allocs_.push_back(up_bb_ptr);
++      void* up_bb_ptr = store_shm_.take(gate_up_bytes, kPageSize);
++      if (up_bb_ptr) {
++        expert_shm_offsets_.push_back(store_shm_.last_offset());
++      } else {
++        up_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
++        if (!up_bb_ptr) throw std::runtime_error("aligned_alloc failed for up BufferB");
++        owned_aligned_allocs_.push_back(up_bb_ptr);
++      }
+       up_bb_.push_back(make_buffer_b(config_.intermediate_size, config_.hidden_size, up_bb_ptr));
+ 
+-      void* down_bb_ptr = std::aligned_alloc(kPageSize, down_bytes);
+-      if (!down_bb_ptr) throw std::runtime_error("aligned_alloc failed for down BufferB");
+-      owned_aligned_allocs_.push_back(down_bb_ptr);
++      void* down_bb_ptr = store_shm_.take(down_bytes, kPageSize);
++      if (down_bb_ptr) {
++        expert_shm_offsets_.push_back(store_shm_.last_offset());
++      } else {
++        down_bb_ptr = std::aligned_alloc(kPageSize, down_bytes);
++        if (!down_bb_ptr) throw std::runtime_error("aligned_alloc failed for down BufferB");
++        owned_aligned_allocs_.push_back(down_bb_ptr);
++      }
+       down_bb_.push_back(make_buffer_b(config_.hidden_size, config_.intermediate_size, down_bb_ptr));
+ 
+       expert_bb_extents_.push_back({gate_bb_ptr, gate_up_bytes, up_bb_ptr, gate_up_bytes,
+@@ -250,6 +297,33 @@ class AVX2_MOE_BASE {
+     derived_const()->write_weights_to_buffer_single_thread(std::forward<Args>(args)...);
+   }
+ 
++  // Expert-streaming hybrid: same CRTP forwarding, but these RETURN a value, so
++  // the forwarder cannot be the void one above. Only backends that define them
++  // (currently the packed AVX-512 RAWINT4 one) are ever instantiated here — the
++  // pybind side is SFINAE-gated on the outer TP_MOE method, not on these.
++  // Origin: expert-streaming-hybrid (Stage C in-graph UVA gather).
++  template <typename... Args>
++  auto expert_host_ptrs(Args&&... args) const {
++    return derived_const()->expert_host_ptrs(std::forward<Args>(args)...);
++  }
++
++  // Cross-process addressing for this partition's store. Empty name = the
++  // segment is off and only same-process (rank 0) gathers are possible.
++  const std::string& store_shm_name() const { return store_shm_.name(); }
++  size_t store_shm_size() const { return store_shm_.size(); }
++  void* store_shm_base() const { return store_shm_.base(); }
++  const std::vector<size_t>& expert_shm_offsets() const { return expert_shm_offsets_; }
++
++  template <typename... Args>
++  auto expert_host_offsets(Args&&... args) const {
++    return derived_const()->expert_host_offsets(std::forward<Args>(args)...);
++  }
++
++  template <typename... Args>
++  auto expert_host_bytes(Args&&... args) const {
++    return derived_const()->expert_host_bytes(std::forward<Args>(args)...);
++  }
++
+   void forward_prefill(int qlen, int k, const int64_t* expert_ids, const float* weights, const void* input,
+                        void* output) {
+     auto pool = config_.pool->get_subpool(tp_part_idx);
+@@ -272,6 +346,11 @@ class AVX2_MOE_BASE {
+       }
+     }
+ 
++    if (activated_expert == 0 && kt_cpu_expert_opt_enabled("empty_fastpath")) {
++      std::memset(output, 0, (size_t)qlen * config_.hidden_size * sizeof(float));
++      return;
++    }
++
+     // Assign pool memory to buffers
+     size_t offset = 0;
+     void* gate_up_ba_pool_ptr = gate_up_ba_pool_;
+@@ -422,6 +501,11 @@ class AVX2_MOE_BASE {
+       activated_expert++;
+     }
+ 
++    if (activated_expert == 0 && kt_cpu_expert_opt_enabled("empty_fastpath")) {
++      std::memset(output, 0, (size_t)config_.hidden_size * sizeof(float));
++      return;
++    }
++
+     size_t offset = 0;
+     for (int i = 0; i < activated_expert; i++) {
+       auto expert_idx = m_expert_id_map_[i];
+diff --git a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+index 2ec9c88..1d24b50 100644
+--- a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
++++ b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+@@ -53,6 +53,7 @@
+ #include <memory>
+ #include <stdexcept>
+ 
++#include "../../cpu_backend/cpu_expert_profile.h"
+ #include "avx2_bf16_utils.hpp"
+ #include "moe_base.hpp"
+ 
+@@ -145,15 +146,40 @@ struct GemmKernelAVX512RawInt4Packed {
+ 
+   struct BufferA {
+     ggml_bf16_t* data = nullptr;
++    uint8_t* quantized = nullptr;
++    float* quant_scales = nullptr;
+     size_t max_m = 0;
+     size_t k = 0;
++    int group_size = 0;
++    int num_groups = 0;
+ 
+     BufferA() = default;
+-    BufferA(size_t m, size_t k_, void* ptr) : data((ggml_bf16_t*)ptr), max_m(m), k(k_) {}
++    BufferA(size_t m, size_t k_, int group_size_, void* ptr)
++        : max_m(m), k(k_), group_size(group_size_), num_groups((int)k_ / group_size_) {
++      set_data(ptr);
++    }
+ 
+-    static size_t required_size(size_t m, size_t k) { return m * k * sizeof(ggml_bf16_t); }
++    static size_t required_size(size_t m, size_t k, int group_size) {
++      const size_t bf16_bytes = m * k * sizeof(ggml_bf16_t);
++      const size_t quant_bytes = m * k * sizeof(uint8_t);
++      const size_t scale_bytes = m * (k / group_size) * sizeof(float);
++      return bf16_bytes + quant_bytes + scale_bytes + 128;
++    }
+ 
+-    void set_data(void* ptr) { data = (ggml_bf16_t*)ptr; }
++    void set_data(void* ptr) {
++      data = (ggml_bf16_t*)ptr;
++      if (ptr == nullptr) {
++        quantized = nullptr;
++        quant_scales = nullptr;
++        return;
++      }
++      uintptr_t cursor = (uintptr_t)ptr + max_m * k * sizeof(ggml_bf16_t);
++      cursor = (cursor + 63) & ~(uintptr_t)63;
++      quantized = (uint8_t*)cursor;
++      cursor += max_m * k * sizeof(uint8_t);
++      cursor = (cursor + 63) & ~(uintptr_t)63;
++      quant_scales = (float*)cursor;
++    }
+ 
+     void from_mat(int m, const ggml_bf16_t* src, int ith, int nth) {
+       if (ith == 0 && nth == 1) {
+@@ -162,6 +188,24 @@ struct GemmKernelAVX512RawInt4Packed {
+         auto [m_start, m_end] = avx2::split_range(m, ith, nth);
+         std::memcpy(data + m_start * k, src + m_start * k, (size_t)(m_end - m_start) * k * sizeof(ggml_bf16_t));
+       }
++
++      if (kt_cpu_expert_opt_enabled("prequant")) {
++        const auto quant_start = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
++        auto [m_start, m_end] = avx2::split_range(m, ith, nth);
++        for (int mi = m_start; mi < m_end; ++mi) {
++          const ggml_bf16_t* row = data + (size_t)mi * k;
++          uint8_t* qrow = quantized + (size_t)mi * k;
++          float* srow = quant_scales + (size_t)mi * num_groups;
++          for (int g = 0; g < num_groups; ++g) {
++            const int k_base = g * group_size;
++            srow[g] = quantize_activation_group_u8(row + k_base, group_size, qrow + k_base);
++          }
++        }
++        if (quant_start) {
++          KTCpuExpertProfile::add(KTCpuExpertProfile::activation_quant_ns,
++                                  KTCpuExpertProfile::now_ns() - quant_start);
++        }
++      }
+     }
+   };
+ 
+@@ -311,6 +355,8 @@ KT_AVX512_RAWINT4_PACKED_TARGET
+ static inline void gemm_rawint4_packed_avx512(int m, int n, int k, GemmKernelAVX512RawInt4Packed::BufferA& a,
+                                               GemmKernelAVX512RawInt4Packed::BufferB& b,
+                                               GemmKernelAVX512RawInt4Packed::BufferC& c, int ith, int nth) {
++  const auto gemm_start = KTCpuExpertProfile::enabled() ? KTCpuExpertProfile::now_ns() : 0;
++  unsigned long long quant_ns = 0;
+   (void)k;
+   auto [n_start, n_end] = avx2::split_range(n, ith, nth);
+   const int group_size = b.group_size;
+@@ -329,7 +375,17 @@ static inline void gemm_rawint4_packed_avx512(int m, int n, int k, GemmKernelAVX
+ 
+     for (int g = 0; g < num_groups; ++g) {
+       const int k_base = g * group_size;
+-      const float a_scale = quantize_activation_group_u8(a_row + k_base, group_size, a_u8.data());
++      const uint8_t* a_group;
++      float a_scale;
++      if (kt_cpu_expert_opt_enabled("prequant")) {
++        a_group = a.quantized + (size_t)mi * a.k + k_base;
++        a_scale = a.quant_scales[(size_t)mi * num_groups + g];
++      } else {
++        const auto quant_start = gemm_start ? KTCpuExpertProfile::now_ns() : 0;
++        a_scale = quantize_activation_group_u8(a_row + k_base, group_size, a_u8.data());
++        if (quant_start) quant_ns += KTCpuExpertProfile::now_ns() - quant_start;
++        a_group = a_u8.data();
++      }
+       if (a_scale == 0.0f) {
+         continue;
+       }
+@@ -339,7 +395,7 @@ static inline void gemm_rawint4_packed_avx512(int m, int n, int k, GemmKernelAVX
+         // Packed weight row for output n, starting at this group (k_base/2 bytes in).
+         const uint8_t* w_col = b.qweight_packed + (size_t)ni * row_bytes + (size_t)(k_base / 2);
+         for (int kk = 0; kk < group_size; kk += 32) {
+-          const __m256i a_vec = _mm256_load_si256((const __m256i*)(a_u8.data() + kk));
++          const __m256i a_vec = _mm256_load_si256((const __m256i*)(a_group + kk));
+           const __m256i w_vec = unpack_int4_chunk(w_col + (kk / 2), mask0f, eight);
+           acc = _mm256_dpbusd_epi32(acc, a_vec, w_vec);
+         }
+@@ -349,6 +405,10 @@ static inline void gemm_rawint4_packed_avx512(int m, int n, int k, GemmKernelAVX
+       }
+     }
+   }
++  if (gemm_start) {
++    KTCpuExpertProfile::add(KTCpuExpertProfile::activation_quant_ns, quant_ns);
++    KTCpuExpertProfile::add(KTCpuExpertProfile::gemm_ns, KTCpuExpertProfile::now_ns() - gemm_start);
++  }
+ }
+ 
+ }  // namespace avx512_rawint4_packed
+@@ -399,14 +459,16 @@ class AVX512_RAW_INT4_PACKED_MOE_TP : public AVX2_MOE_BASE<T, AVX512_RAW_INT4_PA
+ 
+   ~AVX512_RAW_INT4_PACKED_MOE_TP() = default;
+ 
+-  size_t buffer_a_required_size_impl(size_t m, size_t k) const { return T::BufferA::required_size(m, k); }
++  size_t buffer_a_required_size_impl(size_t m, size_t k) const {
++    return T::BufferA::required_size(m, k, config_.quant_config.group_size);
++  }
+   size_t buffer_b_required_size_impl(size_t n, size_t k) const {
+     return T::BufferB::required_size(n, k, config_.quant_config.group_size);
+   }
+   size_t buffer_c_required_size_impl(size_t m, size_t n) const { return T::BufferC::required_size(m, n); }
+ 
+   std::shared_ptr<typename T::BufferA> make_buffer_a_impl(size_t m, size_t k, void* data) const {
+-    return std::make_shared<typename T::BufferA>(m, k, data);
++    return std::make_shared<typename T::BufferA>(m, k, config_.quant_config.group_size, data);
+   }
+   std::shared_ptr<typename T::BufferB> make_buffer_b_impl(size_t n, size_t k, void* data) const {
+     return std::make_shared<typename T::BufferB>(n, k, config_.quant_config.group_size, data);
+@@ -514,6 +576,51 @@ class AVX512_RAW_INT4_PACKED_MOE_TP : public AVX2_MOE_BASE<T, AVX512_RAW_INT4_PA
+     down_bb_[expert_idx]->from_raw_mat(down_src, down_scale_src, ith, nth);
+   }
+ 
++  // Expose this TP partition's per-expert store addresses so a GPU-side gather
++  // can read the packed bytes IN PLACE, with no host-side staging copy. The
++  // flat `tpc.gate_proj` arrays built in load_weights() are temporaries and are
++  // deleted once the per-expert BufferBs are filled, so the persistent store is
++  // one allocation per expert per projection — the streaming path therefore
++  // needs a pointer TABLE, not a base+stride. Order matches expert_store_bytes:
++  //   {gate_w, gate_s, up_w, up_s, down_w, down_s}
++  // Weights are [N, K/2] packed int4; scales are fp32 [N, K/group_size].
++  // Returns empty for a GPU-tier expert, which is never staged on the CPU.
++  // Origin: expert-streaming-hybrid (Stage C in-graph UVA gather).
++  std::vector<uintptr_t> expert_host_ptrs(int expert_id) const {
++    if (expert_id < 0 || expert_id >= config_.expert_num || gate_bb_[expert_id] == nullptr ||
++        up_bb_[expert_id] == nullptr || down_bb_[expert_id] == nullptr) {
++      return {};
++    }
++    return {(uintptr_t)gate_bb_[expert_id]->qweight_packed, (uintptr_t)gate_bb_[expert_id]->scales,
++            (uintptr_t)up_bb_[expert_id]->qweight_packed,   (uintptr_t)up_bb_[expert_id]->scales,
++            (uintptr_t)down_bb_[expert_id]->qweight_packed, (uintptr_t)down_bb_[expert_id]->scales};
++  }
++
++  // The same six regions expressed as OFFSETS into this partition's shared
++  // segment. A reader in another process maps the segment at its own address,
++  // so pointers are useless to it; offsets are not. Empty when KT_STORE_SHM is
++  // off, which is the signal that only same-process gathers are possible.
++  std::vector<size_t> expert_host_offsets(int expert_id) const {
++    auto ptrs = expert_host_ptrs(expert_id);
++    std::vector<size_t> out;
++    void* base = this->store_shm_base();
++    if (ptrs.empty() || base == nullptr) return out;
++    const uintptr_t b = (uintptr_t)base;
++    out.reserve(ptrs.size());
++    for (uintptr_t p : ptrs) out.push_back((size_t)(p - b));
++    return out;
++  }
++
++  // Byte extents of the six regions above, identical for every expert in this
++  // partition. Needed to cudaHostRegister exactly the pages the gather reads.
++  std::vector<size_t> expert_host_bytes() const {
++    const int group_size = config_.quant_config.group_size;
++    const size_t elems = (size_t)config_.intermediate_size * config_.hidden_size;
++    const size_t w = elems / 2;
++    const size_t s = (elems / group_size) * sizeof(float);
++    return {w, s, w, s, w, s};
++  }
++
+   // Stream this CPU-TP partition's slice of one expert into the GPU cutlass W4A8
+   // staging buffers for the kt full-GPU prefill path. The packed backend keeps
+   // weights in the same [N, K/2] packed int4 layout as the on-disk W4AFP8 export
+@@ -946,6 +1053,56 @@ class TP_MOE<AVX512_RAW_INT4_PACKED_MOE_TP<K>>
+         [&, this](int i) { this->tps[i]->release_expert(expert_id); });
+   }
+ 
++  // Boot-time export of the whole CPU store's addressing, so the streaming path
++  // can cudaHostRegister it once and then gather experts out of it in place at
++  // decode time. Shape: ptrs[tp_partition][expert] = the six regions listed on
++  // AVX512_RAW_INT4_PACKED_MOE_TP::expert_host_ptrs. A GPU-tier expert yields an
++  // empty inner vector — it is resident already and is never streamed.
++  // Origin: expert-streaming-hybrid (Stage C in-graph UVA gather).
++  std::vector<std::vector<std::vector<uintptr_t>>> expert_store_ptrs() const {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    std::vector<std::vector<std::vector<uintptr_t>>> out(this->tp_count);
++    for (int i = 0; i < this->tp_count; ++i) {
++      out[i].resize(this->config.expert_num);
++      for (int e = 0; e < this->config.expert_num; ++e) {
++        out[i][e] = this->tps[i]->expert_host_ptrs(e);
++      }
++    }
++    return out;
++  }
++
++  std::vector<size_t> expert_store_bytes() const {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    return this->tps[0]->expert_host_bytes();
++  }
++
++  // Everything another process needs to map this layer's store and address every
++  // expert in it: one (name, size, offsets[expert][6]) triple per TP partition.
++  // An empty name means KT_STORE_SHM was off for this run.
++  std::vector<std::string> expert_store_shm_names() const {
++    std::vector<std::string> out;
++    for (int i = 0; i < this->tp_count; ++i) out.push_back(this->tps[i]->store_shm_name());
++    return out;
++  }
++
++  std::vector<size_t> expert_store_shm_sizes() const {
++    std::vector<size_t> out;
++    for (int i = 0; i < this->tp_count; ++i) out.push_back(this->tps[i]->store_shm_size());
++    return out;
++  }
++
++  std::vector<std::vector<std::vector<size_t>>> expert_store_offsets() const {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    std::vector<std::vector<std::vector<size_t>>> out(this->tp_count);
++    for (int i = 0; i < this->tp_count; ++i) {
++      out[i].resize(this->config.expert_num);
++      for (int e = 0; e < this->config.expert_num; ++e) {
++        out[i][e] = this->tps[i]->expert_host_offsets(e);
++      }
++    }
++    return out;
++  }
++
+   void write_weight_scale_to_buffer(int gpu_tp_count, int expert_id, const std::vector<uintptr_t>& w13_weight_ptrs,
+                                     const std::vector<uintptr_t>& w13_scale_ptrs,
+                                     const std::vector<uintptr_t>& w2_weight_ptrs,
+diff --git a/kt-kernel/python/utils/amx.py b/kt-kernel/python/utils/amx.py
+index dcccab3..1327129 100644
+--- a/kt-kernel/python/utils/amx.py
++++ b/kt-kernel/python/utils/amx.py
+@@ -723,22 +723,34 @@ class NativeMoEWrapper(BaseMoEWrapper):
+                 continue
+         raise ValueError(f"no expert prefix resolves for layer {self.layer_idx}")
+ 
+-    def promote_expert(self, expert_id: int):
+-        """Stage one expert into the CPU store, reading it off disk now.
+-
+-        The caller must have cleared the expert's bit in gpu_experts_mask (kt's
+-        skip mask) so nothing routes to it while the buffers are being written,
+-        and must set the bit back to resident only after this returns.
++    def read_expert(self, expert_id: int):
++        """Read one expert's six tensors off disk. Pure I/O + memcpy: touches no
++        kt state, so it is safe to call from a BACKGROUND thread while tokens
++        are being generated. Pair with stage_expert() on the forward thread.
++
++        Splitting promote_expert in two is the whole point: a promotion is
++        ~19 MiB of disk read that needs nothing from kt, bolted to a repack that
++        must serialise with the MoE forward. Only the first half can overlap
++        generation, and it can only overlap if a caller can reach it on its own.
+         """
+         if self.loader is None:
+             self.loader = NativeMoEWrapper._native_loader_instance
+         if self.loader is None or not hasattr(self.loader, "load_one_expert"):
+             raise RuntimeError(
+-                "promote_expert needs a loader with load_one_expert "
++                "read_expert needs a loader with load_one_expert "
+                 "(CompressedSafeTensorLoader); is KT_TIER_KEEP_LOADER=1 set?"
+             )
+-        w = self.loader.load_one_expert(self._expert_base_key(), int(expert_id))
+-        # Tensors must outlive the C++ copy: submit + sync before they drop.
++        return self.loader.load_one_expert(self._expert_base_key(), int(expert_id))
++
++    def stage_expert(self, expert_id: int, w):
++        """Write already-read weights into the CPU store. This is the part that
++        MUST serialise with the MoE pool -- the CPUInfer backend is shared, so a
++        concurrent submit from another thread would race the forward's own.
++
++        The caller must have cleared the expert's bit in gpu_experts_mask (kt's
++        skip mask) so nothing routes to it while the buffers are written, and
++        must set the bit back only after this returns.
++        """
+         self.cpu_infer.submit(
+             self.moe.load_expert_task(
+                 expert_id=int(expert_id),
+@@ -750,7 +762,14 @@ class NativeMoEWrapper(BaseMoEWrapper):
+                 down_scale_ptr=w["down_scale"].data_ptr(),
+             )
+         )
++        # Tensors must outlive the copy, so sync before the caller drops them.
+         self.cpu_infer.sync()
++
++    def promote_expert(self, expert_id: int, weights=None):
++        """Read (unless pre-read) + stage, in one call. Prefer read_expert on a
++        background thread + stage_expert on the forward thread."""
++        w = weights if weights is not None else self.read_expert(expert_id)
++        self.stage_expert(expert_id, w)
+         del w
+ 
+     def evict_expert(self, expert_id: int):
+-- 
+2.34.1
+

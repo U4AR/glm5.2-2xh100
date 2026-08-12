@@ -1,0 +1,7 @@
+sglang n/a
+torch 2.9.1
+flashinfer-python 0.6.3
+transformers 5.12.1
+pier 0.3.0
+ktransformers-base 6c9c95601d97 (upstream kvcache-ai/ktransformers, shallow clone)
+sglang 0.0.0.dev0

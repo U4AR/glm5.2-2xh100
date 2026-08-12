@@ -1,0 +1,420 @@
+From b10910e58cfcac0ac9e47cff31dfa2971de32e42 Mon Sep 17 00:00:00 2001
+From: BEL <bel@H100-VM1.mzqbi1zdpcje1jsioelsqu3tog.rx.internal.cloudapp.net>
+Date: Mon, 27 Jul 2026 11:22:07 +0000
+Subject: [PATCH 5/6] [feat](kt-kernel): python side of per-expert
+ promote/evict + staging skip
+
+Mirrors the edits that were being made directly in site-packages, which
+'pip install .' silently reverted on the first rebuild. Also carries the
+AVX2 packed RAWINT4 selection that had only ever existed in the installed
+copy.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ kt-kernel/operators/avx2/moe_base.hpp |   8 ++
+ kt-kernel/python/utils/amx.py         | 200 ++++++++++++++------------
+ kt-kernel/python/utils/loader.py      |  54 ++++++-
+ 3 files changed, 169 insertions(+), 93 deletions(-)
+
+diff --git a/kt-kernel/operators/avx2/moe_base.hpp b/kt-kernel/operators/avx2/moe_base.hpp
+index eb9b2e5..f583b77 100644
+--- a/kt-kernel/operators/avx2/moe_base.hpp
++++ b/kt-kernel/operators/avx2/moe_base.hpp
+@@ -237,6 +237,14 @@ class AVX2_MOE_BASE {
+     derived_const()->write_weights_to_buffer(std::forward<Args>(args)...);
+   }
+ 
++  // Three-tier expert store: TP_MOE holds its partitions as the CRTP BASE type,
++  // so per-expert staging has to be forwarded to the derived backend the same
++  // way load_weights and write_weights_to_buffer are.
++  template <typename... Args>
++  void load_one_expert(Args&&... args) {
++    derived()->load_one_expert(std::forward<Args>(args)...);
++  }
++
+   template <typename... Args>
+   void write_weights_to_buffer_single_thread(Args&&... args) const {
+     derived_const()->write_weights_to_buffer_single_thread(std::forward<Args>(args)...);
+diff --git a/kt-kernel/python/utils/amx.py b/kt-kernel/python/utils/amx.py
+index 19e4369..dcccab3 100644
+--- a/kt-kernel/python/utils/amx.py
++++ b/kt-kernel/python/utils/amx.py
+@@ -33,6 +33,7 @@ AVX2BF16_MOE = getattr(_moe_mod, "AVX2BF16_MOE", None)
+ AVX2FP8_MOE = getattr(_moe_mod, "AVX2FP8_MOE", None)
+ AVX2GPTQInt4_MOE = getattr(_moe_mod, "AVX2GPTQInt4_MOE", None)
+ AVX2RawInt4_MOE = getattr(_moe_mod, "AVX2RawInt4_MOE", None)
++AVX2RawInt4Packed_MOE = getattr(_moe_mod, "AVX2RawInt4Packed_MOE", None)
+ AVX2MXFP4_MOE = getattr(_moe_mod, "AVX2MXFP4_MOE", None)
+ AVX2MXFP8_MOE = getattr(_moe_mod, "AVX2MXFP8_MOE", None)
+ AVXVNNI256GPTQInt4_MOE = getattr(_moe_mod, "AVXVNNI256GPTQInt4_MOE", None)
+@@ -51,6 +52,7 @@ _HAS_AVX2_BF16_SUPPORT = AVX2BF16_MOE is not None
+ _HAS_AVX2_FP8_SUPPORT = AVX2FP8_MOE is not None
+ _HAS_AVX2_GPTQ_INT4_SUPPORT = AVX2GPTQInt4_MOE is not None
+ _HAS_AVX2_RAWINT4_SUPPORT = AVX2RawInt4_MOE is not None
++_HAS_AVX2_RAW_INT4_PACKED_SUPPORT = AVX2RawInt4Packed_MOE is not None
+ _HAS_AVX2_MXFP4_SUPPORT = AVX2MXFP4_MOE is not None
+ _HAS_AVX2_MXFP8_SUPPORT = AVX2MXFP8_MOE is not None
+ _HAS_AVXVNNI256_GPTQ_INT4_SUPPORT = AVXVNNI256GPTQInt4_MOE is not None
+@@ -161,15 +163,25 @@ def _select_rawint4_backend(group_size: Optional[int] = None):
+             )
+         return AVX512RawInt4Packed_MOE
+ 
+-    if forced == "avx2":
+-        if not _HAS_AVX2_RAWINT4_SUPPORT:
+-            raise RuntimeError("KT_RAWINT4_BACKEND=avx2 requested, but AVX2RawInt4_MOE is not compiled in.")
+-        return AVX2RawInt4_MOE
++    if forced in {"avx2", "avx2_packed"}:
++        if not _HAS_AVX2_RAW_INT4_PACKED_SUPPORT:
++            raise RuntimeError(
++                f"KT_RAWINT4_BACKEND={forced} requested, but AVX2RawInt4Packed_MOE is not compiled in."
++            )
++        if not avxvnni_group_supported:
++            raise RuntimeError(
++                f"KT_RAWINT4_BACKEND={forced} requested, but "
++                f"group_size={group_size} is unsupported. AVX2 PACKED RAWINT4 only supports "
++                f"positive multiples of 32 up to {_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE}."
++            )
++        return AVX2RawInt4Packed_MOE
+ 
+     if _HAS_RAWINT4_SUPPORT:
+         return AMXInt4_KGroup_MOE
+     if _HAS_AVXVNNI256_RAW_INT4_SUPPORT and _HOST_HAS_AVX_VNNI and avxvnni_group_supported:
+         return AVXVNNI256RawInt4_MOE
++    if _HAS_AVX2_RAW_INT4_PACKED_SUPPORT and avxvnni_group_supported:
++        return AVX2RawInt4Packed_MOE
+     if _HAS_AVX2_RAWINT4_SUPPORT:
+         return AVX2RawInt4_MOE
+     return None
+@@ -697,6 +709,56 @@ class NativeMoEWrapper(BaseMoEWrapper):
+     def force_release_loader():
+         NativeMoEWrapper._release_loader()
+ 
++    # --- three-tier expert store: runtime promotion / eviction ---------------
++    def _expert_base_key(self):
++        for base_key in (
++            f"model.layers.{self.layer_idx}",
++            f"language_model.model.layers.{self.layer_idx}",
++            f"model.language_model.layers.{self.layer_idx}",
++        ):
++            try:
++                self.loader._resolve_expert_naming(base_key)
++                return base_key
++            except (ValueError, KeyError, AttributeError):
++                continue
++        raise ValueError(f"no expert prefix resolves for layer {self.layer_idx}")
++
++    def promote_expert(self, expert_id: int):
++        """Stage one expert into the CPU store, reading it off disk now.
++
++        The caller must have cleared the expert's bit in gpu_experts_mask (kt's
++        skip mask) so nothing routes to it while the buffers are being written,
++        and must set the bit back to resident only after this returns.
++        """
++        if self.loader is None:
++            self.loader = NativeMoEWrapper._native_loader_instance
++        if self.loader is None or not hasattr(self.loader, "load_one_expert"):
++            raise RuntimeError(
++                "promote_expert needs a loader with load_one_expert "
++                "(CompressedSafeTensorLoader); is KT_TIER_KEEP_LOADER=1 set?"
++            )
++        w = self.loader.load_one_expert(self._expert_base_key(), int(expert_id))
++        # Tensors must outlive the C++ copy: submit + sync before they drop.
++        self.cpu_infer.submit(
++            self.moe.load_expert_task(
++                expert_id=int(expert_id),
++                gate_ptr=w["gate"].data_ptr(),
++                up_ptr=w["up"].data_ptr(),
++                down_ptr=w["down"].data_ptr(),
++                gate_scale_ptr=w["gate_scale"].data_ptr(),
++                up_scale_ptr=w["up_scale"].data_ptr(),
++                down_scale_ptr=w["down_scale"].data_ptr(),
++            )
++        )
++        self.cpu_infer.sync()
++        del w
++
++    def evict_expert(self, expert_id: int):
++        """Drop one expert's weights from host RAM (madvise). The caller must
++        have masked the expert out first."""
++        self.cpu_infer.submit(self.moe.release_expert_task(expert_id=int(expert_id)))
++        self.cpu_infer.sync()
++
+     def load_weights_from_tensors(
+         self,
+         gate_proj: torch.Tensor,
+@@ -729,10 +791,20 @@ class NativeMoEWrapper(BaseMoEWrapper):
+             f"language_model.model.layers.{self.layer_idx}",
+             f"model.language_model.layers.{self.layer_idx}",
+         ]
++        # Don't read experts we are not going to stage. self.gpu_experts_mask is
++        # kt's "skip this expert" mask — under the three-tier store it covers the
++        # SSD tier too, so with a small RAM tier this reads a small fraction of
++        # the checkpoint instead of all of it. Only the loaders that accept
++        # `skip` honour it; the rest keep loading everything.
++        import inspect
++
++        _load_kwargs = {}
++        if "skip" in inspect.signature(self.loader.load_experts).parameters:
++            _load_kwargs["skip"] = self.gpu_experts_mask.tolist()
+         weights = None
+         for base_key in _candidates:
+             try:
+-                weights = self.loader.load_experts(base_key)
++                weights = self.loader.load_experts(base_key, **_load_kwargs)
+                 break
+             except (ValueError, KeyError):
+                 continue
+@@ -749,6 +821,7 @@ class NativeMoEWrapper(BaseMoEWrapper):
+         self.down_weights = weights["down"]
+ 
+         # BF16 has no scales, others have scales
++        _probe = None
+         if self.method == "BF16":
+             # BF16 doesn't have scales
+             self.gate_scales = None
+@@ -762,8 +835,17 @@ class NativeMoEWrapper(BaseMoEWrapper):
+             self.gate_scales = weights["gate_scale"]
+             self.up_scales = weights["up_scale"]
+             self.down_scales = weights["down_scale"]
++            # Skipped experts come back as None (see load_experts(skip=...)), so
++            # probe dtype/shape on the first expert that was actually read
++            # rather than on index 0, which may be a skipped one.
++            _probe = next((t for t in self.gate_scales if t is not None), None)
++            if _probe is None:
++                raise ValueError(
++                    f"layer {self.layer_idx}: every expert was skipped; the CPU "
++                    "store would be empty. Raise KT_RAM_EXPERTS."
++                )
+             if self.method == "RAWINT4":
+-                assert self.gate_scales[0].dtype == torch.bfloat16, "Expected bf16 scales for RAWINT4"
++                assert _probe.dtype == torch.bfloat16, "Expected bf16 scales for RAWINT4"
+             elif self.method == "FP8":
+                 if self.gate_scales[0].dtype != torch.float32:
+                     self.gate_scales = [t.to(torch.float32).contiguous() for t in weights["gate_scale"]]
+@@ -788,9 +870,14 @@ class NativeMoEWrapper(BaseMoEWrapper):
+ 
+         # Build pointer lists: [numa_id][expert_id] -> pointer
+         # Since RAWINT4/FP8/BF16 has no numa sharding, numa dimension is 1
+-        gate_ptrs = [[t.data_ptr() for t in self.gate_weights]]
+-        up_ptrs = [[t.data_ptr() for t in self.up_weights]]
+-        down_ptrs = [[t.data_ptr() for t in self.down_weights]]
++        # A skipped expert contributes a null pointer; C++ never dereferences it
++        # because should_skip_expert covers exactly the same set.
++        def _ptrs(tensors):
++            return [[(0 if t is None else t.data_ptr()) for t in tensors]]
++
++        gate_ptrs = _ptrs(self.gate_weights)
++        up_ptrs = _ptrs(self.up_weights)
++        down_ptrs = _ptrs(self.down_weights)
+ 
+         # BF16 has no scales, pass empty lists (will use 0/nullptr for consistency)
+         if self.method == "BF16":
+@@ -798,9 +885,9 @@ class NativeMoEWrapper(BaseMoEWrapper):
+             up_scale_ptrs = [[0 for _ in self.up_weights]]
+             down_scale_ptrs = [[0 for _ in self.down_weights]]
+         else:
+-            gate_scale_ptrs = [[t.data_ptr() for t in self.gate_scales]]
+-            up_scale_ptrs = [[t.data_ptr() for t in self.up_scales]]
+-            down_scale_ptrs = [[t.data_ptr() for t in self.down_scales]]
++            gate_scale_ptrs = _ptrs(self.gate_scales)
++            up_scale_ptrs = _ptrs(self.up_scales)
++            down_scale_ptrs = _ptrs(self.down_scales)
+         t3 = time.time()
+ 
+         moe_config = MOEConfig(
+@@ -841,7 +928,8 @@ class NativeMoEWrapper(BaseMoEWrapper):
+         # So: group_size = hidden_size / scale.shape[1]
+ 
+         if self.method == "RAWINT4":
+-            group_size = self.hidden_size // self.gate_scales[0].shape[1]
++            # _probe, not [0]: index 0 may be a skipped (SSD-tier) expert.
++            group_size = self.hidden_size // _probe.shape[1]
+             moe_config.quant_config.bits = 4
+             moe_config.quant_config.group_size = group_size
+             moe_config.quant_config.zero_point = False
+@@ -851,7 +939,8 @@ class NativeMoEWrapper(BaseMoEWrapper):
+                     "No RAWINT4 backend is available after runtime selection for "
+                     f"group_size={group_size}. AMX (AMXInt4_KGroup_MOE) is preferred; "
+                     f"AVX-VNNI-256 supports positive multiples of 32 up to "
+-                    f"{_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE}; AVX2 (AVX2RawInt4_MOE) is used as the final fallback."
++                    f"{_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE}; packed AVX2 "
++                    "(AVX2RawInt4Packed_MOE) is used as the final fallback."
+                 )
+             self.moe = backend_cls(moe_config)
+         elif self.method == "MXFP4":
+@@ -933,7 +1022,11 @@ class NativeMoEWrapper(BaseMoEWrapper):
+             del self.up_scales
+             del self.down_scales
+ 
+-        NativeMoEWrapper._release_loader(layer_idx=self.layer_idx)
++        # Three-tier expert store: runtime promotion reads single experts off
++        # disk, so keep the safetensors mmaps open instead of paying ~200 ms to
++        # recreate the loader on every promotion.
++        if os.environ.get("KT_TIER_KEEP_LOADER") != "1":
++            NativeMoEWrapper._release_loader(layer_idx=self.layer_idx)
+         t6 = time.time()
+ 
+         print(
+@@ -988,80 +1081,3 @@ class NativeMoEWrapper(BaseMoEWrapper):
+         """
+         # The CPUInfer.sync() call blocks until pending tasks complete.
+         self.cpu_infer.sync()
+-
+-    def submit_topk_write_weight_scale_to_buffer_with_cuda_stream(
+-        self,
+-        cuda_stream,
+-        gpu_tp_count: int,
+-        local_gpu_tp: int,
+-        slot_count: int,
+-        num_experts: int,
+-        base_slot: int,
+-        selected_ids_ptr: int,
+-        gpu_mask_ptr: int,
+-        static_l2g_ptr: int,
+-        dyn_mask_ptr: int,
+-        dyn_l2g_ptr: int,
+-        ready_counter_ptr: int,
+-        scale_shapes,
+-        slot_nbytes,
+-        w13_weight_ptrs,
+-        w13_scale_ptrs,
+-        w2_weight_ptrs,
+-        w2_scale_ptrs,
+-    ):
+-        """
+-        CUDA-graph-compatible dynamic expert streamer.
+-
+-        The selected expert IDs and dynamic remap buffers are fixed-address pinned
+-        CPU tensors. During graph replay, a cudaLaunchHostFunc callback reads the
+-        selected IDs, writes CPU-resident expert weights/scales into fixed staging
+-        buffers, and fills the dynamic mask/remap table for the following H2D copies.
+-        """
+-        if self.moe is None:
+-            raise RuntimeError("MoE instance not initialized; cannot submit topk write task.")
+-
+-        if not hasattr(self.moe, "write_topk_weight_scale_to_buffer_task"):
+-            raise NotImplementedError(
+-                "write_topk_weight_scale_to_buffer_task is not available for this backend implementation."
+-            )
+-
+-        stream = (
+-            cuda_stream.cuda_stream
+-            if isinstance(cuda_stream, torch.cuda.Stream)
+-            else int(cuda_stream)
+-        )
+-        task = self.moe.write_topk_weight_scale_to_buffer_task(
+-            gpu_tp_count,
+-            local_gpu_tp,
+-            slot_count,
+-            num_experts,
+-            base_slot,
+-            selected_ids_ptr,
+-            gpu_mask_ptr,
+-            static_l2g_ptr,
+-            dyn_mask_ptr,
+-            dyn_l2g_ptr,
+-            int(slot_nbytes["w13_weight"]),
+-            int(slot_nbytes["w13_weight_scale_inv"]),
+-            int(slot_nbytes["w2_weight"]),
+-            int(slot_nbytes["w2_weight_scale_inv"]),
+-            int(ready_counter_ptr),
+-            int(scale_shapes["w13_weight_scale_inv"][0]),
+-            int(scale_shapes["w13_weight_scale_inv"][1]),
+-            int(scale_shapes["w2_weight_scale_inv"][0]),
+-            int(scale_shapes["w2_weight_scale_inv"][1]),
+-            w13_weight_ptrs,
+-            w13_scale_ptrs,
+-            w2_weight_ptrs,
+-            w2_scale_ptrs,
+-        )
+-        self.cpu_infer.submit_with_cuda_stream(stream, task)
+-
+-    def sync_topk_write_weight_scale_to_buffer_with_cuda_stream(self, cuda_stream):
+-        stream = (
+-            cuda_stream.cuda_stream
+-            if isinstance(cuda_stream, torch.cuda.Stream)
+-            else int(cuda_stream)
+-        )
+-        self.cpu_infer.sync_with_cuda_stream(stream)
+diff --git a/kt-kernel/python/utils/loader.py b/kt-kernel/python/utils/loader.py
+index d7fb959..b3483c7 100644
+--- a/kt-kernel/python/utils/loader.py
++++ b/kt-kernel/python/utils/loader.py
+@@ -679,7 +679,47 @@ class BF16SafeTensorLoader(SafeTensorLoader):
+ class CompressedSafeTensorLoader(SafeTensorLoader):
+     """Loader for compressed SafeTensor layouts (RAWINT4 weights)."""
+ 
+-    def load_experts(self, base_key: str, device: str = "cpu"):
++    def load_one_expert(self, base_key: str, expert_id: int, device: str = "cpu"):
++        """Load a SINGLE expert's six tensors, for runtime promotion into the
++        host-RAM tier of the three-tier expert store.
++
++        Returns a dict of tensors the caller must keep alive until the C++ copy
++        has completed (the pointers are handed over raw). Reuses the same
++        naming-convention probe as load_experts so both on-disk layouts work.
++        """
++        prefix, weight_suffix, scale_suffix = self._resolve_expert_naming(base_key)
++        out = {}
++        for proj in ("gate", "up", "down"):
++            wk = f"{prefix}.{expert_id}.{proj}_proj.{weight_suffix}"
++            sk = f"{prefix}.{expert_id}.{proj}_proj.{scale_suffix}"
++            if not self.has_tensor(wk):
++                raise KeyError(f"Missing tensor: {wk}")
++            if not self.has_tensor(sk):
++                raise KeyError(f"Missing tensor: {sk}")
++            out[proj] = self.load_tensor(wk, device).contiguous()
++            out[f"{proj}_scale"] = self.load_tensor(sk, device).contiguous()
++        return out
++
++    def _resolve_expert_naming(self, base_key: str):
++        """(experts_prefix, weight_suffix, scale_suffix) for this checkpoint."""
++
++        def probe(prefix):
++            for wsuf in ("weight_packed", "weight"):
++                if self.has_tensor(f"{prefix}.0.up_proj.{wsuf}"):
++                    return wsuf
++            return None
++
++        for prefix in (f"{base_key}.mlp.experts", f"language_model.{base_key}.mlp.experts"):
++            wsuf = probe(prefix)
++            if wsuf is None:
++                continue
++            ssuf = "weight_scale" if wsuf == "weight_packed" else "weight_scale_inv"
++            if not self.has_tensor(f"{prefix}.0.up_proj.{ssuf}"):
++                ssuf = "weight_scale_inv" if ssuf == "weight_scale" else "weight_scale"
++            return prefix, wsuf, ssuf
++        raise ValueError(f"No experts found for key {base_key}")
++
++    def load_experts(self, base_key: str, device: str = "cpu", skip=None):
+         """Load raw expert weights stored in compressed safetensor format.
+ 
+         Supports two on-disk naming conventions with byte-identical RAWINT4 payload
+@@ -687,6 +727,14 @@ class CompressedSafeTensorLoader(SafeTensorLoader):
+           - kt native compressed-tensors: .weight_packed / .weight_scale
+           - W4AFP8 (GLM-5.2):             .weight        / .weight_scale_inv
+         The W4AFP8 fp8 activation input_scale tensors are unused by RAWINT4.
++
++        `skip` is an optional per-expert boolean sequence: True means the expert
++        will not be staged in the CPU store, so its tensors are never read off
++        disk and `None` is returned in its slot. The caller passes 0 for those
++        pointers and C++ never dereferences them (should_skip_expert covers the
++        same set). Under a three-tier store with a small RAM tier this is the
++        difference between reading the whole 373 GB checkpoint at boot and
++        reading only the part that gets staged.
+         """
+ 
+         # Probe expert count + naming convention (try both weight suffixes).
+@@ -718,6 +766,10 @@ class CompressedSafeTensorLoader(SafeTensorLoader):
+             scale_entries = []
+ 
+             for exp_id in range(expert_idx):
++                if skip is not None and exp_id < len(skip) and bool(skip[exp_id]):
++                    weight_entries.append(None)
++                    scale_entries.append(None)
++                    continue
+                 weight_key = f"{experts_prefix}.{exp_id}.{proj_name}_proj.{weight_suffix}"
+                 scale_key = f"{experts_prefix}.{exp_id}.{proj_name}_proj.{scale_suffix}"
+ 
+-- 
+2.34.1
+

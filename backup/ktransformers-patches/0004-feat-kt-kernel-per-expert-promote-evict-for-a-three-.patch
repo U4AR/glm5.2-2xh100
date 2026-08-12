@@ -1,0 +1,2658 @@
+From ffdc15af9204f55b6e0554683504130f6801e77e Mon Sep 17 00:00:00 2001
+From: BEL <bel@H100-VM1.mzqbi1zdpcje1jsioelsqu3tog.rx.internal.cloudapp.net>
+Date: Mon, 27 Jul 2026 10:49:57 +0000
+Subject: [PATCH 4/6] [feat](kt-kernel): per-expert promote/evict for a
+ three-tier expert store
+
+release_expert() returns one expert's physical pages with madvise; load_expert()
+stages a single expert straight from mmap'd safetensors. Together they let the
+CPU store hold a bounded subset of experts, with the rest reachable only on
+disk.
+
+Per-expert BufferB allocations move from 64B to page alignment and a page
+multiple, because MADV_DONTNEED only frees whole pages -- at 64B the first and
+last page of each buffer are shared with a neighbour and cannot be released.
+
+Origin: RunGLM experiment/expert-tiering-ssd.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ kt-kernel/ext_bindings.cpp                    |  54 +
+ kt-kernel/operators/amx/fp8-moe.hpp.bak-preC  | 779 ++++++++++++++
+ kt-kernel/operators/avx2/fp8-moe.hpp.bak-preC | 598 +++++++++++
+ kt-kernel/operators/avx2/moe_base.hpp         |  59 +-
+ .../avx2/rawint4_packed_avx512vnni-moe.hpp    |  80 ++
+ kt-kernel/python/utils/amx.py.bak-preC        | 965 ++++++++++++++++++
+ 6 files changed, 2529 insertions(+), 6 deletions(-)
+ create mode 100644 kt-kernel/operators/amx/fp8-moe.hpp.bak-preC
+ create mode 100644 kt-kernel/operators/avx2/fp8-moe.hpp.bak-preC
+ create mode 100644 kt-kernel/python/utils/amx.py.bak-preC
+
+diff --git a/kt-kernel/ext_bindings.cpp b/kt-kernel/ext_bindings.cpp
+index 3718009..f4a81dd 100644
+--- a/kt-kernel/ext_bindings.cpp
++++ b/kt-kernel/ext_bindings.cpp
+@@ -481,6 +481,60 @@ void bind_moe_module(py::module_& moe_module, const char* name) {
+                 py::arg("gpu_tp_count"), py::arg("expert_id"), py::arg("w13_weight_ptrs"), py::arg("w13_scale_ptrs"),
+                 py::arg("w2_weight_ptrs"), py::arg("w2_scale_ptrs"));
+ 
++  }
++
++  // Three-tier expert store: promote / evict a single expert at runtime.
++  // Both go through cpuinfer->enqueue so they execute on the CPU backend
++  // between submitted MoE jobs rather than racing one.
++  if constexpr (requires { &MoeClass::load_expert; }) {
++    struct LoadExpertBindings {
++      struct Args {
++        CPUInfer* cpuinfer;
++        MoeClass* moe;
++        int expert_id;
++        uintptr_t gate_ptr, up_ptr, down_ptr;
++        uintptr_t gate_scale_ptr, up_scale_ptr, down_scale_ptr;
++      };
++      static void inner(void* args) {
++        Args* a = (Args*)args;
++        a->cpuinfer->enqueue(&MoeClass::load_expert, a->moe, a->expert_id, a->gate_ptr, a->up_ptr, a->down_ptr,
++                             a->gate_scale_ptr, a->up_scale_ptr, a->down_scale_ptr);
++      }
++      static std::pair<intptr_t, intptr_t> cpuinfer_interface(std::shared_ptr<MoeClass> moe, int expert_id,
++                                                              uintptr_t gate_ptr, uintptr_t up_ptr, uintptr_t down_ptr,
++                                                              uintptr_t gate_scale_ptr, uintptr_t up_scale_ptr,
++                                                              uintptr_t down_scale_ptr) {
++        Args* args = new Args{nullptr,        moe.get(),      expert_id,     gate_ptr,
++                              up_ptr,         down_ptr,       gate_scale_ptr, up_scale_ptr,
++                              down_scale_ptr};
++        return std::make_pair((intptr_t)&inner, (intptr_t)args);
++      }
++    };
++    moe_cls.def("load_expert_task", &LoadExpertBindings::cpuinfer_interface, py::arg("expert_id"),
++                py::arg("gate_ptr"), py::arg("up_ptr"), py::arg("down_ptr"), py::arg("gate_scale_ptr"),
++                py::arg("up_scale_ptr"), py::arg("down_scale_ptr"));
++  }
++
++  if constexpr (requires { &MoeClass::release_expert; }) {
++    struct ReleaseExpertBindings {
++      struct Args {
++        CPUInfer* cpuinfer;
++        MoeClass* moe;
++        int expert_id;
++      };
++      static void inner(void* args) {
++        Args* a = (Args*)args;
++        a->cpuinfer->enqueue(&MoeClass::release_expert, a->moe, a->expert_id);
++      }
++      static std::pair<intptr_t, intptr_t> cpuinfer_interface(std::shared_ptr<MoeClass> moe, int expert_id) {
++        Args* args = new Args{nullptr, moe.get(), expert_id};
++        return std::make_pair((intptr_t)&inner, (intptr_t)args);
++      }
++    };
++    moe_cls.def("release_expert_task", &ReleaseExpertBindings::cpuinfer_interface, py::arg("expert_id"));
++  }
++
++  if constexpr (requires { &MoeClass::write_weight_scale_to_buffer; }) {
+     struct WriteTopKWeightScaleToBufferBindings {
+       struct Args {
+ 	        CPUInfer* cpuinfer;
+diff --git a/kt-kernel/operators/amx/fp8-moe.hpp.bak-preC b/kt-kernel/operators/amx/fp8-moe.hpp.bak-preC
+new file mode 100644
+index 0000000..c383f46
+--- /dev/null
++++ b/kt-kernel/operators/amx/fp8-moe.hpp.bak-preC
+@@ -0,0 +1,779 @@
++/**
++ * @Description  : FP8 AMX MoE operator for DeepSeek V3.2 native inference
++ * @Author       : oql, Codex and Claude
++ * @Date         : 2025-12-09
++ * @Version      : 1.0.0
++ * @Copyright (c) 2024 by KVCache.AI, All Rights Reserved.
++ *
++ * This file implements FP8 MoE using CRTP pattern, inheriting from moe_base.hpp.
++ * FP8 weights are stored with 128x128 block-wise scales.
++ **/
++#ifndef CPUINFER_OPERATOR_AMX_FP8_MOE_H
++#define CPUINFER_OPERATOR_AMX_FP8_MOE_H
++
++// #define DEBUG_FP8_MOE
++
++#include "la/amx_raw_buffers.hpp"
++#include "la/amx_raw_kernels.hpp"
++#include "moe_base.hpp"
++
++/**
++ * @brief FP8 MoE operator using CRTP pattern
++ * @tparam T Kernel type, defaults to GemmKernel224FP8
++ *
++ * This class provides FP8-specific implementations:
++ * - do_gate_up_gemm, do_down_gemm : FP8 weight -> BF16 conversion mat mul
++ * - load_weights: Load FP8 weights with 128x128 block scales
++ */
++template <class T = amx::GemmKernel224FP8>
++class AMX_FP8_MOE_TP : public AMX_MOE_BASE<T, AMX_FP8_MOE_TP<T>> {
++  using Base = AMX_MOE_BASE<T, AMX_FP8_MOE_TP<T>>;
++  using Base::config_;
++  using Base::down_ba_;
++  using Base::down_bb_;
++  using Base::down_bc_;
++  using Base::gate_bb_;
++  using Base::gate_bc_;
++  using Base::gate_up_ba_;
++  using Base::m_local_num_;
++  using Base::tp_part_idx;
++  using Base::up_bb_;
++  using Base::up_bc_;
++
++ public:
++  using typename Base::input_t;
++  using typename Base::output_t;
++
++  AMX_FP8_MOE_TP() = default;
++
++  AMX_FP8_MOE_TP(GeneralMOEConfig config, int tp_part_idx_ = 0) : Base(config, tp_part_idx_) {
++    // Initialization now happens in derived_init() which is called by base constructor
++  }
++
++  void derived_init() {
++    auto& quant_config = config_.quant_config;
++    if (quant_config.group_size == 0 || quant_config.zero_point) {
++      throw std::runtime_error("KT-Kernel fp8 MoE only support block-wise FP8");
++    }
++    // Backend reflects the compile-time GEMM path: AMX tiles when __AMXBF16__ etc. are
++    // defined, otherwise the AVX512-BF16 fallback in amx_raw_kernels.hpp::float_mat_vec_kgroup.
++    constexpr const char* backend = amx::AMX_AVAILABLE ? "AMX" : "AVX512-BF16";
++    printf("Created FP8_MOE_TP %d at numa %d (backend=%s)\n", tp_part_idx,
++           numa_node_of_cpu(sched_getcpu()), backend);
++  }
++
++  ~AMX_FP8_MOE_TP() = default;
++  // ============================================================================
++  // CRTP buffer creation - with group_size
++  // ============================================================================
++
++  size_t buffer_a_required_size_impl(size_t m, size_t k) const { return T::BufferA::required_size(m, k); }
++  size_t buffer_b_required_size_impl(size_t n, size_t k) const {
++    return T::BufferB::required_size(n, k, config_.quant_config.group_size);
++  }
++  size_t buffer_c_required_size_impl(size_t m, size_t n) const { return T::BufferC::required_size(m, n); }
++
++  std::shared_ptr<typename T::BufferA> make_buffer_a_impl(size_t m, size_t k, void* data) const {
++    return std::make_shared<typename T::BufferA>(m, k, data);
++  }
++  std::shared_ptr<typename T::BufferB> make_buffer_b_impl(size_t n, size_t k, void* data) const {
++    return std::make_shared<typename T::BufferB>(n, k, config_.quant_config.group_size, data);
++  }
++  std::shared_ptr<typename T::BufferC> make_buffer_c_impl(size_t m, size_t n, void* data) const {
++    return std::make_shared<typename T::BufferC>(m, n, data);
++  }
++
++  // ============================================================================
++  // CRTP virtual points - GEMM dispatch
++  // ============================================================================
++
++  void do_gate_up_gemm(bool do_up, int expert_idx, int ith, int nth, int qlen) {
++    auto& group_size = config_.quant_config.group_size;
++    int m = m_local_num_[expert_idx];
++    auto& ba = gate_up_ba_[expert_idx];
++    auto& bb = do_up ? up_bb_[expert_idx] : gate_bb_[expert_idx];
++    auto& bc = do_up ? up_bc_[expert_idx] : gate_bc_[expert_idx];
++
++    amx::vec_mul_kgroup(m, config_.intermediate_size, config_.hidden_size, group_size, ba, bb, bc, ith, nth);
++  }
++  void do_down_gemm(int expert_idx, int ith, int nth, int qlen) {
++    auto& group_size = config_.quant_config.group_size;
++    int m = m_local_num_[expert_idx];
++
++    amx::vec_mul_kgroup(m, config_.hidden_size, config_.intermediate_size, group_size, down_ba_[expert_idx],
++                        down_bb_[expert_idx], down_bc_[expert_idx], ith, nth);
++  }
++
++#ifdef DEBUG_FP8_MOE
++  // Function to dump Buffer B data for debugging FP8 quantization results
++  inline void dump_buffer_b(const std::string& quantization_type, int expert_idx, const std::string& matrix_type,
++                            typename T::BufferB* buffer) {
++    auto& quant_config = config_.quant_config;
++    int& group_size = quant_config.group_size;
++
++    printf("[DUMP_BUFFER_B] TP%d %s Expert%d %s:\n", tp_part_idx, quantization_type.c_str(), expert_idx,
++           matrix_type.c_str());
++
++    // Calculate dimensions based on matrix type
++    int rows, cols;
++    size_t scale_elem_count;
++    if (matrix_type == "gate" || matrix_type == "up") {
++      rows = config_.intermediate_size;
++      cols = config_.hidden_size;
++    } else {  // down
++      rows = config_.hidden_size;
++      cols = config_.intermediate_size;
++    }
++    int n_blocks_n = (rows + group_size - 1) / group_size;
++    int n_blocks_k = (cols + group_size - 1) / group_size;
++    scale_elem_count = n_blocks_n * n_blocks_k;
++
++    // Dump scales (as BF16 converted to float)
++    printf("  Scales[first 16]: ");
++    for (int i = 0; i < std::min(16, (int)scale_elem_count); i++) {
++      printf("%.6f ", buffer->d[i]);
++    }
++    printf("\n");
++
++    if (scale_elem_count > 16) {
++      printf("  Scales[last 16]: ");
++      int start_idx = std::max(0, (int)scale_elem_count - 16);
++      for (int i = start_idx; i < (int)scale_elem_count; i++) {
++        printf("%.6f ", buffer->d[i]);
++      }
++      printf("\n");
++    }
++
++    // Dump FP8 weights (as hex uint8)
++    size_t weight_size = (size_t)rows * cols;  // FP8 is 1 byte per element
++    uint8_t* weight_ptr = (uint8_t*)buffer->b;
++
++    printf("  FP8 Weights[first 32 bytes]: ");
++    for (int i = 0; i < std::min(32, (int)weight_size); i++) {
++      printf("%02x ", weight_ptr[i]);
++    }
++    printf("\n");
++
++    if (weight_size > 32) {
++      printf("  FP8 Weights[last 32 bytes]: ");
++      int start_idx = std::max(32, (int)weight_size - 32);
++      for (int i = start_idx; i < (int)weight_size; i++) {
++        printf("%02x ", weight_ptr[i]);
++      }
++      printf("\n");
++    }
++
++    printf("  Matrix dimensions: %dx%d (n x k), Scale blocks: %dx%d, Group size: %d, Scale elements: %zu\n", rows, cols,
++           n_blocks_n, n_blocks_k, group_size, scale_elem_count);
++  }
++#endif
++
++  /**
++   * @brief Load FP8 weights from contiguous memory layout
++   *
++   * Loads weights from config_.gate_proj, up_proj, down_proj with scales
++   * from config_.gate_scale, up_scale, down_scale.
++   */
++  void load_weights() {
++    auto& quant_config = config_.quant_config;
++    int& group_size = quant_config.group_size;
++    const uint64_t* physical_to_logical_map = (const uint64_t*)config_.physical_to_logical_map;
++    auto pool = config_.pool->get_subpool(tp_part_idx);
++
++    if (config_.gate_scale == nullptr) {
++      throw std::runtime_error("FP8 AVX MOE only support native weight.");
++    }
++
++    // load weight
++    int nth = T::recommended_nth(config_.intermediate_size);
++    pool->do_work_stealing_job(
++        nth * config_.expert_num, nullptr,
++        [this, nth, physical_to_logical_map, group_size](int task_id) {
++          uint64_t expert_idx = task_id / nth;
++          uint64_t logical_expert_id = expert_map(physical_to_logical_map, expert_idx);
++          int ith = task_id % nth;
++          // gate part
++          gate_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.gate_proj + (logical_expert_id * config_.intermediate_size * config_.hidden_size),
++              (float*)config_.gate_scale +
++                  (logical_expert_id * (config_.hidden_size / group_size) * (config_.intermediate_size / group_size)),
++              ith, nth);
++          // up part
++          up_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.up_proj + (logical_expert_id * config_.intermediate_size * config_.hidden_size),
++              (float*)config_.up_scale +
++                  (logical_expert_id * (config_.hidden_size / group_size) * (config_.intermediate_size / group_size)),
++              ith, nth);
++        },
++        nullptr);
++
++    nth = T::recommended_nth(config_.hidden_size);
++    pool->do_work_stealing_job(
++        nth * config_.expert_num, nullptr,
++        [this, nth, physical_to_logical_map, group_size](int task_id) {
++          uint64_t expert_idx = task_id / nth;
++          uint64_t logical_expert_id = expert_map(physical_to_logical_map, expert_idx);
++          int ith = task_id % nth;
++          // down part
++          down_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.down_proj + (logical_expert_id * config_.intermediate_size * config_.hidden_size),
++              (float*)config_.down_scale +
++                  (logical_expert_id * (config_.hidden_size / group_size) * (config_.intermediate_size / group_size)),
++              ith, nth);
++        },
++        nullptr);
++#ifdef DEBUG_FP8_MOE
++    dump_buffer_b("Native FP8", 0, "gate", gate_bb_[0].get());
++    dump_buffer_b("Native FP8", 0, "down", down_bb_[0].get());
++#endif
++  }
++
++  // Fast 64-byte (512-bit) memcpy using AVX512
++  static inline void fast_memcpy_64(void* __restrict dst, const void* __restrict src) {
++    __m512i data = _mm512_loadu_si512(src);
++    _mm512_storeu_si512(dst, data);
++  }
++
++  // Fast memcpy for arbitrary sizes using AVX512
++  static inline void fast_memcpy(void* __restrict dst, const void* __restrict src, size_t bytes) {
++    uint8_t* d = (uint8_t*)dst;
++    const uint8_t* s = (const uint8_t*)src;
++    size_t chunks = bytes / 64;
++    for (size_t i = 0; i < chunks; i++) {
++      fast_memcpy_64(d, s);
++      d += 64;
++      s += 64;
++    }
++    bytes -= chunks * 64;
++    if (bytes > 0) {
++      std::memcpy(d, s, bytes);
++    }
++  }
++
++  /**
++   * @brief Unpack a single N_STEP x K_STEP block from packed BufferB format to n-major format
++   *
++   * This is the inverse of the packing done in BufferBFP8Impl::from_mat.
++   * Optimized with AVX512 gather for efficient non-contiguous reads.
++   *
++   * @param src Pointer to packed data (N_STEP * K_STEP bytes in packed layout)
++   * @param dst Pointer to destination in n-major layout
++   * @param dst_row_stride Row stride in destination buffer (number of columns in full matrix)
++   */
++  static inline void unpack_nk_block(const uint8_t* src, uint8_t* dst, size_t dst_row_stride) {
++    // row_map[packed_i] gives the base row for packed index packed_i
++    static constexpr int row_map[8] = {0, 16, 4, 20, 8, 24, 12, 28};
++    const uint64_t* src64 = reinterpret_cast<const uint64_t*>(src);
++
++    // Gather indices: src64[8*j + packed_i] for j = 0..7
++    // Offsets in uint64 units: 0, 8, 16, 24, 32, 40, 48, 56 (+ packed_i for each group)
++    const __m512i gather_offsets = _mm512_set_epi64(56, 48, 40, 32, 24, 16, 8, 0);
++
++    // Process each packed group (8 groups of 4 rows each = 32 rows total)
++    for (int packed_i = 0; packed_i < 8; packed_i++) {
++      const int base_row = row_map[packed_i];
++      const uint64_t* base_src = src64 + packed_i;
++
++      // Gather 8 values for j=0..7 and j=8..15
++      __m512i vals_0_7 = _mm512_i64gather_epi64(gather_offsets, base_src, 8);
++      __m512i vals_8_15 = _mm512_i64gather_epi64(gather_offsets, base_src + 64, 8);
++
++      // Extract 4 rows from each set of 8 values
++      // Row 0: bits 0-15
++      __m128i row0_lo = _mm512_cvtepi64_epi16(_mm512_and_si512(vals_0_7, _mm512_set1_epi64(0xFFFF)));
++      __m128i row0_hi = _mm512_cvtepi64_epi16(_mm512_and_si512(vals_8_15, _mm512_set1_epi64(0xFFFF)));
++      // Row 1: bits 16-31
++      __m128i row1_lo =
++          _mm512_cvtepi64_epi16(_mm512_and_si512(_mm512_srli_epi64(vals_0_7, 16), _mm512_set1_epi64(0xFFFF)));
++      __m128i row1_hi =
++          _mm512_cvtepi64_epi16(_mm512_and_si512(_mm512_srli_epi64(vals_8_15, 16), _mm512_set1_epi64(0xFFFF)));
++      // Row 2: bits 32-47
++      __m128i row2_lo =
++          _mm512_cvtepi64_epi16(_mm512_and_si512(_mm512_srli_epi64(vals_0_7, 32), _mm512_set1_epi64(0xFFFF)));
++      __m128i row2_hi =
++          _mm512_cvtepi64_epi16(_mm512_and_si512(_mm512_srli_epi64(vals_8_15, 32), _mm512_set1_epi64(0xFFFF)));
++      // Row 3: bits 48-63
++      __m128i row3_lo = _mm512_cvtepi64_epi16(_mm512_srli_epi64(vals_0_7, 48));
++      __m128i row3_hi = _mm512_cvtepi64_epi16(_mm512_srli_epi64(vals_8_15, 48));
++
++      // Store 32 bytes (16 x uint16) to each row
++      // Combine two 128-bit values into 256-bit for more efficient stores
++      uint8_t* row0_dst = dst + (size_t)base_row * dst_row_stride;
++      uint8_t* row1_dst = dst + (size_t)(base_row + 1) * dst_row_stride;
++      uint8_t* row2_dst = dst + (size_t)(base_row + 2) * dst_row_stride;
++      uint8_t* row3_dst = dst + (size_t)(base_row + 3) * dst_row_stride;
++
++      // Combine lo and hi into 256-bit and store
++      __m256i row0_256 = _mm256_set_m128i(row0_hi, row0_lo);
++      __m256i row1_256 = _mm256_set_m128i(row1_hi, row1_lo);
++      __m256i row2_256 = _mm256_set_m128i(row2_hi, row2_lo);
++      __m256i row3_256 = _mm256_set_m128i(row3_hi, row3_lo);
++
++      _mm256_storeu_si256((__m256i*)row0_dst, row0_256);
++      _mm256_storeu_si256((__m256i*)row1_dst, row1_256);
++      _mm256_storeu_si256((__m256i*)row2_dst, row2_256);
++      _mm256_storeu_si256((__m256i*)row3_dst, row3_256);
++    }
++  }
++
++  /**
++   * @brief Unpack 4 consecutive N_STEP x K_STEP blocks to maximize cache line utilization
++   *
++   * Processing 4 blocks together means each row write is 128 bytes = 2 cache lines,
++   * which greatly improves write efficiency compared to 32 bytes per row.
++   *
++   * @param src Array of 4 source pointers (each pointing to a 32x32 packed block)
++   * @param dst Destination pointer in n-major layout
++   * @param dst_row_stride Row stride in destination buffer
++   */
++  static inline void unpack_4nk_blocks(const uint8_t* src[4], uint8_t* dst, size_t dst_row_stride) {
++    static constexpr int row_map[8] = {0, 16, 4, 20, 8, 24, 12, 28};
++    constexpr int K_STEP = T::K_STEP;  // 32
++
++    // Reinterpret as uint64 arrays for efficient access
++    const uint64_t* src0 = reinterpret_cast<const uint64_t*>(src[0]);
++    const uint64_t* src1 = reinterpret_cast<const uint64_t*>(src[1]);
++    const uint64_t* src2 = reinterpret_cast<const uint64_t*>(src[2]);
++    const uint64_t* src3 = reinterpret_cast<const uint64_t*>(src[3]);
++
++    // Process all 32 rows, writing 128 bytes (4 x 32) per row
++    for (int packed_i = 0; packed_i < 8; packed_i++) {
++      const int base_row = row_map[packed_i];
++
++      // Process 4 rows at a time
++      for (int r = 0; r < 4; r++) {
++        uint16_t* row_dst = reinterpret_cast<uint16_t*>(dst + (size_t)(base_row + r) * dst_row_stride);
++        const int shift = r * 16;
++
++        // Unroll: process all 4 blocks x 16 columns = 64 uint16 values
++        // Block 0: columns 0-15
++        for (int j = 0; j < 16; j++) {
++          row_dst[j] = static_cast<uint16_t>(src0[8 * j + packed_i] >> shift);
++        }
++        // Block 1: columns 16-31
++        for (int j = 0; j < 16; j++) {
++          row_dst[16 + j] = static_cast<uint16_t>(src1[8 * j + packed_i] >> shift);
++        }
++        // Block 2: columns 32-47
++        for (int j = 0; j < 16; j++) {
++          row_dst[32 + j] = static_cast<uint16_t>(src2[8 * j + packed_i] >> shift);
++        }
++        // Block 3: columns 48-63
++        for (int j = 0; j < 16; j++) {
++          row_dst[48 + j] = static_cast<uint16_t>(src3[8 * j + packed_i] >> shift);
++        }
++      }
++    }
++  }
++
++  /**
++   * @brief Reconstruct weights for a single expert to the output buffers (no temp buffer version)
++   *
++   * Directly unpacks from packed BufferB format to n-major GPU buffers without intermediate storage.
++   * Optimized version with coarse-grained task splitting for better cache utilization.
++   *
++   * Key optimizations:
++   * - Reduced task count (~40 vs ~350) to minimize scheduling overhead
++   * - Larger chunks per task for better cache line utilization
++   * - Process multiple N_STEPs per task for better write locality
++   *
++   * @param gpu_tp_count Number of GPU TP parts (1, 2, 4, or 8)
++   * @param cpu_tp_count Number of CPU TP parts
++   * @param expert_id Expert index to process
++   * @param full_config Full configuration (before CPU TP split)
++   * @param w13_weight_ptrs Pointers to gate+up weight buffers (one per GPU TP)
++   * @param w13_scale_ptrs Pointers to gate+up scale buffers (one per GPU TP)
++   * @param w2_weight_ptrs Pointers to down weight buffers (one per GPU TP)
++   * @param w2_scale_ptrs Pointers to down scale buffers (one per GPU TP)
++   */
++  void write_weights_to_buffer(int gpu_tp_count, [[maybe_unused]] int cpu_tp_count, int expert_id,
++                               const GeneralMOEConfig& full_config, const std::vector<uintptr_t>& w13_weight_ptrs,
++                               const std::vector<uintptr_t>& w13_scale_ptrs,
++                               const std::vector<uintptr_t>& w2_weight_ptrs,
++                               const std::vector<uintptr_t>& w2_scale_ptrs) const {
++    auto& config = config_;
++    const int group_size = config.quant_config.group_size;
++    auto pool = config.pool->get_subpool(tp_part_idx);
++
++    constexpr int N_STEP = T::N_STEP;
++    constexpr int K_STEP = T::K_STEP;
++    constexpr int N_BLOCK = T::N_BLOCK;
++    constexpr int K_BLOCK = T::K_BLOCK;
++
++    // ========= W13 (gate+up): Shape [intermediate, hidden], split by N only =========
++    const int cpu_n_w13 = config.intermediate_size;
++    const int cpu_k_w13 = config.hidden_size;
++    const int gpu_n_w13 = full_config.intermediate_size / gpu_tp_count;
++    const int gpu_k_w13 = full_config.hidden_size;
++    const int global_n_offset_w13 = tp_part_idx * cpu_n_w13;
++
++    const size_t gpu_w13_weight_per_mat = (size_t)gpu_n_w13 * gpu_k_w13;
++    const size_t gpu_w13_scale_per_mat = (size_t)div_up(gpu_n_w13, group_size) * div_up(gpu_k_w13, group_size);
++    const int cpu_scale_k_blocks_w13 = div_up(cpu_k_w13, group_size);
++    const int gpu_scale_k_blocks_w13 = div_up(gpu_k_w13, group_size);
++
++    // ========= W2 (down): Shape [hidden, intermediate], split by K =========
++    const int cpu_n_w2 = config.hidden_size;
++    const int cpu_k_w2 = config.intermediate_size;
++    const int gpu_n_w2 = full_config.hidden_size;
++    const int gpu_k_w2 = full_config.intermediate_size / gpu_tp_count;
++    const int global_k_offset_w2 = tp_part_idx * cpu_k_w2;
++
++    const size_t gpu_w2_weight_per_mat = (size_t)gpu_n_w2 * gpu_k_w2;
++    const size_t gpu_w2_scale_per_mat = (size_t)div_up(gpu_n_w2, group_size) * div_up(gpu_k_w2, group_size);
++    const int cpu_scale_k_blocks_w2 = div_up(cpu_k_w2, group_size);
++    const int gpu_scale_k_blocks_w2 = div_up(gpu_k_w2, group_size);
++
++    // ========= Scale dimensions =========
++    const int cpu_scale_n_blocks_w13 = div_up(cpu_n_w13, group_size);
++    const int gpu_scale_n_blocks_w13 = div_up(gpu_n_w13, group_size);
++    const int cpu_scale_n_blocks_w2 = div_up(cpu_n_w2, group_size);
++
++    // ========= Optimized job layout =========
++    // Use task count slightly above CPU core count for good work stealing
++    // For 80-core system, ~100 tasks provides good balance
++    constexpr int NUM_W13_TASKS = 32;  // Per matrix (gate or up), total 64 for w13
++    constexpr int NUM_W2_TASKS = 32;   // For down matrix
++    constexpr int SCALE_TASKS = 3;     // gate_scale, up_scale, down_scale
++
++    const int total_tasks = NUM_W13_TASKS * 2 + NUM_W2_TASKS + SCALE_TASKS;
++
++    // Calculate N_STEP blocks per task (must be N_STEP aligned for correct BufferB addressing)
++    const int w13_n_steps = div_up(cpu_n_w13, N_STEP);
++    const int w13_steps_per_task = div_up(w13_n_steps, NUM_W13_TASKS);
++    const int w2_n_steps = div_up(cpu_n_w2, N_STEP);
++    const int w2_steps_per_task = div_up(w2_n_steps, NUM_W2_TASKS);
++
++    pool->do_work_stealing_job(
++        total_tasks, nullptr,
++        [=, &w13_weight_ptrs, &w13_scale_ptrs, &w2_weight_ptrs, &w2_scale_ptrs, this](int task_id) {
++          if (task_id < NUM_W13_TASKS * 2) {
++            // ========= W13 weight task: process chunk of rows x full K =========
++            const bool is_up = task_id >= NUM_W13_TASKS;
++            const int chunk_idx = task_id % NUM_W13_TASKS;
++            const auto& bb = is_up ? up_bb_[expert_id] : gate_bb_[expert_id];
++
++            // Calculate row range for this task (N_STEP aligned)
++            const int step_start = chunk_idx * w13_steps_per_task;
++            const int step_end = std::min(step_start + w13_steps_per_task, w13_n_steps);
++            if (step_start >= w13_n_steps) return;
++            const int chunk_n_start = step_start * N_STEP;
++            const int chunk_n_end = std::min(step_end * N_STEP, cpu_n_w13);
++
++            // Process each N_STEP within this chunk
++            for (int local_n_start = chunk_n_start; local_n_start < chunk_n_end; local_n_start += N_STEP) {
++              // Calculate GPU target and offset for each N_STEP (may cross GPU TP boundaries)
++              const int global_n = global_n_offset_w13 + local_n_start;
++              const int target_gpu = global_n / gpu_n_w13;
++              const int n_in_gpu = global_n % gpu_n_w13;
++
++              uint8_t* weight_base = (uint8_t*)w13_weight_ptrs[target_gpu];
++              // Pointer already points to current expert's location, only add offset for up matrix
++              const size_t expert_weight_off = is_up ? gpu_w13_weight_per_mat : 0;
++
++              // Calculate N_BLOCK info for source addressing
++              const int n_block_idx = local_n_start / N_BLOCK;
++              const int n_block_begin = n_block_idx * N_BLOCK;
++              const int n_block_size = std::min(N_BLOCK, cpu_n_w13 - n_block_begin);
++              const int n_in_block = local_n_start - n_block_begin;
++
++              // Process all K in groups of 4 K_STEPs when possible for cache efficiency
++              for (int k_block_begin = 0; k_block_begin < cpu_k_w13; k_block_begin += K_BLOCK) {
++                const int k_block_size = std::min(K_BLOCK, cpu_k_w13 - k_block_begin);
++
++                // Try to process 4 K_STEPs at once (128 columns = 2 cache lines per row)
++                int k_begin = 0;
++                for (; k_begin + 4 * K_STEP <= k_block_size; k_begin += 4 * K_STEP) {
++                  const uint8_t* src_ptrs[4];
++                  for (int i = 0; i < 4; i++) {
++                    src_ptrs[i] = bb->b + (size_t)n_block_begin * cpu_k_w13 + (size_t)k_block_begin * n_block_size +
++                                  (size_t)n_in_block * k_block_size + (size_t)(k_begin + i * K_STEP) * N_STEP;
++                  }
++                  uint8_t* dst =
++                      weight_base + expert_weight_off + (size_t)n_in_gpu * gpu_k_w13 + k_block_begin + k_begin;
++                  unpack_4nk_blocks(src_ptrs, dst, gpu_k_w13);
++                }
++
++                // Handle remaining K_STEPs one by one
++                for (; k_begin < k_block_size; k_begin += K_STEP) {
++                  const uint8_t* src = bb->b + (size_t)n_block_begin * cpu_k_w13 +
++                                       (size_t)k_block_begin * n_block_size + (size_t)n_in_block * k_block_size +
++                                       (size_t)k_begin * N_STEP;
++                  uint8_t* dst =
++                      weight_base + expert_weight_off + (size_t)n_in_gpu * gpu_k_w13 + k_block_begin + k_begin;
++                  unpack_nk_block(src, dst, gpu_k_w13);
++                }
++              }
++            }
++
++          } else if (task_id < NUM_W13_TASKS * 2 + NUM_W2_TASKS) {
++            // ========= W2 weight task: process chunk of rows x all K slices =========
++            const int chunk_idx = task_id - NUM_W13_TASKS * 2;
++            const auto& bb = down_bb_[expert_id];
++
++            // Calculate row range for this task (N_STEP aligned)
++            const int step_start = chunk_idx * w2_steps_per_task;
++            const int step_end = std::min(step_start + w2_steps_per_task, w2_n_steps);
++            if (step_start >= w2_n_steps) return;
++            const int chunk_n_start = step_start * N_STEP;
++            const int chunk_n_end = std::min(step_end * N_STEP, cpu_n_w2);
++
++            // Process each N_STEP within this chunk
++            for (int local_n_start = chunk_n_start; local_n_start < chunk_n_end; local_n_start += N_STEP) {
++              // Calculate N_BLOCK info for source addressing
++              const int n_block_idx = local_n_start / N_BLOCK;
++              const int n_block_begin = n_block_idx * N_BLOCK;
++              const int n_block_size = std::min(N_BLOCK, cpu_n_w2 - n_block_begin);
++              const int n_in_block = local_n_start - n_block_begin;
++
++              // Process all K slices (each slice goes to a different GPU TP)
++              for (int k_slice_start = 0; k_slice_start < cpu_k_w2; k_slice_start += gpu_k_w2) {
++                const int k_slice_end = std::min(k_slice_start + gpu_k_w2, cpu_k_w2);
++
++                const int global_k_start = global_k_offset_w2 + k_slice_start;
++                const int target_gpu = global_k_start / gpu_k_w2;
++                const int k_in_gpu_base = global_k_start % gpu_k_w2;
++
++                uint8_t* weight_base = (uint8_t*)w2_weight_ptrs[target_gpu];
++                // Pointer already points to current expert's location
++                const size_t expert_weight_off = 0;
++
++                // Process K within this slice, trying 4 K_STEPs at once when aligned
++                for (int k_abs = k_slice_start; k_abs < k_slice_end;) {
++                  const int k_block_idx = k_abs / K_BLOCK;
++                  const int k_block_begin = k_block_idx * K_BLOCK;
++                  const int k_block_size = std::min(K_BLOCK, cpu_k_w2 - k_block_begin);
++                  const int k_in_block = k_abs - k_block_begin;
++                  const int k_in_gpu = k_in_gpu_base + (k_abs - k_slice_start);
++
++                  // Check if we can process 4 K_STEPs at once
++                  const int remaining_in_block = k_block_size - k_in_block;
++                  const int remaining_in_slice = k_slice_end - k_abs;
++
++                  if (remaining_in_block >= 4 * K_STEP && remaining_in_slice >= 4 * K_STEP) {
++                    const uint8_t* src_ptrs[4];
++                    for (int i = 0; i < 4; i++) {
++                      src_ptrs[i] = bb->b + (size_t)n_block_begin * cpu_k_w2 + (size_t)k_block_begin * n_block_size +
++                                    (size_t)n_in_block * k_block_size + (size_t)(k_in_block + i * K_STEP) * N_STEP;
++                    }
++                    uint8_t* dst = weight_base + expert_weight_off + (size_t)local_n_start * gpu_k_w2 + k_in_gpu;
++                    unpack_4nk_blocks(src_ptrs, dst, gpu_k_w2);
++                    k_abs += 4 * K_STEP;
++                  } else {
++                    const uint8_t* src = bb->b + (size_t)n_block_begin * cpu_k_w2 +
++                                         (size_t)k_block_begin * n_block_size + (size_t)n_in_block * k_block_size +
++                                         (size_t)k_in_block * N_STEP;
++                    uint8_t* dst = weight_base + expert_weight_off + (size_t)local_n_start * gpu_k_w2 + k_in_gpu;
++                    unpack_nk_block(src, dst, gpu_k_w2);
++                    k_abs += K_STEP;
++                  }
++                }
++              }
++            }
++
++          } else {
++            // ========= Scale copy task: simple linear copy with fast_memcpy =========
++            const int scale_task_id = task_id - NUM_W13_TASKS * 2 - NUM_W2_TASKS;
++
++            if (scale_task_id < 2) {
++              // Gate (0) or Up (1) scale copy
++              const bool is_up = scale_task_id == 1;
++              const auto& bb = is_up ? up_bb_[expert_id] : gate_bb_[expert_id];
++
++              // W13 scales: copy N blocks corresponding to this CPU TP
++              // Note: when gpu_tp > cpu_tp, scale blocks may span multiple GPU TPs
++              const int bn_start_global = global_n_offset_w13 / group_size;
++
++              for (int bn = 0; bn < cpu_scale_n_blocks_w13; bn++) {
++                const int global_bn = bn_start_global + bn;
++                const int target_gpu = global_bn / gpu_scale_n_blocks_w13;
++                const int gpu_bn = global_bn % gpu_scale_n_blocks_w13;
++
++                float* scale_dst = (float*)w13_scale_ptrs[target_gpu];
++                // Pointer already points to current expert's location, only add offset for up matrix
++                const size_t expert_scale_off = is_up ? gpu_w13_scale_per_mat : 0;
++
++                fast_memcpy(scale_dst + expert_scale_off + (size_t)gpu_bn * gpu_scale_k_blocks_w13,
++                            bb->d + (size_t)bn * cpu_scale_k_blocks_w13, cpu_scale_k_blocks_w13 * sizeof(float));
++              }
++            } else {
++              // Down scale copy (scale_task_id == 2)
++              const auto& bb = down_bb_[expert_id];
++
++              // W2 scales: K dimension is split, copy to each GPU TP
++              for (int k_slice_idx = 0; k_slice_idx < div_up(cpu_k_w2, gpu_k_w2); k_slice_idx++) {
++                const int k_slice_start = k_slice_idx * gpu_k_w2;
++                const int k_slice_end = std::min(k_slice_start + gpu_k_w2, cpu_k_w2);
++
++                const int global_k_start = global_k_offset_w2 + k_slice_start;
++                const int target_gpu = global_k_start / gpu_k_w2;
++                const int bk_gpu_base = (global_k_start % gpu_k_w2) / group_size;
++
++                float* scale_dst = (float*)w2_scale_ptrs[target_gpu];
++                // Pointer already points to current expert's location
++                const size_t expert_scale_off = 0;
++
++                const int bk_start = k_slice_start / group_size;
++                const int bk_end = div_up(k_slice_end, group_size);
++                const int bk_count = bk_end - bk_start;
++
++                for (int bn = 0; bn < cpu_scale_n_blocks_w2; bn++) {
++                  fast_memcpy(scale_dst + expert_scale_off + (size_t)bn * gpu_scale_k_blocks_w2 + bk_gpu_base,
++                              bb->d + (size_t)bn * cpu_scale_k_blocks_w2 + bk_start, bk_count * sizeof(float));
++                }
++              }
++            }
++          }
++        },
++        nullptr);
++  }
++};
++
++template <typename K>
++class TP_MOE<AMX_FP8_MOE_TP<K>> : public TP_MOE<AMX_MOE_BASE<K, AMX_FP8_MOE_TP<K>>> {
++ public:
++  using Base = TP_MOE<AMX_MOE_BASE<K, AMX_FP8_MOE_TP<K>>>;
++  using Base::Base;
++
++  void load_weights() override {
++    auto& config = this->config;
++    auto& tps = this->tps;
++    auto& tp_count = this->tp_count;
++    auto pool = config.pool;
++    const uint64_t* physical_to_logical_map = (const uint64_t*)config.physical_to_logical_map;
++
++    const int group_size = config.quant_config.group_size;
++    if (group_size == 0 || config.quant_config.zero_point) {
++      throw std::runtime_error("FP8 MoE only supports have group_size, zero_point=false");
++    }
++
++    if (config.gate_projs.empty() && config.gate_proj == nullptr) {
++      throw std::runtime_error("no weight source");
++    }
++    const bool use_per_expert_ptrs = !config.gate_projs.empty();
++
++    const size_t full_weight_elems = (size_t)config.intermediate_size * config.hidden_size;
++    const size_t full_scale_elems =
++        (size_t)div_up(config.hidden_size, group_size) * div_up(config.intermediate_size, group_size);
++
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      auto& tpc = tps[i]->config_;
++      const size_t tp_weight_elems = (size_t)tpc.intermediate_size * tpc.hidden_size;
++      const size_t tp_scale_elems =
++          (size_t)div_up(tpc.intermediate_size, group_size) * div_up(tpc.hidden_size, group_size);
++
++      tpc.gate_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++      tpc.up_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++      tpc.down_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++
++      tpc.gate_scale = new float[tpc.expert_num * tp_scale_elems];
++      tpc.up_scale = new float[tpc.expert_num * tp_scale_elems];
++      tpc.down_scale = new float[tpc.expert_num * tp_scale_elems];
++
++      const size_t tp_idx = (size_t)i;
++      const size_t gate_up_weight_src_offset = i * tp_weight_elems;
++      const size_t gate_up_scale_src_offset = i * tp_scale_elems;
++
++      const size_t down_weight_src_col_offset = i * (size_t)tpc.intermediate_size;
++      const size_t down_scale_src_block_k_offset = down_weight_src_col_offset / (size_t)group_size;
++
++      pool->get_subpool(i)->do_work_stealing_job(
++          tpc.expert_num, nullptr,
++          [&, &tpc](int expert_id_) {
++            const size_t expert_id = expert_map(physical_to_logical_map, expert_id_);
++
++            uint8_t* gate_dst = (uint8_t*)tpc.gate_proj + expert_id * tp_weight_elems;
++            uint8_t* up_dst = (uint8_t*)tpc.up_proj + expert_id * tp_weight_elems;
++            uint8_t* down_dst = (uint8_t*)tpc.down_proj + expert_id * tp_weight_elems;
++
++            float* gate_scale_dst = (float*)tpc.gate_scale + expert_id * tp_scale_elems;
++            float* up_scale_dst = (float*)tpc.up_scale + expert_id * tp_scale_elems;
++            float* down_scale_dst = (float*)tpc.down_scale + expert_id * tp_scale_elems;
++
++            const uint8_t* gate_src;
++            const uint8_t* up_src;
++            const uint8_t* down_src;
++            const float* gate_scale_src;
++            const float* up_scale_src;
++            const float* down_scale_src;
++
++            if (use_per_expert_ptrs) {
++              gate_src = (const uint8_t*)config.gate_projs[0][expert_id] + gate_up_weight_src_offset;
++              up_src = (const uint8_t*)config.up_projs[0][expert_id] + gate_up_weight_src_offset;
++              down_src = (const uint8_t*)config.down_projs[0][expert_id];
++
++              gate_scale_src = (const float*)config.gate_scales[0][expert_id] + gate_up_scale_src_offset;
++              up_scale_src = (const float*)config.up_scales[0][expert_id] + gate_up_scale_src_offset;
++              down_scale_src = (const float*)config.down_scales[0][expert_id];
++            } else {
++              gate_src = (const uint8_t*)config.gate_proj + expert_id * full_weight_elems + gate_up_weight_src_offset;
++              up_src = (const uint8_t*)config.up_proj + expert_id * full_weight_elems + gate_up_weight_src_offset;
++              down_src = (const uint8_t*)config.down_proj + expert_id * full_weight_elems;
++
++              gate_scale_src =
++                  (const float*)config.gate_scale + expert_id * full_scale_elems + gate_up_scale_src_offset;
++              up_scale_src = (const float*)config.up_scale + expert_id * full_scale_elems + gate_up_scale_src_offset;
++              down_scale_src = (const float*)config.down_scale + expert_id * full_scale_elems;
++            }
++
++            std::memcpy(gate_dst, gate_src, tp_weight_elems);
++            std::memcpy(up_dst, up_src, tp_weight_elems);
++            std::memcpy(gate_scale_dst, gate_scale_src, sizeof(float) * tp_scale_elems);
++            std::memcpy(up_scale_dst, up_scale_src, sizeof(float) * tp_scale_elems);
++
++            for (int row = 0; row < config.hidden_size; row++) {
++              const size_t src_row_offset = (size_t)row * (size_t)config.intermediate_size + down_weight_src_col_offset;
++              const size_t dst_row_offset = (size_t)row * (size_t)tpc.intermediate_size;
++              std::memcpy(down_dst + dst_row_offset, down_src + src_row_offset, (size_t)tpc.intermediate_size);
++            }
++
++            const int n_blocks_n = div_up(config.hidden_size, group_size);
++            const int full_n_blocks_k = div_up(config.intermediate_size, group_size);
++            const int tp_n_blocks_k = div_up(tpc.intermediate_size, group_size);
++            for (int bn = 0; bn < n_blocks_n; bn++) {
++              const float* src = down_scale_src + (size_t)bn * (size_t)full_n_blocks_k + down_scale_src_block_k_offset;
++              float* dst = down_scale_dst + (size_t)bn * (size_t)tp_n_blocks_k;
++              std::memcpy(dst, src, sizeof(float) * (size_t)tp_n_blocks_k);
++            }
++          },
++          nullptr);
++    });
++
++    DO_TPS_LOAD_WEIGHTS(pool);
++
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      auto& tpc = tps[i]->config_;
++      delete[] (uint8_t*)tpc.gate_proj;
++      delete[] (uint8_t*)tpc.up_proj;
++      delete[] (uint8_t*)tpc.down_proj;
++      delete[] (float*)tpc.gate_scale;
++      delete[] (float*)tpc.up_scale;
++      delete[] (float*)tpc.down_scale;
++    });
++
++    this->weights_loaded = true;
++  }
++
++  void write_weight_scale_to_buffer(int gpu_tp_count, int expert_id, const std::vector<uintptr_t>& w13_weight_ptrs,
++                                    const std::vector<uintptr_t>& w13_scale_ptrs,
++                                    const std::vector<uintptr_t>& w2_weight_ptrs,
++                                    const std::vector<uintptr_t>& w2_scale_ptrs) {
++    if (this->weights_loaded == false) {
++      throw std::runtime_error("Not Loaded");
++    }
++    if (this->tps.empty()) {
++      throw std::runtime_error("No TP parts initialized");
++    }
++    if ((int)w13_weight_ptrs.size() != gpu_tp_count || (int)w13_scale_ptrs.size() != gpu_tp_count ||
++        (int)w2_weight_ptrs.size() != gpu_tp_count || (int)w2_scale_ptrs.size() != gpu_tp_count) {
++      throw std::runtime_error("Pointer arrays size must match gpu_tp_count");
++    }
++
++    this->config.pool->dispense_backend()->do_numa_job([&, this](int i) {
++      this->tps[i]->write_weights_to_buffer(gpu_tp_count, this->tp_count, expert_id, this->config, w13_weight_ptrs,
++                                            w13_scale_ptrs, w2_weight_ptrs, w2_scale_ptrs);
++    });
++  }
++};
++
++#endif  // CPUINFER_OPERATOR_AMX_FP8_MOE_H
+diff --git a/kt-kernel/operators/avx2/fp8-moe.hpp.bak-preC b/kt-kernel/operators/avx2/fp8-moe.hpp.bak-preC
+new file mode 100644
+index 0000000..77b3eda
+--- /dev/null
++++ b/kt-kernel/operators/avx2/fp8-moe.hpp.bak-preC
+@@ -0,0 +1,598 @@
++/**
++ * @Description  : AVX2 FP8 MoE operator (ported from amx/fp8-moe.hpp)
++ * @Author       : Claude
++ * @Date         : 2026-03-18
++ * @Version      : 1.0.0
++ * @Copyright (c) 2024 by KVCache.AI, All Rights Reserved.
++ *
++ * FP8 E4M3 weights with 128×128 block-wise float32 scales.
++ * Dequantization: FP8→FP32 via precomputed 256-entry LUT + AVX2 gather.
++ * GEMM: BF16 input × FP32 dequantized weight → FP32 output.
++ **/
++#ifndef CPUINFER_OPERATOR_AVX2_FP8_MOE_H
++#define CPUINFER_OPERATOR_AVX2_FP8_MOE_H
++
++#include "avx2_bf16_gemm.hpp"
++#include "avx2_bf16_utils.hpp"
++#include "fp8_dequant.hpp"
++#include "moe_base.hpp"
++
++namespace avx2 {
++
++inline int div_up(int a, int b) { return (a + b - 1) / b; }
++
++struct GemmKernelAVX2FP8 {
++  using dt = ggml_bf16_t;
++  using output_t = float;
++  static constexpr int M_STEP = 1;
++  static constexpr int N_STEP = 8;
++  static constexpr int K_STEP = 8;
++  static constexpr int BLOCK_SIZE = 128;  // 128×128 block quantization
++  static constexpr int N_BLOCK = 128;
++  static constexpr int K_BLOCK = 128;
++  static constexpr double ELEMENT_SIZE = 1.0;  // FP8 = 1 byte
++
++  static void config() {}
++
++  static int recommended_nth(int n) {
++    return std::max(1, div_up(n, N_BLOCK));
++  }
++
++  static std::pair<int, int> split_range_n(int n, int ith, int nth) {
++    return avx2::split_range(n, ith, nth);
++  }
++
++  // ========================================================================
++  // BufferA: BF16 activations [M, K] — same as BF16 backend
++  // ========================================================================
++  struct BufferA {
++    ggml_bf16_t* data = nullptr;
++    size_t max_m = 0;
++    size_t k = 0;
++
++    BufferA() = default;
++    BufferA(size_t m, size_t k_, void* ptr) : max_m(m), k(k_), data((ggml_bf16_t*)ptr) {}
++
++    static size_t required_size(size_t m, size_t k) {
++      return m * k * sizeof(ggml_bf16_t);
++    }
++
++    void set_data(void* ptr) { data = (ggml_bf16_t*)ptr; }
++
++    void from_mat(int m, const ggml_bf16_t* src, int ith, int nth) {
++      if (ith == 0 && nth == 1) {
++        std::memcpy(data, src, (size_t)m * k * sizeof(ggml_bf16_t));
++      } else {
++        auto [m_start, m_end] = avx2::split_range(m, ith, nth);
++        std::memcpy(data + m_start * k, src + m_start * k,
++                    (size_t)(m_end - m_start) * k * sizeof(ggml_bf16_t));
++      }
++    }
++  };
++
++  // ========================================================================
++  // BufferB: FP8 weights [N, K] + float32 scales [N/BS, K/BS]
++  // Row-major, no packing. from_mat = memcpy.
++  // ========================================================================
++  struct BufferB {
++    uint8_t* b = nullptr;  // FP8 weights
++    float* d = nullptr;    // Block-wise scales
++    size_t n = 0;
++    size_t k = 0;
++    int block_size = BLOCK_SIZE;
++
++    BufferB() = default;
++    BufferB(size_t n_, size_t k_, int bs, void* ptr) : n(n_), k(k_), block_size(bs) {
++      b = (uint8_t*)ptr;
++      size_t weight_bytes = n * k;
++      d = (float*)((uint8_t*)ptr + weight_bytes);
++    }
++
++    static size_t required_size(size_t n, size_t k, int bs) {
++      size_t n_blocks_n = div_up((int)n, bs);
++      size_t n_blocks_k = div_up((int)k, bs);
++      return n * k + n_blocks_n * n_blocks_k * sizeof(float);
++    }
++
++    void from_mat(const uint8_t* src_weights, const float* src_scales, int ith, int nth) {
++      // Copy weights (split by N)
++      auto [n_start, n_end] = avx2::split_range((int)n, ith, nth);
++      std::memcpy(b + n_start * k, src_weights + n_start * k,
++                  (size_t)(n_end - n_start) * k);
++
++      // Copy scales (split by N blocks)
++      int n_blocks_k = div_up((int)k, block_size);
++      int nb_start = n_start / block_size;
++      int nb_end = div_up(n_end, block_size);
++      std::memcpy(d + nb_start * n_blocks_k, src_scales + nb_start * n_blocks_k,
++                  (size_t)(nb_end - nb_start) * n_blocks_k * sizeof(float));
++    }
++  };
++
++  // ========================================================================
++  // BufferC: FP32 output — same as BF16 backend
++  // ========================================================================
++  struct BufferC {
++    float* data = nullptr;
++    size_t max_m = 0;
++    size_t n = 0;
++
++    BufferC() = default;
++    BufferC(size_t m, size_t n_, void* ptr) : max_m(m), n(n_), data((float*)ptr) {}
++
++    static size_t required_size(size_t m, size_t n) {
++      return m * n * sizeof(float);
++    }
++
++    void set_data(void* ptr) { data = (float*)ptr; }
++
++    void to_mat(int m, ggml_bf16_t* dst, int ith, int nth) {
++      auto [n_start, n_end] = avx2::split_range((int)n, ith, nth);
++      for (int mi = 0; mi < m; mi++) {
++        float* src_row = data + mi * n;
++        ggml_bf16_t* dst_row = dst + mi * n;
++        int j = n_start;
++        for (; j + 8 <= n_end; j += 8) {
++          __m256 v = _mm256_loadu_ps(src_row + j);
++          store_fp32_to_bf16(dst_row + j, v);
++        }
++        for (; j < n_end; j++) {
++          dst_row[j] = GGML_FP32_TO_BF16(src_row[j]);
++        }
++      }
++    }
++  };
++};
++
++// ============================================================================
++// AVX2 FP8 GEMM: C[m,n] = sum_k (A[m,k] * dequant(B[n,k])) * scale[n/BS, k/BS]
++// ============================================================================
++
++static inline void gemm_fp8(
++    int m, int n, int k,
++    GemmKernelAVX2FP8::BufferA& a,
++    GemmKernelAVX2FP8::BufferB& b,
++    GemmKernelAVX2FP8::BufferC& c,
++    int ith, int nth) {
++
++  ensure_fp8_lut_initialized();
++
++  auto [n_start, n_end] = split_range(n, ith, nth);
++  const int block_size = b.block_size;
++  const int n_blocks_k = div_up(k, block_size);
++
++  for (int ni = n_start; ni < n_end; ni++) {
++    const uint8_t* b_row = b.b + (size_t)ni * k;
++    const int n_block_idx = ni / block_size;
++
++    for (int mi = 0; mi < m; mi++) {
++      const ggml_bf16_t* a_row = a.data + (size_t)mi * a.k;
++      float sum = 0.0f;
++
++      for (int kb = 0; kb < k; kb += block_size) {
++        int k_len = std::min(block_size, k - kb);
++        int k_block_idx = kb / block_size;
++        float scale = b.d[n_block_idx * n_blocks_k + k_block_idx];
++
++        // Accumulate within this block
++        __m256 acc1 = _mm256_setzero_ps();
++        __m256 acc2 = _mm256_setzero_ps();
++        __m256 acc3 = _mm256_setzero_ps();
++        __m256 acc4 = _mm256_setzero_ps();
++
++        int ki = 0;
++        for (; ki + 32 <= k_len; ki += 32) {
++          acc1 = _mm256_fmadd_ps(load_bf16_to_fp32(a_row + kb + ki),
++                                  fp8x8_to_fp32x8(b_row + kb + ki), acc1);
++          acc2 = _mm256_fmadd_ps(load_bf16_to_fp32(a_row + kb + ki + 8),
++                                  fp8x8_to_fp32x8(b_row + kb + ki + 8), acc2);
++          acc3 = _mm256_fmadd_ps(load_bf16_to_fp32(a_row + kb + ki + 16),
++                                  fp8x8_to_fp32x8(b_row + kb + ki + 16), acc3);
++          acc4 = _mm256_fmadd_ps(load_bf16_to_fp32(a_row + kb + ki + 24),
++                                  fp8x8_to_fp32x8(b_row + kb + ki + 24), acc4);
++        }
++        for (; ki + 8 <= k_len; ki += 8) {
++          acc1 = _mm256_fmadd_ps(load_bf16_to_fp32(a_row + kb + ki),
++                                  fp8x8_to_fp32x8(b_row + kb + ki), acc1);
++        }
++
++        float block_sum = hsum_avx2(_mm256_add_ps(_mm256_add_ps(acc1, acc3),
++                                                   _mm256_add_ps(acc2, acc4)));
++
++        // Scalar tail
++        for (; ki < k_len; ki++) {
++          block_sum += GGML_BF16_TO_FP32(a_row[kb + ki]) * fp8_to_fp32_scalar(b_row[kb + ki]);
++        }
++
++        sum += block_sum * scale;
++      }
++
++      c.data[mi * n + ni] = sum;
++    }
++  }
++}
++
++}  // namespace avx2
++
++// ============================================================================
++// AVX2 FP8 MoE operator (CRTP derived from AVX2_MOE_BASE)
++// ============================================================================
++
++template <class T = avx2::GemmKernelAVX2FP8>
++class AVX2_FP8_MOE_TP : public AVX2_MOE_BASE<T, AVX2_FP8_MOE_TP<T>> {
++  using Base = AVX2_MOE_BASE<T, AVX2_FP8_MOE_TP<T>>;
++  using Base::config_;
++  using Base::down_ba_;
++  using Base::down_bb_;
++  using Base::down_bc_;
++  using Base::gate_bb_;
++  using Base::gate_bc_;
++  using Base::gate_up_ba_;
++  using Base::m_local_num_;
++  using Base::tp_part_idx;
++  using Base::up_bb_;
++  using Base::up_bc_;
++
++ public:
++  using typename Base::input_t;
++  using typename Base::output_t;
++
++  AVX2_FP8_MOE_TP() = default;
++
++  AVX2_FP8_MOE_TP(GeneralMOEConfig config, int tp_part_idx_ = 0) : Base(config, tp_part_idx_) {}
++
++  void derived_init() {
++    avx2::ensure_fp8_lut_initialized();
++    auto& quant_config = config_.quant_config;
++    if (quant_config.group_size == 0 || quant_config.zero_point) {
++      throw std::runtime_error("AVX2 FP8 MoE only supports block-wise FP8 (group_size > 0, no zero_point)");
++    }
++    printf("Created AVX2_FP8_MOE_TP %d at numa %d\n", tp_part_idx, numa_node_of_cpu(sched_getcpu()));
++  }
++
++  ~AVX2_FP8_MOE_TP() = default;
++
++  // CRTP buffer creation — with group_size for BufferB
++  size_t buffer_a_required_size_impl(size_t m, size_t k) const { return T::BufferA::required_size(m, k); }
++  size_t buffer_b_required_size_impl(size_t n, size_t k) const {
++    return T::BufferB::required_size(n, k, config_.quant_config.group_size);
++  }
++  size_t buffer_c_required_size_impl(size_t m, size_t n) const { return T::BufferC::required_size(m, n); }
++
++  std::shared_ptr<typename T::BufferA> make_buffer_a_impl(size_t m, size_t k, void* data) const {
++    return std::make_shared<typename T::BufferA>(m, k, data);
++  }
++  std::shared_ptr<typename T::BufferB> make_buffer_b_impl(size_t n, size_t k, void* data) const {
++    return std::make_shared<typename T::BufferB>(n, k, config_.quant_config.group_size, data);
++  }
++  std::shared_ptr<typename T::BufferC> make_buffer_c_impl(size_t m, size_t n, void* data) const {
++    return std::make_shared<typename T::BufferC>(m, n, data);
++  }
++
++  // GEMM dispatch
++  void do_gate_up_gemm(bool do_up, int expert_idx, int ith, int nth, int qlen) {
++    int m = m_local_num_[expert_idx];
++    auto& ba = gate_up_ba_[expert_idx];
++    auto& bb = do_up ? up_bb_[expert_idx] : gate_bb_[expert_idx];
++    auto& bc = do_up ? up_bc_[expert_idx] : gate_bc_[expert_idx];
++    avx2::gemm_fp8(m, config_.intermediate_size, config_.hidden_size, *ba, *bb, *bc, ith, nth);
++  }
++
++  void do_down_gemm(int expert_idx, int ith, int nth, int qlen) {
++    int m = m_local_num_[expert_idx];
++    avx2::gemm_fp8(m, config_.hidden_size, config_.intermediate_size,
++                   *down_ba_[expert_idx], *down_bb_[expert_idx], *down_bc_[expert_idx], ith, nth);
++  }
++
++  // Load FP8 weights + scales from contiguous memory
++  void load_weights() {
++    auto& quant_config = config_.quant_config;
++    int group_size = quant_config.group_size;
++    const uint64_t* physical_to_logical_map = (const uint64_t*)config_.physical_to_logical_map;
++    auto pool = config_.pool->get_subpool(tp_part_idx);
++
++    if (config_.gate_scale == nullptr) {
++      throw std::runtime_error("FP8 MOE requires scale pointers.");
++    }
++
++    // Load gate + up weights
++    int nth = T::recommended_nth(config_.intermediate_size);
++    pool->do_work_stealing_job(
++        nth * config_.expert_num, nullptr,
++        [this, nth, physical_to_logical_map, group_size](int task_id) {
++          uint64_t expert_idx = task_id / nth;
++          uint64_t logical_expert_id = expert_map(physical_to_logical_map, expert_idx);
++          int ith = task_id % nth;
++
++          size_t weight_offset = logical_expert_id * config_.intermediate_size * config_.hidden_size;
++          size_t scale_offset = logical_expert_id *
++              avx2::div_up(config_.hidden_size, group_size) *
++              avx2::div_up(config_.intermediate_size, group_size);
++
++          gate_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.gate_proj + weight_offset,
++              (float*)config_.gate_scale + scale_offset,
++              ith, nth);
++
++          up_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.up_proj + weight_offset,
++              (float*)config_.up_scale + scale_offset,
++              ith, nth);
++        },
++        nullptr);
++
++    // Load down weights
++    nth = T::recommended_nth(config_.hidden_size);
++    pool->do_work_stealing_job(
++        nth * config_.expert_num, nullptr,
++        [this, nth, physical_to_logical_map, group_size](int task_id) {
++          uint64_t expert_idx = task_id / nth;
++          uint64_t logical_expert_id = expert_map(physical_to_logical_map, expert_idx);
++          int ith = task_id % nth;
++
++          size_t weight_offset = logical_expert_id * config_.intermediate_size * config_.hidden_size;
++          size_t scale_offset = logical_expert_id *
++              avx2::div_up(config_.hidden_size, group_size) *
++              avx2::div_up(config_.intermediate_size, group_size);
++
++          down_bb_[expert_idx]->from_mat(
++              (uint8_t*)config_.down_proj + weight_offset,
++              (float*)config_.down_scale + scale_offset,
++              ith, nth);
++        },
++        nullptr);
++  }
++
++  // Write weights to GPU buffer (for dynamic expert offload / layerwise prefill)
++  void write_weights_to_buffer(int gpu_tp_count, [[maybe_unused]] int cpu_tp_count, int expert_id,
++                               const GeneralMOEConfig& full_config, const std::vector<uintptr_t>& w13_weight_ptrs,
++                               const std::vector<uintptr_t>& w13_scale_ptrs,
++                               const std::vector<uintptr_t>& w2_weight_ptrs,
++                               const std::vector<uintptr_t>& w2_scale_ptrs) const {
++    auto& config = config_;
++    auto pool = config.pool->get_subpool(tp_part_idx);
++    int group_size = config.quant_config.group_size;
++
++    // W13 (gate+up)
++    const int cpu_n_w13 = config.intermediate_size;
++    const int cpu_k_w13 = config.hidden_size;
++    const int gpu_n_w13 = full_config.intermediate_size / gpu_tp_count;
++    const int gpu_k_w13 = full_config.hidden_size;
++    const int global_n_offset_w13 = tp_part_idx * cpu_n_w13;
++    const size_t gpu_w13_weight_per_mat = (size_t)gpu_n_w13 * gpu_k_w13;
++    const int gpu_n_blocks_k_w13 = avx2::div_up(gpu_k_w13, group_size);
++    const size_t gpu_w13_scale_per_mat = (size_t)avx2::div_up(gpu_n_w13, group_size) * gpu_n_blocks_k_w13;
++
++    // W2 (down)
++    const int cpu_n_w2 = config.hidden_size;
++    const int cpu_k_w2 = config.intermediate_size;
++    const int gpu_k_w2 = full_config.intermediate_size / gpu_tp_count;
++    const int global_k_offset_w2 = tp_part_idx * cpu_k_w2;
++    const int cpu_n_blocks_k_w2 = avx2::div_up(cpu_k_w2, group_size);
++
++    constexpr int NUM_W13_TASKS = 32;
++    constexpr int NUM_W2_TASKS = 32;
++    const int total_tasks = NUM_W13_TASKS * 2 + NUM_W2_TASKS;
++
++    pool->do_work_stealing_job(
++        total_tasks, nullptr,
++        [=, &w13_weight_ptrs, &w13_scale_ptrs, &w2_weight_ptrs, &w2_scale_ptrs, this](int task_id) {
++          if (task_id < NUM_W13_TASKS * 2) {
++            const bool is_up = task_id >= NUM_W13_TASKS;
++            const int chunk_idx = task_id % NUM_W13_TASKS;
++            const auto& bb = is_up ? up_bb_[expert_id] : gate_bb_[expert_id];
++
++            const int rows_per_task = avx2::div_up(cpu_n_w13, NUM_W13_TASKS);
++            const int row_start = chunk_idx * rows_per_task;
++            const int row_end = std::min(row_start + rows_per_task, cpu_n_w13);
++            if (row_start >= cpu_n_w13) return;
++
++            for (int row = row_start; row < row_end; row++) {
++              const int global_n = global_n_offset_w13 + row;
++              const int target_gpu = global_n / gpu_n_w13;
++              const int n_in_gpu = global_n % gpu_n_w13;
++
++              // Copy weight row
++              uint8_t* w_dst = (uint8_t*)w13_weight_ptrs[target_gpu];
++              const size_t expert_w_off = is_up ? gpu_w13_weight_per_mat : 0;
++              std::memcpy(w_dst + expert_w_off + (size_t)n_in_gpu * gpu_k_w13,
++                          bb->b + (size_t)row * cpu_k_w13,
++                          cpu_k_w13);
++
++              // Copy scale row (if at block boundary)
++              if (row % group_size == 0) {
++                int n_block = row / group_size;
++                int gpu_n_block = n_in_gpu / group_size;
++                float* s_dst = (float*)w13_scale_ptrs[target_gpu];
++                const size_t expert_s_off = is_up ? gpu_w13_scale_per_mat : 0;
++                std::memcpy(s_dst + expert_s_off + gpu_n_block * gpu_n_blocks_k_w13,
++                            bb->d + n_block * avx2::div_up(cpu_k_w13, group_size),
++                            avx2::div_up(cpu_k_w13, group_size) * sizeof(float));
++              }
++            }
++          } else {
++            const int chunk_idx = task_id - NUM_W13_TASKS * 2;
++            const auto& bb = down_bb_[expert_id];
++
++            const int rows_per_task = avx2::div_up(cpu_n_w2, NUM_W2_TASKS);
++            const int row_start = chunk_idx * rows_per_task;
++            const int row_end = std::min(row_start + rows_per_task, cpu_n_w2);
++            if (row_start >= cpu_n_w2) return;
++
++            for (int row = row_start; row < row_end; row++) {
++              // Iterate over all gpu_k_w2-sized slices within this CPU TP's K range
++              for (int k_start = 0; k_start < cpu_k_w2; k_start += gpu_k_w2) {
++                const int k_slice_len = std::min(gpu_k_w2, cpu_k_w2 - k_start);
++                const int global_k = global_k_offset_w2 + k_start;
++                const int target_gpu = global_k / gpu_k_w2;
++                const int k_in_gpu = global_k % gpu_k_w2;
++
++                uint8_t* w_dst = (uint8_t*)w2_weight_ptrs[target_gpu];
++                std::memcpy(w_dst + (size_t)row * gpu_k_w2 + k_in_gpu,
++                            bb->b + (size_t)row * cpu_k_w2 + k_start,
++                            k_slice_len);
++
++                // Copy scales for down (at block boundaries)
++                if (row % group_size == 0) {
++                  int n_block = row / group_size;
++                  float* s_dst = (float*)w2_scale_ptrs[target_gpu];
++                  int gpu_n_blocks_k_w2 = avx2::div_up(gpu_k_w2, group_size);
++                  int k_block_start = k_in_gpu / group_size;
++                  int n_blocks_to_copy = std::min(cpu_n_blocks_k_w2, gpu_n_blocks_k_w2 - k_block_start);
++                  std::memcpy(s_dst + n_block * gpu_n_blocks_k_w2 + k_block_start,
++                              bb->d + n_block * cpu_n_blocks_k_w2 + k_start / group_size,
++                              n_blocks_to_copy * sizeof(float));
++                }
++              }  // end k_start loop
++            }  // end row loop
++          }
++        },
++        nullptr);
++  }
++};
++
++// ============================================================================
++// TP_MOE specialization — ported from amx/fp8-moe.hpp:628-738
++// Handles per-expert pointer loading + TP weight/scale splitting
++// ============================================================================
++template <typename K>
++class TP_MOE<AVX2_FP8_MOE_TP<K>> : public TP_MOE<AVX2_MOE_BASE<K, AVX2_FP8_MOE_TP<K>>> {
++ public:
++  using Base = TP_MOE<AVX2_MOE_BASE<K, AVX2_FP8_MOE_TP<K>>>;
++  using Base::Base;
++
++  void load_weights() override {
++    auto& config = this->config;
++    auto& tps = this->tps;
++    auto& tp_count = this->tp_count;
++    auto pool = config.pool;
++    const uint64_t* physical_to_logical_map = (const uint64_t*)config.physical_to_logical_map;
++
++    const int group_size = config.quant_config.group_size;
++    if (group_size == 0 || config.quant_config.zero_point) {
++      throw std::runtime_error("FP8 MoE only supports block-wise (group_size > 0, zero_point=false)");
++    }
++
++    if (config.gate_projs.empty() && config.gate_proj == nullptr) {
++      throw std::runtime_error("no weight source");
++    }
++    const bool use_per_expert_ptrs = !config.gate_projs.empty();
++
++    const size_t full_weight_elems = (size_t)config.intermediate_size * config.hidden_size;
++    const size_t full_scale_elems =
++        (size_t)avx2::div_up(config.hidden_size, group_size) * avx2::div_up(config.intermediate_size, group_size);
++
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      auto& tpc = tps[i]->config_;
++      const size_t tp_weight_elems = (size_t)tpc.intermediate_size * tpc.hidden_size;
++      const size_t tp_scale_elems =
++          (size_t)avx2::div_up(tpc.intermediate_size, group_size) * avx2::div_up(tpc.hidden_size, group_size);
++
++      // Allocate temporary buffers
++      tpc.gate_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++      tpc.up_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++      tpc.down_proj = new uint8_t[tpc.expert_num * tp_weight_elems];
++      tpc.gate_scale = new float[tpc.expert_num * tp_scale_elems];
++      tpc.up_scale = new float[tpc.expert_num * tp_scale_elems];
++      tpc.down_scale = new float[tpc.expert_num * tp_scale_elems];
++
++      const size_t gate_up_weight_src_offset = i * tp_weight_elems;
++      const size_t gate_up_scale_src_offset = i * tp_scale_elems;
++      const size_t down_weight_src_col_offset = i * (size_t)tpc.intermediate_size;
++      const size_t down_scale_src_block_k_offset = down_weight_src_col_offset / (size_t)group_size;
++
++      pool->get_subpool(i)->do_work_stealing_job(
++          tpc.expert_num, nullptr,
++          [&, &tpc](int expert_id_) {
++            const size_t expert_id = expert_map(physical_to_logical_map, expert_id_);
++
++            uint8_t* gate_dst = (uint8_t*)tpc.gate_proj + expert_id * tp_weight_elems;
++            uint8_t* up_dst = (uint8_t*)tpc.up_proj + expert_id * tp_weight_elems;
++            uint8_t* down_dst = (uint8_t*)tpc.down_proj + expert_id * tp_weight_elems;
++            float* gate_scale_dst = (float*)tpc.gate_scale + expert_id * tp_scale_elems;
++            float* up_scale_dst = (float*)tpc.up_scale + expert_id * tp_scale_elems;
++            float* down_scale_dst = (float*)tpc.down_scale + expert_id * tp_scale_elems;
++
++            const uint8_t* gate_src;
++            const uint8_t* up_src;
++            const uint8_t* down_src;
++            const float* gate_scale_src;
++            const float* up_scale_src;
++            const float* down_scale_src;
++
++            if (use_per_expert_ptrs) {
++              gate_src = (const uint8_t*)config.gate_projs[0][expert_id] + gate_up_weight_src_offset;
++              up_src = (const uint8_t*)config.up_projs[0][expert_id] + gate_up_weight_src_offset;
++              down_src = (const uint8_t*)config.down_projs[0][expert_id];
++              gate_scale_src = (const float*)config.gate_scales[0][expert_id] + gate_up_scale_src_offset;
++              up_scale_src = (const float*)config.up_scales[0][expert_id] + gate_up_scale_src_offset;
++              down_scale_src = (const float*)config.down_scales[0][expert_id];
++            } else {
++              gate_src = (const uint8_t*)config.gate_proj + expert_id * full_weight_elems + gate_up_weight_src_offset;
++              up_src = (const uint8_t*)config.up_proj + expert_id * full_weight_elems + gate_up_weight_src_offset;
++              down_src = (const uint8_t*)config.down_proj + expert_id * full_weight_elems;
++              gate_scale_src = (const float*)config.gate_scale + expert_id * full_scale_elems + gate_up_scale_src_offset;
++              up_scale_src = (const float*)config.up_scale + expert_id * full_scale_elems + gate_up_scale_src_offset;
++              down_scale_src = (const float*)config.down_scale + expert_id * full_scale_elems;
++            }
++
++            // Copy gate/up weights + scales (column slice)
++            std::memcpy(gate_dst, gate_src, tp_weight_elems);
++            std::memcpy(up_dst, up_src, tp_weight_elems);
++            std::memcpy(gate_scale_dst, gate_scale_src, sizeof(float) * tp_scale_elems);
++            std::memcpy(up_scale_dst, up_scale_src, sizeof(float) * tp_scale_elems);
++
++            // Copy down weights (row-wise split)
++            for (int row = 0; row < config.hidden_size; row++) {
++              const size_t src_row_offset = (size_t)row * (size_t)config.intermediate_size + down_weight_src_col_offset;
++              const size_t dst_row_offset = (size_t)row * (size_t)tpc.intermediate_size;
++              std::memcpy(down_dst + dst_row_offset, down_src + src_row_offset, (size_t)tpc.intermediate_size);
++            }
++
++            // Copy down scales (block-row-wise split)
++            const int n_blocks_n = avx2::div_up(config.hidden_size, group_size);
++            const int full_n_blocks_k = avx2::div_up(config.intermediate_size, group_size);
++            const int tp_n_blocks_k = avx2::div_up(tpc.intermediate_size, group_size);
++            for (int bn = 0; bn < n_blocks_n; bn++) {
++              const float* src = down_scale_src + (size_t)bn * full_n_blocks_k + down_scale_src_block_k_offset;
++              float* dst = down_scale_dst + (size_t)bn * tp_n_blocks_k;
++              std::memcpy(dst, src, sizeof(float) * tp_n_blocks_k);
++            }
++          },
++          nullptr);
++    });
++
++    // Call per-TP load_weights
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      tps[i]->load_weights();
++    });
++
++    // Free temporary buffers
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      auto& tpc = tps[i]->config_;
++      delete[] (uint8_t*)tpc.gate_proj;
++      delete[] (uint8_t*)tpc.up_proj;
++      delete[] (uint8_t*)tpc.down_proj;
++      delete[] (float*)tpc.gate_scale;
++      delete[] (float*)tpc.up_scale;
++      delete[] (float*)tpc.down_scale;
++    });
++
++    this->weights_loaded = true;
++  }
++
++  void write_weight_scale_to_buffer(int gpu_tp_count, int expert_id, const std::vector<uintptr_t>& w13_weight_ptrs,
++                                    const std::vector<uintptr_t>& w13_scale_ptrs,
++                                    const std::vector<uintptr_t>& w2_weight_ptrs,
++                                    const std::vector<uintptr_t>& w2_scale_ptrs) {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    if (this->tps.empty()) throw std::runtime_error("No TP parts initialized");
++
++    this->config.pool->dispense_backend()->do_numa_job([&, this](int i) {
++      this->tps[i]->write_weights_to_buffer(gpu_tp_count, this->tp_count, expert_id, this->config,
++                                            w13_weight_ptrs, w13_scale_ptrs, w2_weight_ptrs, w2_scale_ptrs);
++    });
++  }
++};
++
++#endif  // CPUINFER_OPERATOR_AVX2_FP8_MOE_H
+diff --git a/kt-kernel/operators/avx2/moe_base.hpp b/kt-kernel/operators/avx2/moe_base.hpp
+index a2d97f7..eb9b2e5 100644
+--- a/kt-kernel/operators/avx2/moe_base.hpp
++++ b/kt-kernel/operators/avx2/moe_base.hpp
+@@ -12,6 +12,7 @@
+ #define CPUINFER_OPERATOR_AVX2_MOE_BASE_H
+ 
+ #include <immintrin.h>
++#include <sys/mman.h>  // madvise: three-tier expert store eviction
+ 
+ #include <algorithm>
+ #include <cassert>
+@@ -64,6 +65,21 @@ class AVX2_MOE_BASE {
+ 
+   std::vector<void*> owned_aligned_allocs_;
+ 
++  // Three-tier expert store: the page-aligned extent of each expert's three
++  // BufferB allocations, so one expert can be dropped from host RAM without
++  // touching its neighbours. Populated in the constructor alongside the allocs.
++  static constexpr size_t kPageSize = 4096;
++  static size_t page_round_up(size_t n) { return (n + kPageSize - 1) & ~(kPageSize - 1); }
++  struct ExpertBBExtent {
++    void* gate_ptr;
++    size_t gate_bytes;
++    void* up_ptr;
++    size_t up_bytes;
++    void* down_ptr;
++    size_t down_bytes;
++  };
++  std::vector<ExpertBBExtent> expert_bb_extents_;
++
+   size_t pool_count_ = 0;
+   size_t gate_up_ba_pool_bytes_ = 0;
+   size_t gate_bc_pool_bytes_ = 0;
+@@ -119,23 +135,35 @@ class AVX2_MOE_BASE {
+       down_ba_.push_back(make_buffer_a(config_.max_len, config_.intermediate_size, nullptr));
+       down_bc_.push_back(make_buffer_c(config_.max_len, config_.hidden_size, nullptr));
+ 
+-      void* gate_bb_ptr = std::aligned_alloc(
+-          64, (buffer_b_required_size(config_.intermediate_size, config_.hidden_size) + 63) & ~63ULL);
++      // PAGE-aligned, page-multiple allocations (was 64B): the three-tier
++      // expert store evicts an expert with madvise(MADV_DONTNEED), which only
++      // frees whole pages. At 64B alignment the first and last page of each
++      // buffer are shared with a neighbour and cannot be released, so ~8 KiB
++      // per expert would leak and, worse, a partially-released buffer would be
++      // indistinguishable from a resident one. These are ~6 MiB allocations;
++      // rounding up to a page costs nothing.
++      const size_t gate_up_bytes =
++          page_round_up(buffer_b_required_size(config_.intermediate_size, config_.hidden_size));
++      const size_t down_bytes =
++          page_round_up(buffer_b_required_size(config_.hidden_size, config_.intermediate_size));
++
++      void* gate_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
+       if (!gate_bb_ptr) throw std::runtime_error("aligned_alloc failed for gate BufferB");
+       owned_aligned_allocs_.push_back(gate_bb_ptr);
+       gate_bb_.push_back(make_buffer_b(config_.intermediate_size, config_.hidden_size, gate_bb_ptr));
+ 
+-      void* up_bb_ptr = std::aligned_alloc(
+-          64, (buffer_b_required_size(config_.intermediate_size, config_.hidden_size) + 63) & ~63ULL);
++      void* up_bb_ptr = std::aligned_alloc(kPageSize, gate_up_bytes);
+       if (!up_bb_ptr) throw std::runtime_error("aligned_alloc failed for up BufferB");
+       owned_aligned_allocs_.push_back(up_bb_ptr);
+       up_bb_.push_back(make_buffer_b(config_.intermediate_size, config_.hidden_size, up_bb_ptr));
+ 
+-      void* down_bb_ptr = std::aligned_alloc(
+-          64, (buffer_b_required_size(config_.hidden_size, config_.intermediate_size) + 63) & ~63ULL);
++      void* down_bb_ptr = std::aligned_alloc(kPageSize, down_bytes);
+       if (!down_bb_ptr) throw std::runtime_error("aligned_alloc failed for down BufferB");
+       owned_aligned_allocs_.push_back(down_bb_ptr);
+       down_bb_.push_back(make_buffer_b(config_.hidden_size, config_.intermediate_size, down_bb_ptr));
++
++      expert_bb_extents_.push_back({gate_bb_ptr, gate_up_bytes, up_bb_ptr, gate_up_bytes,
++                                    down_bb_ptr, down_bytes});
+     }
+ 
+     pool_count_ = config_.max_len * config_.num_experts_per_tok + config_.expert_num * T::M_STEP;
+@@ -159,6 +187,25 @@ class AVX2_MOE_BASE {
+     for (void* p : owned_aligned_allocs_) std::free(p);
+   }
+ 
++  // --- three-tier expert store ------------------------------------------
++  // Drop one expert's weights from host RAM. The virtual address stays mapped
++  // (every expert's BufferB is allocated up front, whether or not it is ever
++  // staged), so nothing that holds a pointer is invalidated; only the physical
++  // pages go back to the kernel. A later load_expert() faults them in again.
++  //
++  // Safe ONLY while the expert is not routed to: the caller must clear its bit
++  // in gpu_experts_mask (kt's "skip this expert" mask) BEFORE calling, and the
++  // CPU pool must be idle. Touching a released buffer reads zeros, not garbage
++  // from another expert, which is why this is a safe failure mode rather than
++  // silent corruption.
++  void release_expert(int expert_id) {
++    if (expert_id < 0 || (size_t)expert_id >= expert_bb_extents_.size()) return;
++    const auto& e = expert_bb_extents_[expert_id];
++    ::madvise(e.gate_ptr, e.gate_bytes, MADV_DONTNEED);
++    ::madvise(e.up_ptr, e.up_bytes, MADV_DONTNEED);
++    ::madvise(e.down_ptr, e.down_bytes, MADV_DONTNEED);
++  }
++
+   void warm_up() {
+     int qlen = config_.max_len;
+     std::vector<uint8_t> input(sizeof(ggml_bf16_t) * qlen * config_.hidden_size);
+diff --git a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+index 58cbe7d..2ec9c88 100644
+--- a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
++++ b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+@@ -499,6 +499,21 @@ class AVX512_RAW_INT4_PACKED_MOE_TP : public AVX2_MOE_BASE<T, AVX512_RAW_INT4_PA
+     convert_or_copy(dst, src, count);
+   }
+ 
++  // Three-tier expert store: stage ONE expert whose TP slice has already been
++  // gathered by the caller. Same work as the per-expert body of load_weights()
++  // above, minus the flat-buffer indexing — from_raw_mat copies the packed
++  // nibbles verbatim, converts the bf16 group scales to fp32, and recomputes
++  // the int16 weight_sums. Callable on a live layer between decode steps; the
++  // expert must be masked out (skipped) while this runs.
++  void load_one_expert(int expert_idx, const uint8_t* gate_src, const ggml_bf16_t* gate_scale_src,
++                       const uint8_t* up_src, const ggml_bf16_t* up_scale_src, const uint8_t* down_src,
++                       const ggml_bf16_t* down_scale_src, int ith, int nth) {
++    if (expert_idx < 0 || expert_idx >= config_.expert_num) return;
++    gate_bb_[expert_idx]->from_raw_mat(gate_src, gate_scale_src, ith, nth);
++    up_bb_[expert_idx]->from_raw_mat(up_src, up_scale_src, ith, nth);
++    down_bb_[expert_idx]->from_raw_mat(down_src, down_scale_src, ith, nth);
++  }
++
+   // Stream this CPU-TP partition's slice of one expert into the GPU cutlass W4A8
+   // staging buffers for the kt full-GPU prefill path. The packed backend keeps
+   // weights in the same [N, K/2] packed int4 layout as the on-disk W4AFP8 export
+@@ -866,6 +881,71 @@ class TP_MOE<AVX512_RAW_INT4_PACKED_MOE_TP<K>>
+     this->weights_loaded = true;
+   }
+ 
++  // --- three-tier expert store: promote ONE expert into the CPU store -------
++  // Same gather as load_weights (gate/up are a contiguous N-slice, down needs a
++  // column gather across the TP-sliced K) but for a single expert, reading
++  // straight from the caller's mmap'd safetensors instead of a whole-layer temp
++  // buffer. Runs on the CPU pool between decode steps; the expert must still be
++  // masked out while it executes.
++  //
++  // Sources are the on-disk W4AFP8 layout for one expert:
++  //   gate/up   [intermediate_size, hidden_size/2] packed int4
++  //   down      [hidden_size, intermediate_size/2] packed int4
++  //   *_scale   bf16 group scales matching each
++  void load_expert(int expert_id, uintptr_t gate_ptr, uintptr_t up_ptr, uintptr_t down_ptr, uintptr_t gate_scale_ptr,
++                   uintptr_t up_scale_ptr, uintptr_t down_scale_ptr) {
++    auto& config = this->config;
++    auto pool = config.pool;
++    const int group_size = config.quant_config.group_size;
++    if (group_size == 0) throw std::runtime_error("AVX-512 PACKED RAWINT4 requires group_size > 0");
++    if (expert_id < 0 || expert_id >= config.expert_num)
++      throw std::runtime_error("load_expert: expert_id out of range");
++
++    pool->dispense_backend()->do_numa_job([&, this](int i) {
++      auto& tpc = this->tps[i]->config_;
++      const size_t weight_elem_count = (size_t)tpc.intermediate_size * tpc.hidden_size;
++      const size_t scales_elem_count = ((size_t)tpc.hidden_size / group_size) * tpc.intermediate_size;
++
++      // Gate/Up: this partition's contiguous slice along N (intermediate).
++      const uint8_t* gate_src = (const uint8_t*)gate_ptr + ((i * weight_elem_count) >> 1);
++      const uint8_t* up_src = (const uint8_t*)up_ptr + ((i * weight_elem_count) >> 1);
++      const ggml_bf16_t* gate_sc_src = (const ggml_bf16_t*)gate_scale_ptr + i * scales_elem_count;
++      const ggml_bf16_t* up_sc_src = (const ggml_bf16_t*)up_scale_ptr + i * scales_elem_count;
++
++      // Down: gather this partition's K-slice out of every hidden row.
++      std::vector<uint8_t> down_buf(weight_elem_count >> 1);
++      std::vector<ggml_bf16_t> down_scale_buf(scales_elem_count);
++      const uint8_t* down_full = (const uint8_t*)down_ptr;
++      const ggml_bf16_t* down_scale_full = (const ggml_bf16_t*)down_scale_ptr;
++      for (size_t col = 0; col < (size_t)config.hidden_size; col++) {
++        std::memcpy(down_buf.data() + ((col * tpc.intermediate_size) >> 1),
++                    down_full + ((col * config.intermediate_size + i * tpc.intermediate_size) >> 1),
++                    tpc.intermediate_size >> 1);
++        std::memcpy(down_scale_buf.data() + col * (tpc.intermediate_size / group_size),
++                    down_scale_full + (col * (config.intermediate_size / group_size) +
++                                       i * (tpc.intermediate_size / group_size)),
++                    sizeof(ggml_bf16_t) * (tpc.intermediate_size / group_size));
++      }
++
++      const int nth = K::recommended_nth(tpc.intermediate_size);
++      pool->get_subpool(i)->do_work_stealing_job(
++          nth, nullptr,
++          [&, i](int ith) {
++            this->tps[i]->load_one_expert(expert_id, gate_src, gate_sc_src, up_src, up_sc_src, down_buf.data(),
++                                          down_scale_buf.data(), ith, nth);
++          },
++          nullptr);
++    });
++  }
++
++  // Three-tier expert store: drop one expert from host RAM across every NUMA
++  // partition. Pairs with load_expert; see AVX2_MOE_BASE::release_expert for
++  // why the virtual mapping survives and a stray read yields zeros.
++  void release_expert(int expert_id) {
++    this->config.pool->dispense_backend()->do_numa_job(
++        [&, this](int i) { this->tps[i]->release_expert(expert_id); });
++  }
++
+   void write_weight_scale_to_buffer(int gpu_tp_count, int expert_id, const std::vector<uintptr_t>& w13_weight_ptrs,
+                                     const std::vector<uintptr_t>& w13_scale_ptrs,
+                                     const std::vector<uintptr_t>& w2_weight_ptrs,
+diff --git a/kt-kernel/python/utils/amx.py.bak-preC b/kt-kernel/python/utils/amx.py.bak-preC
+new file mode 100644
+index 0000000..1b04e4d
+--- /dev/null
++++ b/kt-kernel/python/utils/amx.py.bak-preC
+@@ -0,0 +1,965 @@
++import gc
++import logging
++import os
++import torch
++import ctypes
++from typing import List, Optional
++
++logger = logging.getLogger(__name__)
++
++# Use relative imports for package structure
++from ..experts_base import BaseMoEWrapper
++from .loader import (
++    SafeTensorLoader,
++    CompressedSafeTensorLoader,
++    FP8SafeTensorLoader,
++    BF16SafeTensorLoader,
++    GPTQSafeTensorLoader,
++    MXFP4SafeTensorLoader,
++    MXFP8SafeTensorLoader,
++)
++from kt_kernel_ext.moe import MOEConfig
++import kt_kernel_ext.moe as _moe_mod
++
++AMXInt4_MOE = getattr(_moe_mod, "AMXInt4_MOE", None)
++AMXInt8_MOE = getattr(_moe_mod, "AMXInt8_MOE", None)
++AMXInt4_KGroup_MOE = getattr(_moe_mod, "AMXInt4_KGroup_MOE", None)
++AMXFP4_KGroup_MOE = getattr(_moe_mod, "AMXFP4_KGroup_MOE", None)
++AMXMXFP8_KGroup_MOE = getattr(_moe_mod, "AMXMXFP8_KGroup_MOE", None)
++AMXFP8_MOE = getattr(_moe_mod, "AMXFP8_MOE", None)
++AMXBF16_MOE = getattr(_moe_mod, "AMXBF16_MOE", None)
++AMXFP8PerChannel_MOE = getattr(_moe_mod, "AMXFP8PerChannel_MOE", None)
++AVX2BF16_MOE = getattr(_moe_mod, "AVX2BF16_MOE", None)
++AVX2FP8_MOE = getattr(_moe_mod, "AVX2FP8_MOE", None)
++AVX2GPTQInt4_MOE = getattr(_moe_mod, "AVX2GPTQInt4_MOE", None)
++AVX2RawInt4_MOE = getattr(_moe_mod, "AVX2RawInt4_MOE", None)
++AVX2MXFP4_MOE = getattr(_moe_mod, "AVX2MXFP4_MOE", None)
++AVX2MXFP8_MOE = getattr(_moe_mod, "AVX2MXFP8_MOE", None)
++AVXVNNI256GPTQInt4_MOE = getattr(_moe_mod, "AVXVNNI256GPTQInt4_MOE", None)
++AVXVNNI256RawInt4_MOE = getattr(_moe_mod, "AVXVNNI256RawInt4_MOE", None)
++
++_HAS_AMXINT4_SUPPORT = AMXInt4_MOE is not None
++_HAS_AMXINT8_SUPPORT = AMXInt8_MOE is not None
++_HAS_RAWINT4_SUPPORT = AMXInt4_KGroup_MOE is not None
++_HAS_MXFP4_SUPPORT = AMXFP4_KGroup_MOE is not None
++_HAS_MXFP8_SUPPORT = AMXMXFP8_KGroup_MOE is not None
++_HAS_FP8_SUPPORT = AMXFP8_MOE is not None
++_HAS_BF16_SUPPORT = AMXBF16_MOE is not None
++_HAS_FP8_PERCHANNEL_SUPPORT = AMXFP8PerChannel_MOE is not None
++_HAS_AVX2_BF16_SUPPORT = AVX2BF16_MOE is not None
++_HAS_AVX2_FP8_SUPPORT = AVX2FP8_MOE is not None
++_HAS_AVX2_GPTQ_INT4_SUPPORT = AVX2GPTQInt4_MOE is not None
++_HAS_AVX2_RAWINT4_SUPPORT = AVX2RawInt4_MOE is not None
++_HAS_AVX2_MXFP4_SUPPORT = AVX2MXFP4_MOE is not None
++_HAS_AVX2_MXFP8_SUPPORT = AVX2MXFP8_MOE is not None
++_HAS_AVXVNNI256_GPTQ_INT4_SUPPORT = AVXVNNI256GPTQInt4_MOE is not None
++_HAS_AVXVNNI256_RAW_INT4_SUPPORT = AVXVNNI256RawInt4_MOE is not None
++_AVXVNNI256_GPTQ_INT4_MAX_GROUP_SIZE = 256
++_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE = 256
++
++
++def _host_has_cpu_flag(*flag_names: str) -> bool:
++    try:
++        with open("/proc/cpuinfo", "r") as f:
++            for line in f:
++                if line.startswith("flags"):
++                    flags = set(line.split(":", 1)[1].strip().split())
++                    return any(name in flags for name in flag_names)
++    except OSError:
++        return False
++    return False
++
++
++_HOST_HAS_AVX_VNNI = _host_has_cpu_flag("avx_vnni", "avxvnni")
++
++
++def _supports_avxvnni256_gptq_int4_group_size(group_size: Optional[int]) -> bool:
++    if group_size is None:
++        return True
++    return group_size > 0 and group_size % 32 == 0 and group_size <= _AVXVNNI256_GPTQ_INT4_MAX_GROUP_SIZE
++
++
++def _supports_avxvnni256_rawint4_group_size(group_size: Optional[int]) -> bool:
++    if group_size is None:
++        return True
++    return group_size > 0 and group_size % 32 == 0 and group_size <= _AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE
++
++
++def _select_gptq_int4_backend(group_size: Optional[int] = None):
++    forced = os.getenv("KT_GPTQ_INT4_BACKEND", "").strip().lower()
++    avxvnni_group_supported = _supports_avxvnni256_gptq_int4_group_size(group_size)
++
++    if forced in {"avxvnni", "avxvnni256"}:
++        if not _HAS_AVXVNNI256_GPTQ_INT4_SUPPORT:
++            raise RuntimeError("KT_GPTQ_INT4_BACKEND=avxvnni requested, but AVXVNNI256GPTQInt4_MOE is not compiled in.")
++        if not _HOST_HAS_AVX_VNNI:
++            raise RuntimeError("KT_GPTQ_INT4_BACKEND=avxvnni requested, but the current CPU does not support avx_vnni.")
++        if not avxvnni_group_supported:
++            raise RuntimeError(
++                "KT_GPTQ_INT4_BACKEND=avxvnni requested, but "
++                f"group_size={group_size} is unsupported. AVX-VNNI-256 GPTQ_INT4 only supports "
++                f"positive multiples of 32 up to {_AVXVNNI256_GPTQ_INT4_MAX_GROUP_SIZE}."
++            )
++        return AVXVNNI256GPTQInt4_MOE
++
++    if forced == "avx2":
++        if not _HAS_AVX2_GPTQ_INT4_SUPPORT:
++            raise RuntimeError("KT_GPTQ_INT4_BACKEND=avx2 requested, but AVX2GPTQInt4_MOE is not compiled in.")
++        return AVX2GPTQInt4_MOE
++
++    if _HAS_AVXVNNI256_GPTQ_INT4_SUPPORT and _HOST_HAS_AVX_VNNI and avxvnni_group_supported:
++        return AVXVNNI256GPTQInt4_MOE
++    if _HAS_AVX2_GPTQ_INT4_SUPPORT:
++        return AVX2GPTQInt4_MOE
++    return None
++
++
++def _select_rawint4_backend(group_size: Optional[int] = None):
++    forced = os.getenv("KT_RAWINT4_BACKEND", "").strip().lower()
++    avxvnni_group_supported = _supports_avxvnni256_rawint4_group_size(group_size)
++
++    if forced == "amx":
++        if not _HAS_RAWINT4_SUPPORT:
++            raise RuntimeError("KT_RAWINT4_BACKEND=amx requested, but AMXInt4_KGroup_MOE is not compiled in.")
++        return AMXInt4_KGroup_MOE
++
++    if forced in {"avxvnni", "avxvnni256"}:
++        if not _HAS_AVXVNNI256_RAW_INT4_SUPPORT:
++            raise RuntimeError("KT_RAWINT4_BACKEND=avxvnni requested, but AVXVNNI256RawInt4_MOE is not compiled in.")
++        if not _HOST_HAS_AVX_VNNI:
++            raise RuntimeError("KT_RAWINT4_BACKEND=avxvnni requested, but the current CPU does not support avx_vnni.")
++        if not avxvnni_group_supported:
++            raise RuntimeError(
++                "KT_RAWINT4_BACKEND=avxvnni requested, but "
++                f"group_size={group_size} is unsupported. AVX-VNNI-256 RAWINT4 only supports "
++                f"positive multiples of 32 up to {_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE}."
++            )
++        return AVXVNNI256RawInt4_MOE
++
++    if forced == "avx2":
++        if not _HAS_AVX2_RAWINT4_SUPPORT:
++            raise RuntimeError("KT_RAWINT4_BACKEND=avx2 requested, but AVX2RawInt4_MOE is not compiled in.")
++        return AVX2RawInt4_MOE
++
++    if _HAS_RAWINT4_SUPPORT:
++        return AMXInt4_KGroup_MOE
++    if _HAS_AVXVNNI256_RAW_INT4_SUPPORT and _HOST_HAS_AVX_VNNI and avxvnni_group_supported:
++        return AVXVNNI256RawInt4_MOE
++    if _HAS_AVX2_RAWINT4_SUPPORT:
++        return AVX2RawInt4_MOE
++    return None
++
++
++def _select_mxfp4_backend():
++    """Select MXFP4 backend: AMX/AVX-512 (preferred) > AVX2 (fallback).
++
++    Override with KT_MXFP4_BACKEND=avx2|amx.
++    Returns None if no MXFP4 backend is available.
++    """
++    forced = os.getenv("KT_MXFP4_BACKEND", "").strip().lower()
++
++    if forced == "amx":
++        if not _HAS_MXFP4_SUPPORT:
++            raise RuntimeError(
++                "KT_MXFP4_BACKEND=amx requested, but AMXFP4_KGroup_MOE is not compiled in. "
++                "Recompile with AVX512F + AVX512BW + AVX512_BF16 enabled."
++            )
++        return AMXFP4_KGroup_MOE
++
++    if forced == "avx2":
++        if not _HAS_AVX2_MXFP4_SUPPORT:
++            raise RuntimeError(
++                "KT_MXFP4_BACKEND=avx2 requested, but AVX2MXFP4_MOE is not compiled in. "
++                "Recompile with AVX2 + FMA enabled."
++            )
++        return AVX2MXFP4_MOE
++
++    if _HAS_MXFP4_SUPPORT:
++        return AMXFP4_KGroup_MOE
++    if _HAS_AVX2_MXFP4_SUPPORT:
++        return AVX2MXFP4_MOE
++    return None
++
++
++def _select_mxfp8_backend():
++    """Select MXFP8 backend: AMX/AVX-512 (preferred) > AVX2 (fallback).
++
++    Override with KT_MXFP8_BACKEND=avx2|amx.
++    Returns None if no MXFP8 backend is available.
++    """
++    forced = os.getenv("KT_MXFP8_BACKEND", "").strip().lower()
++
++    if forced == "amx":
++        if not _HAS_MXFP8_SUPPORT:
++            raise RuntimeError(
++                "KT_MXFP8_BACKEND=amx requested, but AMXMXFP8_KGroup_MOE is not compiled in. "
++                "Recompile with AVX512F + AVX512BW + AVX512_BF16 + AVX512_VBMI enabled."
++            )
++        if not _host_has_cpu_flag("amx_tile", "amx_bf16"):
++            raise RuntimeError(
++                "KT_MXFP8_BACKEND=amx requested, but the host CPU lacks AMX (amx_tile / amx_bf16). "
++                "This would SIGILL at first forward. Unset the env to fall back to AVX2."
++            )
++        return AMXMXFP8_KGroup_MOE
++
++    if forced == "avx2":
++        if not _HAS_AVX2_MXFP8_SUPPORT:
++            raise RuntimeError(
++                "KT_MXFP8_BACKEND=avx2 requested, but AVX2MXFP8_MOE is not compiled in. "
++                "Recompile with AVX2 + FMA enabled."
++            )
++        return AVX2MXFP8_MOE
++
++    # Auto-select: prefer AMX iff the .so was built with it AND the runtime CPU has AMX.
++    # Compile-time-only check would SIGILL on AVX-512 CPUs lacking AMX (pre-Sapphire Rapids).
++    if _HAS_MXFP8_SUPPORT and _host_has_cpu_flag("amx_tile", "amx_bf16"):
++        return AMXMXFP8_KGroup_MOE
++    if _HAS_AVX2_MXFP8_SUPPORT:
++        return AVX2MXFP8_MOE
++    return None
++
++
++class AMXMoEWrapper(BaseMoEWrapper):
++    """
++    AMX-based MoE wrapper implementation.
++    Supports AMXINT4 and AMXINT8 quantization methods.
++    """
++
++    _safetensor_loader_instance = None  # Singleton SafeTensorLoader
++
++    def __init__(
++        self,
++        layer_idx: int,
++        num_experts: int,
++        num_experts_per_tok: int,
++        hidden_size: int,
++        moe_intermediate_size: int,
++        gpu_experts_mask: Optional[torch.Tensor],
++        cpuinfer_threads: int,
++        threadpool_count: int,
++        weight_path: str,
++        chunked_prefill_size: int,
++        cpu_save: bool = False,
++        max_deferred_experts_per_token: Optional[int] = None,
++        method: str = "AMXINT4",
++        numa_nodes: Optional[List[int]] = None,
++    ):
++        """
++        Initialize AMX MoE Wrapper.
++
++        Args:
++            layer_idx: Layer index
++            num_experts: Total number of experts
++            num_experts_per_tok: Number of experts per token (top-k)
++            hidden_size: Hidden dimension size
++            moe_intermediate_size: MoE intermediate size
++            gpu_experts_mask: Boolean mask indicating which experts are on GPU.
++                              Shape: [num_experts], dtype: torch.bool.
++                              mask[i] = True means expert i is on GPU.
++                              If None, all experts are on CPU.
++            cpuinfer_threads: Number of CPU inference threads
++            threadpool_count: Number of NUMA subpools
++            weight_path: Path to AMX weights (SafeTensor format)
++            chunked_prefill_size: Maximum prefill chunk size
++            cpu_save: Whether to save weights to CPU memory
++            max_deferred_experts_per_token: Number of experts per token to defer. Defaults to 0.
++            method: AMX quantization method ("AMXINT4" or "AMXINT8")
++        """
++        if method == "AMXINT4" and not _HAS_AMXINT4_SUPPORT:
++            raise RuntimeError(
++                "AMXINT4 backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW (VNNI optional)\n"
++                "Please recompile kt_kernel_ext with AVX512 enabled."
++            )
++        if method == "AMXINT8" and not _HAS_AMXINT8_SUPPORT:
++            raise RuntimeError(
++                "AMXINT8 backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW (VNNI optional)\n"
++                "Please recompile kt_kernel_ext with AVX512 enabled."
++            )
++
++        # Initialize base class
++        super().__init__(
++            layer_idx=layer_idx,
++            num_experts=num_experts,
++            num_experts_per_tok=num_experts_per_tok,
++            hidden_size=hidden_size,
++            moe_intermediate_size=moe_intermediate_size,
++            gpu_experts_mask=gpu_experts_mask,
++            cpuinfer_threads=cpuinfer_threads,
++            threadpool_count=threadpool_count,
++            weight_path=weight_path,
++            chunked_prefill_size=chunked_prefill_size,
++            cpu_save=cpu_save,
++            max_deferred_experts_per_token=max_deferred_experts_per_token,
++            method=method,
++            numa_nodes=numa_nodes,
++        )
++
++        # AMX-specific: Check if we should load merged safetensor weights
++        self.load_merged_weight = False
++        import glob
++
++        if glob.glob(os.path.join(weight_path, "*.safetensors")):
++            self.load_merged_weight = True
++
++        # Initialize SafeTensor loader (singleton)
++        if self.load_merged_weight:
++            if AMXMoEWrapper._safetensor_loader_instance is None:
++                AMXMoEWrapper._safetensor_loader_instance = SafeTensorLoader(weight_path)
++            self.safetensor_loader = AMXMoEWrapper._safetensor_loader_instance
++
++        # AMX-specific weight storage
++        self.gate_weights = None
++        self.up_weights = None
++        self.down_weights = None
++        self.gate_scales = None
++        self.up_scales = None
++        self.down_scales = None
++
++    def load_weights_from_tensors(
++        self,
++        gate_proj: torch.Tensor,
++        up_proj: torch.Tensor,
++        down_proj: torch.Tensor,
++        physical_to_logical_map_cpu: torch.Tensor,
++    ):
++        """
++        Load and quantize weights from BF16/FP16 tensors (online quantization).
++
++        Args:
++            gate_proj: Gate projection weights [num_experts, intermediate_size, hidden_size]
++            up_proj: Up projection weights [num_experts, intermediate_size, hidden_size]
++            down_proj: Down projection weights [num_experts, hidden_size, intermediate_size]
++            physical_to_logical_map_cpu: Mapping from physical to logical expert IDs
++        """
++        # Store tensors as instance variables to keep them alive
++        self.gate_proj = gate_proj.contiguous()
++        self.up_proj = up_proj.contiguous()
++        self.down_proj = down_proj.contiguous()
++
++        # Configure MoE with online quantization (cpu_save mode)
++        moe_config = MOEConfig(
++            self.num_experts,
++            self.num_experts_per_tok,
++            self.hidden_size,
++            self.moe_intermediate_size,
++            self.gpu_experts_mask.data_ptr(),
++        )
++        moe_config.layer_idx = self.layer_idx
++        moe_config.pool = self.cpu_infer.backend_
++        moe_config.max_len = self.chunked_prefill_size
++
++        # Enable save mode for online quantization
++        moe_config.save = True
++        moe_config.load = False
++
++        # Set weight pointers
++        moe_config.gate_proj = self.gate_proj.data_ptr()
++        moe_config.up_proj = self.up_proj.data_ptr()
++        moe_config.down_proj = self.down_proj.data_ptr()
++
++        # Set output path for quantized weights
++        moe_config.path = self.weight_path
++
++        # Create MoE module based on AMX method
++        if self.method == "AMXINT4":
++            self.moe = AMXInt4_MOE(moe_config)
++        elif self.method == "AMXINT8":
++            self.moe = AMXInt8_MOE(moe_config)
++        else:
++            raise NotImplementedError(f"Unsupported AMX method: {self.method}")
++
++        # Submit quantization and save task
++        self.cpu_infer.submit(self.moe.load_weights_task(physical_to_logical_map_cpu.data_ptr()))
++        self.cpu_infer.sync()
++
++    def load_weights(self, physical_to_logical_map_cpu: torch.Tensor):
++        """
++        Load weights for this layer and initialize the MoE module.
++
++        Args:
++            physical_to_logical_map_cpu: Mapping from physical to logical expert IDs
++        """
++        gate_ptr = 0
++        up_ptr = 0
++        down_ptr = 0
++
++        gate_ptrs = []
++        up_ptrs = []
++        down_ptrs = []
++
++        gate_scale_ptrs = []
++        up_scale_ptrs = []
++        down_scale_ptrs = []
++
++        if self.load_merged_weight:
++            base_key = f"blk.{self.layer_idx}"
++            w = self.safetensor_loader.load_experts(base_key)
++
++            self.gate_weights = w["gate"]
++            self.up_weights = w["up"]
++            self.down_weights = w["down"]
++            self.gate_scales = w["gate_scale"]
++            self.up_scales = w["up_scale"]
++            self.down_scales = w["down_scale"]
++
++            # Get pointers to weight arrays
++            gate_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.gate_weights
++            ]
++
++            up_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.up_weights
++            ]
++
++            down_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.down_weights
++            ]
++
++            gate_scale_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.gate_scales
++            ]
++
++            up_scale_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.up_scales
++            ]
++
++            down_scale_ptrs = [
++                [
++                    ctypes.addressof(ctypes.cast(et.ctypes.data, ctypes.POINTER(ctypes.c_uint64)).contents)
++                    for et in numa_array
++                ]
++                for numa_array in self.down_scales
++            ]
++
++        # Configure MoE
++        moe_config = MOEConfig(
++            self.num_experts,
++            self.num_experts_per_tok,
++            self.hidden_size,
++            self.moe_intermediate_size,
++            self.gpu_experts_mask.data_ptr(),
++        )
++        moe_config.layer_idx = self.layer_idx
++        moe_config.pool = self.cpu_infer.backend_
++        moe_config.max_len = self.chunked_prefill_size
++
++        moe_config.gate_proj = gate_ptr
++        moe_config.up_proj = up_ptr
++        moe_config.down_proj = down_ptr
++        moe_config.gate_projs = gate_ptrs
++        moe_config.up_projs = up_ptrs
++        moe_config.down_projs = down_ptrs
++        moe_config.gate_scales = gate_scale_ptrs
++        moe_config.up_scales = up_scale_ptrs
++        moe_config.down_scales = down_scale_ptrs
++
++        if self.cpu_save:
++            moe_config.save = True
++            moe_config.load = False
++            base_key = f"model.layers.{self.layer_idx}"
++            try:
++                w = self.safetensor_loader.load_experts(base_key)
++            except (ValueError, KeyError):
++                base_key = f"model.language_model.layers.{self.layer_idx}"
++                w = self.safetensor_loader.load_experts(base_key)
++
++            self.gate_proj = torch.cat(w["gate_weight"], dim=0).contiguous()
++            self.up_proj = torch.cat(w["up_weight"], dim=0).contiguous()
++            self.down_proj = torch.cat(w["down_weight"], dim=0).contiguous()
++
++            moe_config.gate_proj = self.gate_proj.data_ptr()
++            moe_config.up_proj = self.up_proj.data_ptr()
++            moe_config.down_proj = self.down_proj.data_ptr()
++        else:
++            moe_config.load = True
++
++        if not self.load_merged_weight:
++            moe_config.path = self.weight_path
++
++        # Create MoE module based on AMX method
++        if self.method == "AMXINT4":
++            self.moe = AMXInt4_MOE(moe_config)
++        elif self.method == "AMXINT8":
++            self.moe = AMXInt8_MOE(moe_config)
++        else:
++            raise NotImplementedError(f"Unsupported AMX method: {self.method}")
++
++        # Load weights
++        self.cpu_infer.submit(self.moe.load_weights_task(physical_to_logical_map_cpu.data_ptr()))
++        self.cpu_infer.sync()
++
++        # Clean up temporary weight storage if using merged weights
++        if self.load_merged_weight:
++            del self.gate_weights
++            del self.up_weights
++            del self.down_weights
++            del self.gate_scales
++            del self.up_scales
++            del self.down_scales
++
++
++class NativeMoEWrapper(BaseMoEWrapper):
++    """Wrapper for RAWINT4/FP8/FP8_PERCHANNEL/BF16 experts stored in compressed SafeTensor format."""
++
++    _native_loader_instance = None
++
++    def __init__(
++        self,
++        layer_idx: int,
++        num_experts: int,
++        num_experts_per_tok: int,
++        hidden_size: int,
++        moe_intermediate_size: int,
++        gpu_experts_mask: Optional[torch.Tensor],
++        cpuinfer_threads: int,
++        threadpool_count: int,
++        weight_path: str,
++        chunked_prefill_size: int,
++        cpu_save: bool = False,
++        max_deferred_experts_per_token: Optional[int] = None,
++        method: str = "RAWINT4",
++        numa_nodes: Optional[List[int]] = None,
++        swiglu_limit: float = 0.0,
++        swiglu_alpha: float = 0.0,
++    ):
++        self._swiglu_alpha = float(swiglu_alpha)
++        # Defence in depth: reject swiglu_limit on non-MXFP4/MXFP8 methods even
++        # if the experts.py guard is bypassed (e.g., by a future caller
++        # that constructs NativeMoEWrapper directly). Origin: kt-sglang 耦合.
++        if swiglu_limit != 0.0 and method not in ("MXFP4", "MXFP8"):
++            raise ValueError(
++                f"NativeMoEWrapper received swiglu_limit={swiglu_limit} with "
++                f"method={method!r}; the clamp only applies to MXFP4/MXFP8. "
++                f"This indicates a missing guard in the caller."
++            )
++        if method == "RAWINT4" and not (
++            _HAS_RAWINT4_SUPPORT or _HAS_AVX2_RAWINT4_SUPPORT or _HAS_AVXVNNI256_RAW_INT4_SUPPORT
++        ):
++            raise RuntimeError(
++                "RAWINT4 backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW (for AMX backend), or\n"
++                "  - AVX2 + FMA (for AVX2 fallback backend)\n"
++                "AVX-VNNI-256 will be selected automatically when available on the current CPU.\n"
++                "Please recompile kt_kernel_ext with AVX512 or AVX2 enabled."
++            )
++        if method == "FP8" and not _HAS_FP8_SUPPORT and not _HAS_AVX2_FP8_SUPPORT:
++            raise RuntimeError(
++                "FP8 backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW + AVX512_BF16 + AVX512_VBMI (for AMX), or\n"
++                "  - AVX2 + FMA (for AVX2 fallback)\n"
++                "Please recompile kt_kernel_ext with AVX512 + BF16 + VBMI enabled."
++            )
++        if method == "FP8_PERCHANNEL" and not _HAS_FP8_PERCHANNEL_SUPPORT:
++            raise RuntimeError(
++                "FP8_PERCHANNEL backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW + AVX512_BF16 + AVX512_VBMI\n"
++                "Please recompile kt_kernel_ext with AVX512 + BF16 + VBMI enabled."
++            )
++        if method == "BF16" and not _HAS_BF16_SUPPORT and not _HAS_AVX2_BF16_SUPPORT:
++            raise RuntimeError(
++                "BF16 backend not available. Required ISA:\n"
++                "  - AVX512F + AVX512BW + AVX512_BF16 (for AMX backend), or\n"
++                "  - AVX2 + FMA (for AVX2 fallback backend)\n"
++                "Please recompile kt_kernel_ext with AVX512+BF16 or AVX2 enabled."
++            )
++        if method == "GPTQ_INT4" and not (_HAS_AVX2_GPTQ_INT4_SUPPORT or _HAS_AVXVNNI256_GPTQ_INT4_SUPPORT):
++            raise RuntimeError(
++                "GPTQ_INT4 backend not available.\n"
++                "Please recompile kt_kernel_ext with GPTQ INT4 support enabled.\n"
++                "AVX-VNNI-256 will be selected automatically when available on the current CPU."
++            )
++        if method == "MXFP4" and not (_HAS_MXFP4_SUPPORT or _HAS_AVX2_MXFP4_SUPPORT):
++            raise RuntimeError(
++                "MXFP4 backend not available. Required ISA (any one of):\n"
++                "  - AVX512F + AVX512BW + AVX512_BF16 (for AMX/AVX-512 backend)\n"
++                "  - AVX2 + FMA (for AVX2 fallback backend)\n"
++                "Please recompile kt_kernel_ext with one of the above enabled."
++            )
++        if method == "MXFP8" and not (_HAS_MXFP8_SUPPORT or _HAS_AVX2_MXFP8_SUPPORT):
++            raise RuntimeError(
++                "MXFP8 backend not available. Required ISA (any one of):\n"
++                "  - AVX512F + AVX512BW + AVX512_BF16 + AVX512_VBMI (for AMX/AVX-512 backend)\n"
++                "  - AVX2 + FMA (for AVX2 fallback backend)\n"
++                "Please recompile kt_kernel_ext with one of the above enabled."
++            )
++
++        super().__init__(
++            layer_idx=layer_idx,
++            num_experts=num_experts,
++            num_experts_per_tok=num_experts_per_tok,
++            hidden_size=hidden_size,
++            moe_intermediate_size=moe_intermediate_size,
++            gpu_experts_mask=gpu_experts_mask,
++            cpuinfer_threads=cpuinfer_threads,
++            threadpool_count=threadpool_count,
++            weight_path=weight_path,
++            chunked_prefill_size=chunked_prefill_size,
++            cpu_save=cpu_save,
++            max_deferred_experts_per_token=max_deferred_experts_per_token,
++            method=method,
++            numa_nodes=numa_nodes,
++            swiglu_limit=swiglu_limit,
++        )
++
++        if NativeMoEWrapper._native_loader_instance is None:
++            NativeMoEWrapper._native_loader_instance = NativeMoEWrapper._create_loader(method, weight_path)
++        self.loader = NativeMoEWrapper._native_loader_instance
++
++        self.gate_weights = None
++        self.up_weights = None
++        self.down_weights = None
++        self.gate_scales = None
++        self.up_scales = None
++        self.down_scales = None
++
++    @staticmethod
++    def _create_loader(method: str, weight_path: str):
++        if method == "RAWINT4":
++            return CompressedSafeTensorLoader(weight_path)
++        elif method == "FP8":
++            return FP8SafeTensorLoader(weight_path)
++        elif method == "FP8_PERCHANNEL":
++            return FP8SafeTensorLoader(weight_path, scale_suffix="weight_scale")
++        elif method == "BF16":
++            return BF16SafeTensorLoader(weight_path)
++        elif method == "GPTQ_INT4":
++            return GPTQSafeTensorLoader(weight_path)
++        elif method == "MXFP4":
++            return MXFP4SafeTensorLoader(weight_path)
++        elif method == "MXFP8":
++            return MXFP8SafeTensorLoader(weight_path)
++        else:
++            raise NotImplementedError(f"Unsupported method for NativeMoEWrapper: {method}")
++
++    @staticmethod
++    def _release_loader(layer_idx: int = -1):
++        if NativeMoEWrapper._native_loader_instance is not None:
++            NativeMoEWrapper._native_loader_instance.close_all_handles()
++            NativeMoEWrapper._native_loader_instance = None
++            if layer_idx >= 0:
++                logger.info(
++                    "[KT] Released NativeMoEWrapper loader after layer %d: "
++                    "safetensors mmap handles freed.", layer_idx,
++                )
++            else:
++                logger.info(
++                    "[KT] Released NativeMoEWrapper loader: safetensors mmap handles freed."
++                )
++
++    @staticmethod
++    def force_release_loader():
++        NativeMoEWrapper._release_loader()
++
++    def load_weights_from_tensors(
++        self,
++        gate_proj: torch.Tensor,
++        up_proj: torch.Tensor,
++        down_proj: torch.Tensor,
++        physical_to_logical_map_cpu: torch.Tensor,
++    ):
++        raise NotImplementedError("RAWINT4 wrapper expects pre-quantized safetensor weights.")
++
++    def load_weights(self, physical_to_logical_map_cpu: torch.Tensor):
++        import time
++
++        if NativeMoEWrapper._native_loader_instance is None:
++            t_recreate_start = time.time()
++            NativeMoEWrapper._native_loader_instance = NativeMoEWrapper._create_loader(
++                self.method, self.weight_path
++            )
++            self.loader = NativeMoEWrapper._native_loader_instance
++            t_recreate_elapsed = (time.time() - t_recreate_start) * 1000
++            logger.info(
++                "[KT] Recreated NativeMoEWrapper loader for layer %d (took %.1fms)",
++                self.layer_idx, t_recreate_elapsed,
++            )
++        else:
++            self.loader = NativeMoEWrapper._native_loader_instance
++
++        t0 = time.time()
++        _candidates = [
++            f"model.layers.{self.layer_idx}",
++            f"language_model.model.layers.{self.layer_idx}",
++            f"model.language_model.layers.{self.layer_idx}",
++        ]
++        weights = None
++        for base_key in _candidates:
++            try:
++                weights = self.loader.load_experts(base_key)
++                break
++            except (ValueError, KeyError):
++                continue
++        if weights is None:
++            raise ValueError(
++                f"No experts found for layer {self.layer_idx} under any prefix: {_candidates}"
++            )
++        t1 = time.time()
++
++        # Keep individual tensors instead of stacking - avoid expensive memory copy
++        # weights["gate"], weights["up"], weights["down"] are lists of tensors per expert
++        self.gate_weights = weights["gate"]  # list of tensors
++        self.up_weights = weights["up"]
++        self.down_weights = weights["down"]
++
++        # BF16 has no scales, others have scales
++        if self.method == "BF16":
++            # BF16 doesn't have scales
++            self.gate_scales = None
++            self.up_scales = None
++            self.down_scales = None
++        else:
++            # Convert scales to bf16 individually
++            # self.gate_scales = [t.to(torch.bfloat16).contiguous() for t in weights["gate_scale"]]
++            # self.up_scales = [t.to(torch.bfloat16).contiguous() for t in weights["up_scale"]]
++            # self.down_scales = [t.to(torch.bfloat16).contiguous() for t in weights["down_scale"]]
++            self.gate_scales = weights["gate_scale"]
++            self.up_scales = weights["up_scale"]
++            self.down_scales = weights["down_scale"]
++            if self.method == "RAWINT4":
++                assert self.gate_scales[0].dtype == torch.bfloat16, "Expected bf16 scales for RAWINT4"
++            elif self.method == "FP8":
++                if self.gate_scales[0].dtype != torch.float32:
++                    self.gate_scales = [t.to(torch.float32).contiguous() for t in weights["gate_scale"]]
++                    self.up_scales = [t.to(torch.float32).contiguous() for t in weights["up_scale"]]
++                    self.down_scales = [t.to(torch.float32).contiguous() for t in weights["down_scale"]]
++                assert self.gate_scales[0].dtype == torch.float32, "Expected float32 scales for FP8"
++            elif self.method == "FP8_PERCHANNEL":
++                if self.gate_scales[0].dtype != torch.float32:
++                    self.gate_scales = [t.to(torch.float32).contiguous() for t in weights["gate_scale"]]
++                    self.up_scales = [t.to(torch.float32).contiguous() for t in weights["up_scale"]]
++                    self.down_scales = [t.to(torch.float32).contiguous() for t in weights["down_scale"]]
++                assert self.gate_scales[0].dtype == torch.float32, "Expected float32 scales for FP8_PERCHANNEL"
++            elif self.method == "MXFP4":
++                # ue8m0 is losslessly representable in bf16 (8-bit exponent, 0 mantissa);
++                # the loader has already done that conversion.
++                assert self.gate_scales[0].dtype == torch.bfloat16, "Expected bf16 scales for MXFP4"
++            elif self.method == "MXFP8":
++                # ue8m0 scales stay as uint8; C++ convert_ue8m0_to_fp32 handles conversion.
++                assert self.gate_scales[0].dtype == torch.uint8, "Expected uint8 (ue8m0) scales for MXFP8"
++
++        t2 = time.time()
++
++        # Build pointer lists: [numa_id][expert_id] -> pointer
++        # Since RAWINT4/FP8/BF16 has no numa sharding, numa dimension is 1
++        gate_ptrs = [[t.data_ptr() for t in self.gate_weights]]
++        up_ptrs = [[t.data_ptr() for t in self.up_weights]]
++        down_ptrs = [[t.data_ptr() for t in self.down_weights]]
++
++        # BF16 has no scales, pass empty lists (will use 0/nullptr for consistency)
++        if self.method == "BF16":
++            gate_scale_ptrs = [[0 for _ in self.gate_weights]]
++            up_scale_ptrs = [[0 for _ in self.up_weights]]
++            down_scale_ptrs = [[0 for _ in self.down_weights]]
++        else:
++            gate_scale_ptrs = [[t.data_ptr() for t in self.gate_scales]]
++            up_scale_ptrs = [[t.data_ptr() for t in self.up_scales]]
++            down_scale_ptrs = [[t.data_ptr() for t in self.down_scales]]
++        t3 = time.time()
++
++        moe_config = MOEConfig(
++            self.num_experts,
++            self.num_experts_per_tok,
++            self.hidden_size,
++            self.moe_intermediate_size,
++            self.gpu_experts_mask.data_ptr(),
++        )
++        moe_config.layer_idx = self.layer_idx
++        moe_config.pool = self.cpu_infer.backend_
++        moe_config.max_len = self.chunked_prefill_size
++        # V4-Flash 2604B SwiGLU clamp; 0.0 = disabled (default for non-MXFP4
++        # paths). Read by `act_fn` in operators/amx/la/amx.hpp via
++        # `apply_activation` in operators/amx/moe_base.hpp. Re-checked here
++        # (defence in depth) so a future caller that bypasses both the
++        # experts.py and the __init__ guards still cannot apply the clamp
++        # on RAWINT4 / FP8 / BF16 / FP8_PERCHANNEL / GPTQ_INT4 paths.
++        # Origin: kt-sglang 耦合.
++        if self.swiglu_limit != 0.0 and self.method not in ("MXFP4", "MXFP8"):
++            raise ValueError(
++                f"NativeMoEWrapper.load_weights: swiglu_limit="
++                f"{self.swiglu_limit} with method={self.method!r}; clamp is "
++                f"only valid for MXFP4/MXFP8."
++            )
++        moe_config.swiglu_limit = self.swiglu_limit
++
++        # Use gate_projs instead of gate_proj for per-expert pointers
++        moe_config.gate_projs = gate_ptrs
++        moe_config.up_projs = up_ptrs
++        moe_config.down_projs = down_ptrs
++        moe_config.gate_scales = gate_scale_ptrs
++        moe_config.up_scales = up_scale_ptrs
++        moe_config.down_scales = down_scale_ptrs
++
++        # Infer group_size from scale shape (column-major layout)
++        # For gate/up projection: in_features = hidden_size
++        # So: group_size = hidden_size / scale.shape[1]
++
++        if self.method == "RAWINT4":
++            group_size = self.hidden_size // self.gate_scales[0].shape[1]
++            moe_config.quant_config.bits = 4
++            moe_config.quant_config.group_size = group_size
++            moe_config.quant_config.zero_point = False
++            backend_cls = _select_rawint4_backend(group_size)
++            if backend_cls is None:
++                raise RuntimeError(
++                    "No RAWINT4 backend is available after runtime selection for "
++                    f"group_size={group_size}. AMX (AMXInt4_KGroup_MOE) is preferred; "
++                    f"AVX-VNNI-256 supports positive multiples of 32 up to "
++                    f"{_AVXVNNI256_RAW_INT4_MAX_GROUP_SIZE}; AVX2 (AVX2RawInt4_MOE) is used as the final fallback."
++                )
++            self.moe = backend_cls(moe_config)
++        elif self.method == "MXFP4":
++            # MXFP4: E2M1 nibble-packed weights, ue8m0/bf16 per-32 group scale
++            # (e.g. DeepSeek-V4-Flash routed experts)
++            group_size = self.hidden_size // self.gate_scales[0].shape[1]
++            moe_config.quant_config.bits = 4
++            moe_config.quant_config.group_size = group_size
++            moe_config.quant_config.zero_point = False
++            backend_cls = _select_mxfp4_backend()
++            if backend_cls is None:
++                raise RuntimeError(
++                    "No MXFP4 backend available after runtime selection. "
++                    "Compile with AVX512_BF16 (AMXFP4_KGroup_MOE) or AVX2 (AVX2MXFP4_MOE)."
++                )
++            self.moe = backend_cls(moe_config)
++        elif self.method == "MXFP8":
++            # MXFP8: FP8 E4M3fn byte weights, ue8m0/uint8 per-32 group scale
++            # (e.g. MiniMax-M3-Preview)
++            group_size = self.hidden_size // self.gate_scales[0].shape[1]
++            moe_config.quant_config.bits = 8
++            moe_config.quant_config.group_size = group_size
++            moe_config.quant_config.zero_point = False
++            moe_config.swiglu_alpha = getattr(self, "_swiglu_alpha", 0.0)
++            backend_cls = _select_mxfp8_backend()
++            if backend_cls is None:
++                raise RuntimeError(
++                    "No MXFP8 backend available after runtime selection. "
++                    "Compile with AVX512+VBMI (AMXMXFP8_KGroup_MOE) or AVX2 (AVX2MXFP8_MOE)."
++                )
++            self.moe = backend_cls(moe_config)
++        elif self.method == "FP8":
++            moe_config.quant_config.bits = 8
++            moe_config.quant_config.group_size = 128
++            moe_config.quant_config.zero_point = False
++            if _HAS_FP8_SUPPORT:
++                self.moe = AMXFP8_MOE(moe_config)
++            else:
++                self.moe = AVX2FP8_MOE(moe_config)
++        elif self.method == "FP8_PERCHANNEL":
++            moe_config.quant_config.bits = 8
++            moe_config.quant_config.per_channel = True
++            moe_config.quant_config.zero_point = False
++            self.moe = AMXFP8PerChannel_MOE(moe_config)
++        elif self.method == "GPTQ_INT4":
++            # GPTQ symmetric INT4: qweight (int32) + scales (fp32)
++            group_size = self.gate_scales[0].shape[0]  # scales shape [K/gs, N], first dim = num_groups
++            # hidden_size / num_groups = group_size
++            actual_gs = self.hidden_size // group_size
++            moe_config.quant_config.bits = 4
++            moe_config.quant_config.group_size = actual_gs
++            moe_config.quant_config.zero_point = False
++            backend_cls = _select_gptq_int4_backend(actual_gs)
++            if backend_cls is None:
++                raise RuntimeError(
++                    "No GPTQ_INT4 backend is available after runtime selection for "
++                    f"group_size={actual_gs}. AVX-VNNI-256 supports positive multiples of 32 up to "
++                    f"{_AVXVNNI256_GPTQ_INT4_MAX_GROUP_SIZE}; AVX2 is used as the fallback when available."
++                )
++            self.moe = backend_cls(moe_config)
++        elif self.method == "BF16":
++            # BF16 has no quantization config needed
++            # Prefer AMX backend, fall back to AVX2
++            if _HAS_BF16_SUPPORT:
++                self.moe = AMXBF16_MOE(moe_config)
++            else:
++                self.moe = AVX2BF16_MOE(moe_config)
++        t4 = time.time()
++
++        self.cpu_infer.submit(self.moe.load_weights_task(physical_to_logical_map_cpu.data_ptr()))
++        self.cpu_infer.sync()
++        t5 = time.time()
++
++        del self.gate_weights
++        del self.up_weights
++        del self.down_weights
++        if self.gate_scales is not None:
++            del self.gate_scales
++            del self.up_scales
++            del self.down_scales
++
++        NativeMoEWrapper._release_loader(layer_idx=self.layer_idx)
++        t6 = time.time()
++
++        print(
++            f"[NativeMoEWrapper Layer {self.layer_idx}] "
++            f"load_experts: {(t1-t0)*1000:.1f}ms, "
++            f"prepare_tensors: {(t2-t1)*1000:.1f}ms, "
++            f"build_ptrs: {(t3-t2)*1000:.1f}ms, "
++            f"create_moe: {(t4-t3)*1000:.1f}ms, "
++            f"cpp_load_weights: {(t5-t4)*1000:.1f}ms, "
++            f"cleanup: {(t6-t5)*1000:.1f}ms, "
++            f"total: {(t6-t0)*1000:.1f}ms"
++        )
++
++    def submit_write_weight_scale_to_buffer(
++        self,
++        gpu_tp_count: int,
++        expert_id: int,
++        w13_weight_ptrs,
++        w13_scale_ptrs,
++        w2_weight_ptrs,
++        w2_scale_ptrs,
++    ):
++        """
++        Submit the write_weight_scale_to_buffer task for RAWINT4 KGroup AMX implementation.
++
++        This method submits the C++-exposed task `write_weight_scale_to_buffer_task` to the
++        shared CPUInfer queue. The pointer lists should be plain integer lists (e.g. from
++        tensor.data_ptr()).
++        """
++        if self.moe is None:
++            raise RuntimeError("MoE instance not initialized; cannot submit write_weight_scale_to_buffer task.")
++
++        if not hasattr(self.moe, "write_weight_scale_to_buffer_task"):
++            raise NotImplementedError(
++                "write_weight_scale_to_buffer_task is not available for this backend implementation."
++            )
++
++        self.cpu_infer.submit(
++            self.moe.write_weight_scale_to_buffer_task(
++                gpu_tp_count,
++                expert_id,
++                w13_weight_ptrs,
++                w13_scale_ptrs,
++                w2_weight_ptrs,
++                w2_scale_ptrs,
++            )
++        )
++
++    def sync_write_weight_scale_to_buffer(self):
++        """
++        Block until previously submitted write_weight_scale_to_buffer tasks finish.
++        """
++        # The CPUInfer.sync() call blocks until pending tasks complete.
++        self.cpu_infer.sync()
+-- 
+2.34.1
+

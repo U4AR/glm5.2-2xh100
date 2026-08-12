@@ -1,0 +1,580 @@
+From f66c5eaa92cc70bf69c2dd67a0bf2438c85d7fd2 Mon Sep 17 00:00:00 2001
+From: BEL <bel@H100-VM1.mzqbi1zdpcje1jsioelsqu3tog.rx.internal.cloudapp.net>
+Date: Mon, 29 Jun 2026 12:55:40 +0000
+Subject: [PATCH 3/6] [wip](kt-kernel): prototype cuda graph top2 streaming
+
+---
+ kt-kernel/ext_bindings.cpp                    | 259 ++++++++++++++++++
+ kt-kernel/operators/avx2/moe_base.hpp         |   5 +
+ .../avx2/rawint4_packed_avx512vnni-moe.hpp    | 150 +++++++++-
+ kt-kernel/python/utils/amx.py                 |  77 ++++++
+ 4 files changed, 490 insertions(+), 1 deletion(-)
+
+diff --git a/kt-kernel/ext_bindings.cpp b/kt-kernel/ext_bindings.cpp
+index 6beff11..3718009 100644
+--- a/kt-kernel/ext_bindings.cpp
++++ b/kt-kernel/ext_bindings.cpp
+@@ -17,6 +17,8 @@
+ #endif
+ #include <csignal>
+ #include <cstddef>
++#include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ 
+ #include "cpu_backend/cpuinfer.h"
+@@ -71,6 +73,7 @@ static const bool _is_plain_ = false;
+ 
+ #include <cstdint>
+ #include <memory>
++#include <thread>
+ #include <type_traits>
+ 
+ #include "operators/kvcache/kvcache.h"
+@@ -477,10 +480,266 @@ void bind_moe_module(py::module_& moe_module, const char* name) {
+     moe_cls.def("write_weight_scale_to_buffer_task", &WriteWeightScaleToBufferBindings::cpuinfer_interface,
+                 py::arg("gpu_tp_count"), py::arg("expert_id"), py::arg("w13_weight_ptrs"), py::arg("w13_scale_ptrs"),
+                 py::arg("w2_weight_ptrs"), py::arg("w2_scale_ptrs"));
++
++    struct WriteTopKWeightScaleToBufferBindings {
++      struct Args {
++	        CPUInfer* cpuinfer;
++	        MoeClass* moe;
++	        int gpu_tp_count;
++	        int local_gpu_tp;
++	        int slot_count;
++	        int num_experts;
++	        int base_slot;
++        uintptr_t selected_ids_ptr;
++        uintptr_t gpu_mask_ptr;
++        uintptr_t static_l2g_ptr;
++        uintptr_t dyn_mask_ptr;
++        uintptr_t dyn_l2g_ptr;
++        size_t w13_weight_slot_bytes;
++        size_t w13_scale_slot_bytes;
++        size_t w2_weight_slot_bytes;
++        size_t w2_scale_slot_bytes;
++        uintptr_t ready_counter_ptr;
++        int w13_scale_rows;
++        int w13_scale_groups;
++        int w2_scale_rows;
++        int w2_scale_groups;
++        std::vector<uintptr_t> w13_weight_ptrs;
++        std::vector<uintptr_t> w13_scale_ptrs;
++        std::vector<uintptr_t> w2_weight_ptrs;
++        std::vector<uintptr_t> w2_scale_ptrs;
++      };
++
++      static std::vector<uintptr_t> offset_ptrs(const std::vector<uintptr_t>& ptrs, size_t slot_bytes, int slot) {
++        std::vector<uintptr_t> out;
++        out.reserve(ptrs.size());
++        for (auto ptr : ptrs) out.push_back(ptr + (size_t)slot * slot_bytes);
++        return out;
++      }
++
++      static void interleave_bf16_scale_inplace(uintptr_t ptr, int rows, int groups) {
++        if (ptr == 0 || rows <= 0 || groups <= 0) return;
++        int alignment = (groups % 4 == 0) ? 4 : 1;
++        auto* data = reinterpret_cast<uint16_t*>(ptr);
++        std::vector<uint16_t> tmp((size_t)rows * (size_t)groups);
++        for (int row = 0; row < rows; ++row) {
++          for (int group = 0; group < groups; ++group) {
++            size_t src = (size_t)row * groups + group;
++            size_t dst = (size_t)(group / alignment) * ((size_t)rows * alignment) +
++                         (size_t)row * alignment + (group % alignment);
++            tmp[dst] = data[src];
++          }
++        }
++        std::memcpy(data, tmp.data(), tmp.size() * sizeof(uint16_t));
++      }
++
++	      static void inner(void* args) {
++	        Args* args_ = (Args*)args;
++	        args_->cpuinfer->task_queue_->enqueue([args_]() { work(args_); });
++	      }
++
++	      static void write_one_expert(Args* args_, int64_t expert_id, int slot) {
++	        if constexpr (requires(MoeClass* moe, int gpu_tp_count, int local_gpu_tp, int expert,
++	                               const std::vector<uintptr_t>& w13_weight_ptrs,
++	                               const std::vector<uintptr_t>& w13_scale_ptrs,
++	                               const std::vector<uintptr_t>& w2_weight_ptrs,
++	                               const std::vector<uintptr_t>& w2_scale_ptrs) {
++	                        moe->write_weight_scale_to_buffer_local(gpu_tp_count, local_gpu_tp, expert,
++	                                                                w13_weight_ptrs, w13_scale_ptrs, w2_weight_ptrs,
++	                                                                w2_scale_ptrs);
++	                      }) {
++	          if (args_->local_gpu_tp < 0) {
++	            args_->moe->write_weight_scale_to_buffer_serial(
++	                args_->gpu_tp_count, (int)expert_id,
++	                offset_ptrs(args_->w13_weight_ptrs, args_->w13_weight_slot_bytes, slot),
++	                offset_ptrs(args_->w13_scale_ptrs, args_->w13_scale_slot_bytes, slot),
++	                offset_ptrs(args_->w2_weight_ptrs, args_->w2_weight_slot_bytes, slot),
++	                offset_ptrs(args_->w2_scale_ptrs, args_->w2_scale_slot_bytes, slot));
++	            return;
++	          }
++	          args_->moe->write_weight_scale_to_buffer_local(
++	              args_->gpu_tp_count, args_->local_gpu_tp, (int)expert_id,
++	              offset_ptrs(args_->w13_weight_ptrs, args_->w13_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w13_scale_ptrs, args_->w13_scale_slot_bytes, slot),
++	              offset_ptrs(args_->w2_weight_ptrs, args_->w2_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w2_scale_ptrs, args_->w2_scale_slot_bytes, slot));
++	        } else if constexpr (requires(MoeClass* moe, int gpu_tp_count, int expert,
++	                               const std::vector<uintptr_t>& w13_weight_ptrs,
++	                               const std::vector<uintptr_t>& w13_scale_ptrs,
++	                               const std::vector<uintptr_t>& w2_weight_ptrs,
++	                               const std::vector<uintptr_t>& w2_scale_ptrs) {
++	                        moe->write_weight_scale_to_buffer_serial(gpu_tp_count, expert, w13_weight_ptrs,
++	                                                                 w13_scale_ptrs, w2_weight_ptrs,
++	                                                                 w2_scale_ptrs);
++	                      }) {
++	          args_->moe->write_weight_scale_to_buffer_serial(
++	              args_->gpu_tp_count, (int)expert_id,
++	              offset_ptrs(args_->w13_weight_ptrs, args_->w13_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w13_scale_ptrs, args_->w13_scale_slot_bytes, slot),
++	              offset_ptrs(args_->w2_weight_ptrs, args_->w2_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w2_scale_ptrs, args_->w2_scale_slot_bytes, slot));
++	        } else {
++	          args_->moe->write_weight_scale_to_buffer(
++	              args_->gpu_tp_count, (int)expert_id,
++	              offset_ptrs(args_->w13_weight_ptrs, args_->w13_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w13_scale_ptrs, args_->w13_scale_slot_bytes, slot),
++	              offset_ptrs(args_->w2_weight_ptrs, args_->w2_weight_slot_bytes, slot),
++	              offset_ptrs(args_->w2_scale_ptrs, args_->w2_scale_slot_bytes, slot));
++	        }
++	      }
++
++	      static void work(Args* args_) {
++	        bool debug = std::getenv("KT_TOPK_DEBUG") != nullptr;
++	        const int64_t* selected_ids = reinterpret_cast<const int64_t*>(args_->selected_ids_ptr);
++	        const uint8_t* gpu_mask = reinterpret_cast<const uint8_t*>(args_->gpu_mask_ptr);
++	        const int64_t* static_l2g = reinterpret_cast<const int64_t*>(args_->static_l2g_ptr);
++	        uint8_t* dyn_mask = reinterpret_cast<uint8_t*>(args_->dyn_mask_ptr);
++        int64_t* dyn_l2g = reinterpret_cast<int64_t*>(args_->dyn_l2g_ptr);
++
++        if (debug) {
++	          std::fprintf(stderr, "[kt-topk] begin local_gpu_tp=%d slots=%d base=%d selected_ptr=%p ready=%p\n",
++	                       args_->local_gpu_tp, args_->slot_count, args_->base_slot, selected_ids,
++	                       reinterpret_cast<void*>(args_->ready_counter_ptr));
++          std::fflush(stderr);
++        }
++        std::memcpy(dyn_mask, gpu_mask, (size_t)args_->num_experts * sizeof(uint8_t));
++        std::memcpy(dyn_l2g, static_l2g, (size_t)args_->num_experts * sizeof(int64_t));
++
++        std::vector<int> written_slots;
++        written_slots.reserve(args_->slot_count);
++        for (int slot = 0; slot < args_->slot_count; ++slot) {
++          int64_t expert_id = selected_ids[slot];
++          if (debug) {
++            std::fprintf(stderr, "[kt-topk] slot=%d expert=%ld gpu=%d\n",
++                         slot, (long)expert_id,
++                         (expert_id >= 0 && expert_id < args_->num_experts) ? (int)gpu_mask[expert_id] : -1);
++            std::fflush(stderr);
++          }
++          if (expert_id < 0 || expert_id >= args_->num_experts) continue;
++          if (gpu_mask[expert_id]) continue;
++
++          dyn_mask[expert_id] = 1;
++          dyn_l2g[expert_id] = args_->base_slot + slot;
++	          if (debug) {
++	            std::fprintf(stderr, "[kt-topk] write slot=%d expert=%ld\n", slot, (long)expert_id);
++	            std::fflush(stderr);
++	          }
++	          write_one_expert(args_, expert_id, slot);
++	          written_slots.push_back(slot);
++	        }
++	        for (int slot : written_slots) {
++	          if (debug) {
++	            std::fprintf(stderr, "[kt-topk] interleave slot=%d\n", slot);
++            std::fflush(stderr);
++          }
++	          if (args_->local_gpu_tp >= 0) {
++	            interleave_bf16_scale_inplace(args_->w13_scale_ptrs[args_->local_gpu_tp] +
++	                                              (size_t)slot * args_->w13_scale_slot_bytes,
++	                                          args_->w13_scale_rows, args_->w13_scale_groups);
++	            interleave_bf16_scale_inplace(args_->w2_scale_ptrs[args_->local_gpu_tp] +
++	                                              (size_t)slot * args_->w2_scale_slot_bytes,
++	                                          args_->w2_scale_rows, args_->w2_scale_groups);
++	          } else {
++	            for (auto ptr : args_->w13_scale_ptrs) {
++	              interleave_bf16_scale_inplace(ptr + (size_t)slot * args_->w13_scale_slot_bytes,
++	                                            args_->w13_scale_rows, args_->w13_scale_groups);
++	            }
++	            for (auto ptr : args_->w2_scale_ptrs) {
++	              interleave_bf16_scale_inplace(ptr + (size_t)slot * args_->w2_scale_slot_bytes,
++	                                            args_->w2_scale_rows, args_->w2_scale_groups);
++	            }
++	          }
++	        }
++        if (args_->ready_counter_ptr != 0) {
++          auto* counter = reinterpret_cast<int64_t*>(args_->ready_counter_ptr);
++          __atomic_fetch_add(counter, (int64_t)1, __ATOMIC_RELEASE);
++        }
++        if (debug) {
++          std::fprintf(stderr, "[kt-topk] done\n");
++          std::fflush(stderr);
++        }
++      }
++
++      static std::pair<intptr_t, intptr_t> cpuinfer_interface(
++	          std::shared_ptr<MoeClass> moe, int gpu_tp_count, int local_gpu_tp, int slot_count, int num_experts,
++	          int base_slot, uintptr_t selected_ids_ptr, uintptr_t gpu_mask_ptr, uintptr_t static_l2g_ptr,
++	          uintptr_t dyn_mask_ptr, uintptr_t dyn_l2g_ptr, size_t w13_weight_slot_bytes,
++	          size_t w13_scale_slot_bytes, size_t w2_weight_slot_bytes, size_t w2_scale_slot_bytes,
++	          uintptr_t ready_counter_ptr, int w13_scale_rows, int w13_scale_groups, int w2_scale_rows, int w2_scale_groups,
++	          py::list w13_weight_ptrs, py::list w13_scale_ptrs, py::list w2_weight_ptrs, py::list w2_scale_ptrs) {
++        std::vector<uintptr_t> w13_weight_vec, w13_scale_vec, w2_weight_vec, w2_scale_vec;
++
++        for (auto item : w13_weight_ptrs) w13_weight_vec.push_back(py::cast<uintptr_t>(item));
++        for (auto item : w13_scale_ptrs) w13_scale_vec.push_back(py::cast<uintptr_t>(item));
++        for (auto item : w2_weight_ptrs) w2_weight_vec.push_back(py::cast<uintptr_t>(item));
++        for (auto item : w2_scale_ptrs) w2_scale_vec.push_back(py::cast<uintptr_t>(item));
++
++        Args* args = new Args{nullptr,
++	                              moe.get(),
++	                              gpu_tp_count,
++	                              local_gpu_tp,
++	                              slot_count,
++                              num_experts,
++                              base_slot,
++                              selected_ids_ptr,
++                              gpu_mask_ptr,
++                              static_l2g_ptr,
++                              dyn_mask_ptr,
++                              dyn_l2g_ptr,
++                              w13_weight_slot_bytes,
++                              w13_scale_slot_bytes,
++                              w2_weight_slot_bytes,
++                              w2_scale_slot_bytes,
++                              ready_counter_ptr,
++                              w13_scale_rows,
++                              w13_scale_groups,
++                              w2_scale_rows,
++                              w2_scale_groups,
++                              w13_weight_vec,
++                              w13_scale_vec,
++                              w2_weight_vec,
++                              w2_scale_vec};
++        return std::make_pair((intptr_t)&inner, (intptr_t)args);
++      }
++    };
++
++	    moe_cls.def("write_topk_weight_scale_to_buffer_task",
++	                &WriteTopKWeightScaleToBufferBindings::cpuinfer_interface, py::arg("gpu_tp_count"),
++	                py::arg("local_gpu_tp"), py::arg("slot_count"), py::arg("num_experts"), py::arg("base_slot"),
++                py::arg("selected_ids_ptr"), py::arg("gpu_mask_ptr"), py::arg("static_l2g_ptr"),
++                py::arg("dyn_mask_ptr"), py::arg("dyn_l2g_ptr"), py::arg("w13_weight_slot_bytes"),
++                py::arg("w13_scale_slot_bytes"), py::arg("w2_weight_slot_bytes"),
++                py::arg("w2_scale_slot_bytes"), py::arg("ready_counter_ptr"), py::arg("w13_scale_rows"),
++                py::arg("w13_scale_groups"), py::arg("w2_scale_rows"), py::arg("w2_scale_groups"),
++                py::arg("w13_weight_ptrs"), py::arg("w13_scale_ptrs"), py::arg("w2_weight_ptrs"),
++                py::arg("w2_scale_ptrs"));
++  }
++}
++
++struct WaitCounterArgs {
++  int64_t* counter;
++  int64_t expected;
++};
++
++static void wait_counter_inner(void* raw_args) {
++  auto* args = reinterpret_cast<WaitCounterArgs*>(raw_args);
++  while (__atomic_load_n(args->counter, __ATOMIC_ACQUIRE) < args->expected) {
++    std::this_thread::yield();
+   }
++  args->expected += 1;
+ }
+ 
+ PYBIND11_MODULE(kt_kernel_ext, m) {
++  m.def("launch_wait_counter", [](intptr_t user_cuda_stream, uintptr_t counter_ptr) {
++    auto* counter = reinterpret_cast<int64_t*>(counter_ptr);
++    int64_t expected = __atomic_load_n(counter, __ATOMIC_ACQUIRE) + 1;
++    auto* args = new WaitCounterArgs{counter, expected};
++#if defined(KTRANSFORMERS_USE_CUDA) || defined(KTRANSFORMERS_USE_MUSA) || defined(KTRANSFORMERS_USE_ROCM) || \
++    defined(KTRANSFORMERS_USE_MACA)
++    cudaLaunchHostFunc((cudaStream_t)user_cuda_stream, (cudaHostFn_t)&wait_counter_inner, (void*)args);
++#endif
++  });
++
+   py::class_<WorkerPool>(m, "WorkerPool").def(py::init<int>());
+   py::class_<WorkerPoolConfig>(m, "WorkerPoolConfig")
+       .def(py::init<>())
+diff --git a/kt-kernel/operators/avx2/moe_base.hpp b/kt-kernel/operators/avx2/moe_base.hpp
+index ae5e17c..a2d97f7 100644
+--- a/kt-kernel/operators/avx2/moe_base.hpp
++++ b/kt-kernel/operators/avx2/moe_base.hpp
+@@ -190,6 +190,11 @@ class AVX2_MOE_BASE {
+     derived_const()->write_weights_to_buffer(std::forward<Args>(args)...);
+   }
+ 
++  template <typename... Args>
++  void write_weights_to_buffer_single_thread(Args&&... args) const {
++    derived_const()->write_weights_to_buffer_single_thread(std::forward<Args>(args)...);
++  }
++
+   void forward_prefill(int qlen, int k, const int64_t* expert_ids, const float* weights, const void* input,
+                        void* output) {
+     auto pool = config_.pool->get_subpool(tp_part_idx);
+diff --git a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+index c5a9e8c..58cbe7d 100644
+--- a/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
++++ b/kt-kernel/operators/avx2/rawint4_packed_avx512vnni-moe.hpp
+@@ -45,7 +45,9 @@
+ #include <algorithm>
+ #include <array>
+ #include <cmath>
++#include <cstdio>
+ #include <cstdint>
++#include <cstdlib>
+ #include <cstring>
+ #include <limits>
+ #include <memory>
+@@ -646,7 +648,103 @@ class AVX512_RAW_INT4_PACKED_MOE_TP : public AVX2_MOE_BASE<T, AVX512_RAW_INT4_PA
+                            data_per_gpu_tp_scale);
+             }
+           },
+-          nullptr);
++	          nullptr);
++	    }
++	  }
++
++  void write_weights_to_buffer_single_thread(int gpu_tp_count, int cpu_tp_count, int expert_id,
++                                             const GeneralMOEConfig& full_config,
++                                             const std::vector<uintptr_t>& w13_weight_ptrs,
++                                             const std::vector<uintptr_t>& w13_scale_ptrs,
++                                             const std::vector<uintptr_t>& w2_weight_ptrs,
++                                             const std::vector<uintptr_t>& w2_scale_ptrs) const {
++    if (expert_id < 0 || expert_id >= config_.expert_num || gate_bb_[expert_id] == nullptr ||
++        up_bb_[expert_id] == nullptr || down_bb_[expert_id] == nullptr) {
++      throw std::runtime_error("PACKED RAWINT4 write_weights_to_buffer requested an expert without loaded weights");
++    }
++    const int group_size = config_.quant_config.group_size;
++    const size_t cpu_tp_weight_elem_count = (size_t)config_.intermediate_size * config_.hidden_size;
++    const size_t cpu_tp_weight_bytes = cpu_tp_weight_elem_count / 2;
++    const size_t cpu_tp_scale_elem_count = cpu_tp_weight_elem_count / group_size;
++    const size_t gpu_tp_weight_elem_count = (size_t)full_config.intermediate_size * full_config.hidden_size / gpu_tp_count;
++    const size_t gpu_tp_weight_bytes = gpu_tp_weight_elem_count / 2;
++    const size_t gpu_tp_scale_elem_count = gpu_tp_weight_elem_count / group_size;
++    bool debug = std::getenv("KT_TOPK_DEBUG") != nullptr;
++
++    if (cpu_tp_count >= gpu_tp_count) {
++      int target_gpu_tp = tp_part_idx / (cpu_tp_count / gpu_tp_count);
++      int local_idx = tp_part_idx % (cpu_tp_count / gpu_tp_count);
++      uint8_t* w13_weight_dst = (uint8_t*)w13_weight_ptrs[target_gpu_tp];
++      ggml_bf16_t* w13_scale_dst = (ggml_bf16_t*)w13_scale_ptrs[target_gpu_tp];
++      uint8_t* w2_weight_dst = (uint8_t*)w2_weight_ptrs[target_gpu_tp];
++      ggml_bf16_t* w2_scale_dst = (ggml_bf16_t*)w2_scale_ptrs[target_gpu_tp];
++      size_t offset_in_gpu_weight = local_idx * cpu_tp_weight_bytes;
++      size_t offset_in_gpu_scale = local_idx * cpu_tp_scale_elem_count;
++      size_t weight_per_col = config_.intermediate_size >> 1;
++      size_t scale_per_col = config_.intermediate_size / group_size;
++      size_t gpu_weight_stride = (full_config.intermediate_size / gpu_tp_count) >> 1;
++      size_t gpu_scale_stride = (full_config.intermediate_size / gpu_tp_count) / group_size;
++      size_t gpu_weight_slice_offset = local_idx * weight_per_col;
++      size_t gpu_scale_slice_offset = local_idx * scale_per_col;
++
++      if (debug) {
++        std::fprintf(stderr,
++                     "[kt-topk] tp-copy tp=%d expert=%d target_gpu_tp=%d local_idx=%d w13=%p s13=%p w2=%p s2=%p\n",
++                     tp_part_idx, expert_id, target_gpu_tp, local_idx, w13_weight_dst, w13_scale_dst, w2_weight_dst,
++                     w2_scale_dst);
++        std::fflush(stderr);
++      }
++      std::memcpy(w13_weight_dst + offset_in_gpu_weight, gate_bb_[expert_id]->qweight_packed, cpu_tp_weight_bytes);
++      std::memcpy(w13_weight_dst + offset_in_gpu_weight + gpu_tp_weight_bytes, up_bb_[expert_id]->qweight_packed,
++                  cpu_tp_weight_bytes);
++      fp32_to_bf16(w13_scale_dst + offset_in_gpu_scale, gate_bb_[expert_id]->scales, cpu_tp_scale_elem_count);
++      fp32_to_bf16(w13_scale_dst + offset_in_gpu_scale + gpu_tp_scale_elem_count, up_bb_[expert_id]->scales,
++                   cpu_tp_scale_elem_count);
++      for (size_t col = 0; col < (size_t)config_.hidden_size; col++) {
++        std::memcpy(w2_weight_dst + col * gpu_weight_stride + gpu_weight_slice_offset,
++                    down_bb_[expert_id]->qweight_packed + col * weight_per_col, weight_per_col);
++        fp32_to_bf16(w2_scale_dst + col * gpu_scale_stride + gpu_scale_slice_offset,
++                     down_bb_[expert_id]->scales + col * scale_per_col, scale_per_col);
++      }
++    } else {
++      int gpu_tps_per_cpu_tp = gpu_tp_count / cpu_tp_count;
++      int start_gpu_tp = tp_part_idx * gpu_tps_per_cpu_tp;
++      size_t data_per_gpu_tp_weight = cpu_tp_weight_bytes / gpu_tps_per_cpu_tp;
++      size_t data_per_gpu_tp_scale = cpu_tp_scale_elem_count / gpu_tps_per_cpu_tp;
++
++      for (int local_gpu_idx = 0; local_gpu_idx < gpu_tps_per_cpu_tp; ++local_gpu_idx) {
++        int gpu_tp_idx = start_gpu_tp + local_gpu_idx;
++        uint8_t* w13_weight_dst = (uint8_t*)w13_weight_ptrs[gpu_tp_idx];
++        ggml_bf16_t* w13_scale_dst = (ggml_bf16_t*)w13_scale_ptrs[gpu_tp_idx];
++        uint8_t* w2_weight_dst = (uint8_t*)w2_weight_ptrs[gpu_tp_idx];
++        ggml_bf16_t* w2_scale_dst = (ggml_bf16_t*)w2_scale_ptrs[gpu_tp_idx];
++        size_t cpu_offset_weight = (size_t)local_gpu_idx * data_per_gpu_tp_weight;
++        size_t cpu_offset_scale = (size_t)local_gpu_idx * data_per_gpu_tp_scale;
++        size_t weight_per_gpu_col = (config_.intermediate_size / gpu_tps_per_cpu_tp) >> 1;
++        size_t scale_per_gpu_col = (config_.intermediate_size / gpu_tps_per_cpu_tp) / group_size;
++
++        if (debug) {
++          std::fprintf(stderr, "[kt-topk] tp-copy tp=%d expert=%d gpu_tp=%d w13=%p s13=%p w2=%p s2=%p\n",
++                       tp_part_idx, expert_id, gpu_tp_idx, w13_weight_dst, w13_scale_dst, w2_weight_dst, w2_scale_dst);
++          std::fflush(stderr);
++        }
++        std::memcpy(w13_weight_dst, gate_bb_[expert_id]->qweight_packed + cpu_offset_weight, data_per_gpu_tp_weight);
++        std::memcpy(w13_weight_dst + gpu_tp_weight_bytes, up_bb_[expert_id]->qweight_packed + cpu_offset_weight,
++                    data_per_gpu_tp_weight);
++        fp32_to_bf16(w13_scale_dst, gate_bb_[expert_id]->scales + cpu_offset_scale, data_per_gpu_tp_scale);
++        fp32_to_bf16(w13_scale_dst + gpu_tp_scale_elem_count, up_bb_[expert_id]->scales + cpu_offset_scale,
++                     data_per_gpu_tp_scale);
++        for (size_t col = 0; col < (size_t)config_.hidden_size; col++) {
++          size_t col_offset_weight =
++              (col * config_.intermediate_size / 2) + (local_gpu_idx * data_per_gpu_tp_weight / config_.hidden_size);
++          size_t col_offset_scale = (col * (config_.intermediate_size / group_size)) +
++                                    (local_gpu_idx * data_per_gpu_tp_scale / config_.hidden_size);
++          std::memcpy(w2_weight_dst + col * weight_per_gpu_col, down_bb_[expert_id]->qweight_packed + col_offset_weight,
++                      weight_per_gpu_col);
++          fp32_to_bf16(w2_scale_dst + col * scale_per_gpu_col, down_bb_[expert_id]->scales + col_offset_scale,
++                       scale_per_gpu_col);
++        }
++      }
+     }
+   }
+ };
+@@ -782,6 +880,56 @@ class TP_MOE<AVX512_RAW_INT4_PACKED_MOE_TP<K>>
+                                             w13_scale_ptrs, w2_weight_ptrs, w2_scale_ptrs);
+     });
+   }
++
++  void write_weight_scale_to_buffer_serial(int gpu_tp_count, int expert_id,
++                                           const std::vector<uintptr_t>& w13_weight_ptrs,
++                                           const std::vector<uintptr_t>& w13_scale_ptrs,
++                                           const std::vector<uintptr_t>& w2_weight_ptrs,
++                                           const std::vector<uintptr_t>& w2_scale_ptrs) {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    if ((int)w13_weight_ptrs.size() != gpu_tp_count || (int)w13_scale_ptrs.size() != gpu_tp_count ||
++        (int)w2_weight_ptrs.size() != gpu_tp_count || (int)w2_scale_ptrs.size() != gpu_tp_count) {
++      throw std::runtime_error("Pointer arrays size must match gpu_tp_count");
++    }
++    bool debug = std::getenv("KT_TOPK_DEBUG") != nullptr;
++    for (int i = 0; i < this->tp_count; ++i) {
++      if (debug) {
++        std::fprintf(stderr, "[kt-topk] serial tp=%d expert=%d\n", i, expert_id);
++        std::fflush(stderr);
++      }
++      this->tps[i]->write_weights_to_buffer_single_thread(gpu_tp_count, this->tp_count, expert_id, this->config,
++                                                          w13_weight_ptrs, w13_scale_ptrs, w2_weight_ptrs,
++                                                          w2_scale_ptrs);
++    }
++  }
++
++  void write_weight_scale_to_buffer_local(int gpu_tp_count, int local_gpu_tp, int expert_id,
++                                          const std::vector<uintptr_t>& w13_weight_ptrs,
++                                          const std::vector<uintptr_t>& w13_scale_ptrs,
++                                          const std::vector<uintptr_t>& w2_weight_ptrs,
++                                          const std::vector<uintptr_t>& w2_scale_ptrs) {
++    if (this->weights_loaded == false) throw std::runtime_error("Not Loaded");
++    if ((int)w13_weight_ptrs.size() != gpu_tp_count || (int)w13_scale_ptrs.size() != gpu_tp_count ||
++        (int)w2_weight_ptrs.size() != gpu_tp_count || (int)w2_scale_ptrs.size() != gpu_tp_count) {
++      throw std::runtime_error("Pointer arrays size must match gpu_tp_count");
++    }
++    if (this->tp_count < gpu_tp_count) {
++      throw std::runtime_error("Local top-k streaming currently requires cpu_tp_count >= gpu_tp_count");
++    }
++    bool debug = std::getenv("KT_TOPK_DEBUG") != nullptr;
++    int cpu_per_gpu_tp = this->tp_count / gpu_tp_count;
++    for (int i = 0; i < this->tp_count; ++i) {
++      int target_gpu_tp = i / cpu_per_gpu_tp;
++      if (target_gpu_tp != local_gpu_tp) continue;
++      if (debug) {
++        std::fprintf(stderr, "[kt-topk] local tp=%d gpu_tp=%d expert=%d\n", i, local_gpu_tp, expert_id);
++        std::fflush(stderr);
++      }
++      this->tps[i]->write_weights_to_buffer_single_thread(gpu_tp_count, this->tp_count, expert_id, this->config,
++                                                          w13_weight_ptrs, w13_scale_ptrs, w2_weight_ptrs,
++                                                          w2_scale_ptrs);
++    }
++  }
+ };
+ 
+ #undef KT_AVX512_RAWINT4_PACKED_TARGET
+diff --git a/kt-kernel/python/utils/amx.py b/kt-kernel/python/utils/amx.py
+index fad83ee..19e4369 100644
+--- a/kt-kernel/python/utils/amx.py
++++ b/kt-kernel/python/utils/amx.py
+@@ -988,3 +988,80 @@ class NativeMoEWrapper(BaseMoEWrapper):
+         """
+         # The CPUInfer.sync() call blocks until pending tasks complete.
+         self.cpu_infer.sync()
++
++    def submit_topk_write_weight_scale_to_buffer_with_cuda_stream(
++        self,
++        cuda_stream,
++        gpu_tp_count: int,
++        local_gpu_tp: int,
++        slot_count: int,
++        num_experts: int,
++        base_slot: int,
++        selected_ids_ptr: int,
++        gpu_mask_ptr: int,
++        static_l2g_ptr: int,
++        dyn_mask_ptr: int,
++        dyn_l2g_ptr: int,
++        ready_counter_ptr: int,
++        scale_shapes,
++        slot_nbytes,
++        w13_weight_ptrs,
++        w13_scale_ptrs,
++        w2_weight_ptrs,
++        w2_scale_ptrs,
++    ):
++        """
++        CUDA-graph-compatible dynamic expert streamer.
++
++        The selected expert IDs and dynamic remap buffers are fixed-address pinned
++        CPU tensors. During graph replay, a cudaLaunchHostFunc callback reads the
++        selected IDs, writes CPU-resident expert weights/scales into fixed staging
++        buffers, and fills the dynamic mask/remap table for the following H2D copies.
++        """
++        if self.moe is None:
++            raise RuntimeError("MoE instance not initialized; cannot submit topk write task.")
++
++        if not hasattr(self.moe, "write_topk_weight_scale_to_buffer_task"):
++            raise NotImplementedError(
++                "write_topk_weight_scale_to_buffer_task is not available for this backend implementation."
++            )
++
++        stream = (
++            cuda_stream.cuda_stream
++            if isinstance(cuda_stream, torch.cuda.Stream)
++            else int(cuda_stream)
++        )
++        task = self.moe.write_topk_weight_scale_to_buffer_task(
++            gpu_tp_count,
++            local_gpu_tp,
++            slot_count,
++            num_experts,
++            base_slot,
++            selected_ids_ptr,
++            gpu_mask_ptr,
++            static_l2g_ptr,
++            dyn_mask_ptr,
++            dyn_l2g_ptr,
++            int(slot_nbytes["w13_weight"]),
++            int(slot_nbytes["w13_weight_scale_inv"]),
++            int(slot_nbytes["w2_weight"]),
++            int(slot_nbytes["w2_weight_scale_inv"]),
++            int(ready_counter_ptr),
++            int(scale_shapes["w13_weight_scale_inv"][0]),
++            int(scale_shapes["w13_weight_scale_inv"][1]),
++            int(scale_shapes["w2_weight_scale_inv"][0]),
++            int(scale_shapes["w2_weight_scale_inv"][1]),
++            w13_weight_ptrs,
++            w13_scale_ptrs,
++            w2_weight_ptrs,
++            w2_scale_ptrs,
++        )
++        self.cpu_infer.submit_with_cuda_stream(stream, task)
++
++    def sync_topk_write_weight_scale_to_buffer_with_cuda_stream(self, cuda_stream):
++        stream = (
++            cuda_stream.cuda_stream
++            if isinstance(cuda_stream, torch.cuda.Stream)
++            else int(cuda_stream)
++        )
++        self.cpu_infer.sync_with_cuda_stream(stream)
+-- 
+2.34.1
+
