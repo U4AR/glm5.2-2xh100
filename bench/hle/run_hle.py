@@ -44,7 +44,11 @@ import time
 import urllib.error
 import urllib.request
 
-DATASET = "macabdul9/hle_text_only"
+# Canonical HLE first; the ungated text-only mirror is the fallback for a box
+# whose HF token has not accepted the cais/hle gate. Both are filtered to
+# text-only below, which is the split Zhipu reports its 40.5 on.
+DATASET = "cais/hle"
+DATASET_FALLBACK = "macabdul9/hle_text_only"
 
 # The official HLE system prompt. The rigid three-field reply is what makes
 # exactMatch gradable without an LLM judge.
@@ -131,7 +135,11 @@ def grade(row, text):
 def load_pool(args):
     from datasets import load_dataset
 
-    ds = load_dataset(DATASET, split="test")
+    try:
+        ds = load_dataset(DATASET, split="test")
+    except Exception as e:
+        print(f"{DATASET}: {type(e).__name__} -> falling back to {DATASET_FALLBACK}")
+        ds = load_dataset(DATASET_FALLBACK, split="test")
     rows = []
     for r in ds:
         if r.get("image"):                       # belt and braces: text only

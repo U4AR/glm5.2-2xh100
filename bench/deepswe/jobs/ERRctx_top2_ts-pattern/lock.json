@@ -1,0 +1,90 @@
+{
+    "schema_version": 1,
+    "created_at": "2026-08-11T11:54:02.061564Z",
+    "pier": {
+        "version": "0.3.0"
+    },
+    "invocation": [
+        "/home/bel/.local/bin/pier",
+        "run",
+        "-p",
+        "deep-swe/tasks/ts-pattern-match-each",
+        "-a",
+        "mini-swe-agent",
+        "-m",
+        "openai/GLM5.2-top2",
+        "--ak",
+        "model_class=litellm",
+        "--ae",
+        "OPENAI_BASE_URL=http://10.0.2.2:8000/v1",
+        "--ae",
+        "OPENAI_API_KEY=****",
+        "--ae",
+        "MSWEA_API_KEY=****",
+        "--cpus",
+        "ignore",
+        "--memory",
+        "ignore",
+        "--agent-timeout-multiplier",
+        "4",
+        "-n",
+        "1",
+        "-o",
+        "jobs",
+        "--job-name",
+        "top2_ts-pattern-match-each",
+        "-y"
+    ],
+    "n_concurrent_trials": 1,
+    "retry": {
+        "max_retries": 0,
+        "exclude_exceptions": [
+            "RewardFileNotFoundError",
+            "VerifierOutputParseError",
+            "VerifierTimeoutError",
+            "AgentTimeoutError",
+            "RewardFileEmptyError"
+        ],
+        "wait_multiplier": 1.0,
+        "min_wait_sec": 1.0,
+        "max_wait_sec": 60.0
+    },
+    "trials": [
+        {
+            "task": {
+                "name": "ts-pattern-match-each",
+                "type": "local",
+                "digest": "sha256:88e3afc46fd613dffc02291cce8d7eb445bbaf67d35ad5f7d1cf82fdff41845a",
+                "path": "deep-swe/tasks/ts-pattern-match-each"
+            },
+            "timeout_multiplier": 1.0,
+            "agent_timeout_multiplier": 4.0,
+            "agent": {
+                "name": "mini-swe-agent",
+                "model_name": "openai/GLM5.2-top2",
+                "kwargs": {
+                    "model_class": "litellm"
+                },
+                "env": {
+                    "OPENAI_BASE_URL": "http://10.0.2.2:8000/v1",
+                    "OPENAI_API_KEY": "****",
+                    "MSWEA_API_KEY": "****"
+                }
+            },
+            "environment": {
+                "type": "docker",
+                "force_build": false,
+                "delete": true,
+                "cpu_enforcement_policy": "ignore",
+                "memory_enforcement_policy": "ignore",
+                "suppress_override_warnings": false,
+                "env": {},
+                "kwargs": {}
+            },
+            "verifier": {
+                "env": {},
+                "disable": false
+            }
+        }
+    ]
+}

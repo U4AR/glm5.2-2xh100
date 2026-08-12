@@ -1,0 +1,506 @@
+<title>Seven Failures, No Verdict — DeepSWE tier benchmark post-mortem</title>
+<style>
+  /* Light palette is the base; dark redefines only tokens, in both the
+     un-stamped (prefers-color-scheme) and explicitly stamped states. */
+  :root {
+    --bg:        #F6F7F8;
+    --surface:   #FFFFFF;
+    --ink:       #14191C;
+    --ink-soft:  #4A555B;
+    --ink-faint: #79868D;
+    --rule:      #D9E0E3;
+    --rule-soft: #E8EDEF;
+    --accent:    #0C6F6A;
+    --accent-bg: #E4F0EF;
+    --fail:      #A33528;
+    --fail-bg:   #F7E6E3;
+    --ok:        #2C6A3B;
+    --ok-bg:     #E5F0E7;
+    --code-bg:   #EDF1F2;
+    --shadow:    0 1px 2px rgba(20,25,28,.06), 0 8px 24px rgba(20,25,28,.05);
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono:  ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:        #0D1214;
+      --surface:   #141B1E;
+      --ink:       #E3E9EA;
+      --ink-soft:  #A6B3B7;
+      --ink-faint: #74848A;
+      --rule:      #263236;
+      --rule-soft: #1C2528;
+      --accent:    #46B3A8;
+      --accent-bg: #122C2A;
+      --fail:      #E08375;
+      --fail-bg:   #2E1A17;
+      --ok:        #83C08F;
+      --ok-bg:     #17281B;
+      --code-bg:   #101719;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:        #0D1214;
+    --surface:   #141B1E;
+    --ink:       #E3E9EA;
+    --ink-soft:  #A6B3B7;
+    --ink-faint: #74848A;
+    --rule:      #263236;
+    --rule-soft: #1C2528;
+    --accent:    #46B3A8;
+    --accent-bg: #122C2A;
+    --fail:      #E08375;
+    --fail-bg:   #2E1A17;
+    --ok:        #83C08F;
+    --ok-bg:     #17281B;
+    --code-bg:   #101719;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 82ch;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 2rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  /* ---- masthead ---- */
+  .head { display: flex; flex-direction: column; gap: 1rem; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex; flex-wrap: wrap; gap: .5rem 1.1rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2rem, 5.2vw, 3rem);
+    line-height: 1.08;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+  .standfirst {
+    font-family: var(--serif);
+    font-size: clamp(1.08rem, 2.2vw, 1.3rem);
+    line-height: 1.5;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  /* ---- verdict strip ---- */
+  .verdict {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .verdict div { background: var(--surface); padding: 1rem 1.1rem; }
+  .verdict dt {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: .35rem;
+  }
+  .verdict dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .verdict dd small { font-size: .8rem; color: var(--ink-faint); letter-spacing: 0; }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0;
+    padding-bottom: .55rem;
+    border-bottom: 2px solid var(--ink);
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: -.005em;
+  }
+  p { margin: 0; max-width: 68ch; }
+  a { color: var(--accent); }
+
+  /* ---- failure ledger: the attempt number is a real sequence ---- */
+  .ledger { display: flex; flex-direction: column; gap: 0; }
+  .row {
+    display: grid;
+    grid-template-columns: 2.6rem 1fr;
+    gap: 0 1rem;
+    padding: 1.05rem 0;
+    border-top: 1px solid var(--rule-soft);
+    align-items: start;
+  }
+  .row:first-child { border-top: 1px solid var(--rule); }
+  .n {
+    font-family: var(--mono);
+    font-size: .95rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--fail);
+    padding-top: .1rem;
+  }
+  .row .body { display: flex; flex-direction: column; gap: .3rem; }
+  .died {
+    font-family: var(--mono);
+    font-size: .76rem;
+    color: var(--ink-faint);
+    letter-spacing: .02em;
+  }
+  .row p { font-size: .94rem; color: var(--ink-soft); }
+  .row strong { color: var(--ink); font-weight: 620; }
+
+  /* ---- lesson blocks ---- */
+  .lesson {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.2rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+    box-shadow: var(--shadow);
+  }
+  .lesson .rule {
+    font-family: var(--mono);
+    font-size: .78rem;
+    line-height: 1.55;
+    color: var(--accent);
+    background: var(--accent-bg);
+    padding: .55rem .7rem;
+    border-radius: 2px;
+  }
+  .lesson p { font-size: .94rem; color: var(--ink-soft); }
+
+  /* ---- data ---- */
+  .scroll { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: .88rem;
+    min-width: 30rem;
+  }
+  th, td {
+    text-align: left;
+    padding: .55rem .8rem .55rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: baseline;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--rule);
+  }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .bad  { color: var(--fail); }
+  .good { color: var(--ok); }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .95rem 1.05rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.65;
+    margin: 0;
+    color: var(--ink);
+  }
+  code {
+    font-family: var(--mono);
+    font-size: .87em;
+    background: var(--code-bg);
+    padding: .1em .34em;
+    border-radius: 2px;
+  }
+  pre code { background: none; padding: 0; font-size: 1em; }
+
+  /* ---- checklist ---- */
+  ol.checks { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: .85rem; }
+  ol.checks li { padding-left: .25rem; }
+  ol.checks li::marker { font-family: var(--mono); color: var(--accent); font-size: .9rem; }
+  ol.checks p { font-size: .92rem; color: var(--ink-soft); margin-top: .2rem; }
+  ul.plain { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .55rem; }
+  ul.plain li { font-size: .93rem; color: var(--ink-soft); }
+
+  .note {
+    border-left: 2px solid var(--accent);
+    padding-left: 1rem;
+    display: flex; flex-direction: column; gap: .55rem;
+  }
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.2rem;
+    font-family: var(--mono);
+    font-size: .74rem;
+    color: var(--ink-faint);
+    line-height: 1.7;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <div class="eyebrow">
+      <span>2026-08-11</span><span>GLM-5.2 · 2×H100</span><span>DeepSWE v1.1 · top-2 tier</span>
+    </div>
+    <h1>Seven failures, no verdict</h1>
+    <p class="standfirst">A full day on the tier-degradation benchmark produced zero graded
+    results. Every failure was server configuration; none was the model. All seven are
+    understood, and six of them share one root cause worth carrying forward.</p>
+  </header>
+
+  <dl class="verdict">
+    <div><dt>Runs attempted</dt><dd>7</dd></div>
+    <div><dt>Graded verdicts</dt><dd class="bad">0</dd></div>
+    <div><dt>Model faults</dt><dd class="good">0</dd></div>
+    <div><dt>Worst single tax</dt><dd>11×<small> s/step</small></dd></div>
+  </dl>
+
+  <section>
+    <h2>The one that matters most</h2>
+    <p><code>run_server_int4.sh</code> defaults <code>SLEEP_ON_IDLE=1</code>. An agent pauses
+    for seconds between calls while it runs shell commands, so the server goes idle, releases
+    KV memory, and <strong>flushes the prefix cache on every single step</strong>. Each step
+    then re-prefills the entire conversation from scratch on the CPU expert path.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th></th><th><code>#cached-token</code></th><th>Pace</th><th>Steps in 12 min</th></tr></thead>
+        <tbody>
+          <tr><td><code>SLEEP_ON_IDLE=1</code></td><td class="num bad">0, always</td><td class="num">100 s/step</td><td class="num">~7</td></tr>
+          <tr><td><code>SLEEP_ON_IDLE=0</code></td><td class="num good">16k → 62k, rising</td><td class="num">9 s/step</td><td class="num">86</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>It costs nothing on single-shot decode benchmarks — which is every benchmark in this
+    repo — which is exactly why it survived as a default. It is harmful for anything
+    multi-turn: agents, chat, coding harnesses.</p>
+  </section>
+
+  <section>
+    <h2>The failure ledger</h2>
+    <p>Ordered by attempt, because the order carries the lesson: each fix exposed the next
+    constraint, and three of them were caused by tuning one dimension without checking what
+    it cost elsewhere.</p>
+
+    <div class="ledger">
+      <div class="row">
+        <div class="n">01</div>
+        <div class="body">
+          <div class="died">died at step 11 · <code>MEM_FRACTION=0.95</code></div>
+          <p>TP1 OOM'd creating the MTP draft at boot with <strong>43 MiB free</strong>. The
+          supervisor took the SIGQUIT and died; the two schedulers survived orphaned and served
+          for an hour before going down mid-task. <code>/health</code> returned 200 throughout.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">02</div>
+        <div class="body">
+          <div class="died">died at step ~15, all three agents · concurrency vs VRAM</div>
+          <p>The MTP draft's triton <code>forward_extend</code> needs ~542 MiB
+          <strong>per concurrent prefill</strong>. Three agents, 472 MiB free, four OOMs. The
+          concurrency was added to meet a time budget, against headroom never checked.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">03</div>
+        <div class="body">
+          <div class="died">refused to boot · <code>MEM_FRACTION=0.88</code></div>
+          <p><strong>0.88 is below the weight floor</strong> (~0.90). Lowering mem-fraction is
+          not the lever for headroom — <code>GPU_EXPERTS</code> is, at roughly 0.40 GB per expert.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">04</div>
+        <div class="body">
+          <div class="died">4 steps in 32 minutes · <code>max_running_requests=2</code></div>
+          <p>Three agents plus litellm retries produced <code>#queue-req: 5</code> against two
+          slots. <strong>An abandoned client request is not aborted server-side</strong>, so
+          every timeout left a zombie holding a slot and triggered more retries.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">05</div>
+        <div class="body">
+          <div class="died">stalled indefinitely · <code>--sleep-on-idle</code></div>
+          <p>The prefix cache flush described above. <code>#cached-token: 0</code> for hours
+          while health, VRAM, scheduler count and queue depth were all green.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">06</div>
+        <div class="body">
+          <div class="died">died at step 82 · GPU prefill + 98k KV pool</div>
+          <p>Two changes made at once. As context reached 63k the pool filled, VRAM climbed to
+          94.8 of 95.8 GB, and the ~5 GB GPU prefill workspace no longer fit.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="n">07</div>
+        <div class="body">
+          <div class="died">died at step 142 · <code>ContextWindowExceededError</code></div>
+          <p>81,994 tokens against an 81,920 limit. Server entirely healthy — no OOM, no
+          restart. The only failure of the seven that wasn't a resource misconfiguration.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Rules to carry forward</h2>
+
+    <div class="lesson">
+      <h3>Green health checks prove nothing</h3>
+      <p>Failures 01, 04, 05 and 07 all ran with <code>health=200</code>, both schedulers
+      alive, and VRAM resident. A half-crashed server answers health checks perfectly well,
+      and a starved or cache-flushed one answers them fast.</p>
+      <div class="rule">Watch throughput signals, not liveness signals:<br>
+      <code>#cached-token</code> (must be non-zero and rising) · <code>#queue-req</code>
+      (must stay ~0) · OOM count in the server log (must not rise)</div>
+    </div>
+
+    <div class="lesson">
+      <h3>Concurrency has three independent prices</h3>
+      <p>Each agent needs VRAM headroom for its prefill workspace, a request slot, and enough
+      KV pool to keep its own prefix cached. Paying one and not the others produced failures
+      02, 04 and 06 in sequence — the same mistake three times, in three different currencies.</p>
+      <div class="rule">Before raising concurrency, budget all three: prefill VRAM ×N,
+      <code>MAX_RUNNING</code> ≥ N + retries, pool ≥ N × peak context × 1.3</div>
+    </div>
+
+    <div class="lesson">
+      <h3>Change one dimension per boot</h3>
+      <p>Failure 06 enabled GPU prefill and a larger KV pool together; each was fine alone and
+      fatal together. A boot costs about four minutes. Diagnosing a coupled failure costs an hour.</p>
+      <div class="rule">One variable per boot, and record the free-VRAM figure at idle each time</div>
+    </div>
+
+    <div class="lesson">
+      <h3>A watchdog's restart config must match the launch config</h3>
+      <p>The watchdog carried a hardcoded <code>MEM_FRACTION=0.88</code> from an earlier
+      experiment. When it correctly detected a dead server, it "recovered" it into a boot loop
+      that could not start at all.</p>
+      <div class="rule">Derive the watchdog's restart command from the same source as the launch,
+      or assert on boot that they match</div>
+    </div>
+
+    <div class="lesson">
+      <h3>An errored trial is not a failed trial</h3>
+      <p>The first version of <code>report.py</code> scored every crashed run as
+      <code>fail</code> and printed a tidy "0/3" table for three runs that never reached the
+      verifier. That table would have read as a catastrophic quality result for the top-2 tier.</p>
+      <div class="rule">Only a verifier reward is a verdict. Absent reward → <code>ERROR</code>,
+      excluded from the denominator, cause printed.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The one real signal so far</h2>
+    <div class="note">
+      <p>Run 07 reached <strong>142 steps and 81,201 tokens</strong> of context on
+      <code>ts-pattern-match-each</code> without submitting. Datacurve's graded GLM-5.2 runs
+      solve that task in a median of <strong>48 steps / 61,110 tokens</strong>.</p>
+      <p>Roughly 3× the steps for the same task is what expert-substitution degradation would
+      look like. It is a <strong>hypothesis, not a finding</strong>: one rollout, no top-8
+      control on this box, and a truncated run cannot be distinguished from a slow-but-correct
+      one. It becomes evidence only if top-8 finishes the same task in ~50 steps on the same
+      server — which is the first thing worth running tomorrow.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Known-good configuration</h2>
+    <p>Booted clean at 12:18 with 11 GB free per card. The context raise to 131k and
+    <code>GPU_EXPERTS=88</code> are the only untested parts.</p>
+<pre><code>GPU_EXPERTS=88 MEM_FRACTION=0.94 \
+MAX_TOTAL_TOKENS=131072 CONTEXT_LENGTH=131072 \
+CHUNKED_PREFILL=2048 MAX_RUNNING=8 \
+SLEEP_ON_IDLE=0 KT_GPU_PREFILL_THRESHOLD=0 \
+TRITON_CACHE_DIR=/data/triton-cache ./run_fast.sh</code></pre>
+    <p>One agent at a time. Concurrency is what caused three of the seven failures, and the
+    prefix cache only works when a single conversation owns the pool.</p>
+  </section>
+
+  <section>
+    <h2>Tomorrow, in order</h2>
+    <ol class="checks">
+      <li><strong>Boot and verify before launching anything.</strong>
+        <p>Confirm zero <code>Scheduler hit an exception</code> in the server log and note idle
+        free VRAM. A boot-time OOM is survivable-looking and fatal an hour later.</p></li>
+      <li><strong>Run one task, one tier, one agent.</strong>
+        <p><code>ts-pattern-match-each</code> at <code>GLM5.2-top2</code>, roughly 25 minutes.</p></li>
+      <li><strong>Check <code>#cached-token</code> at the three-minute mark.</strong>
+        <p>Non-zero and rising means the run will finish. Zero means stop immediately — it will
+        take eleven times longer and fail anyway.</p></li>
+      <li><strong>Then the same task at <code>GLM5.2-top8</code>.</strong>
+        <p>This is the control that turns the 142-vs-48 step observation into evidence or
+        discards it.</p></li>
+      <li><strong>Only then add tasks.</strong>
+        <p><code>psd-tools-blend-range-api</code> (graded 3/4) and
+        <code>wazero-multi-module-snapshots</code> (1/4) complete the border spread.</p></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Host changes made today</h2>
+    <ul class="plain">
+      <li><strong>Rootless Docker host access</strong> —
+        <code>~/.config/systemd/user/docker.service.d/host-loopback.conf</code> removes
+        <code>--disable-host-loopback</code>, without which no container can reach the server at
+        all. The host is <code>10.0.2.2</code> from inside a container, not the LAN IP.
+        <span class="bad">This weakens container isolation host-wide;</span> delete the file and
+        restart docker to revert.</li>
+      <li><strong>Docker data-root</strong> moved to <code>/data/docker-bel</code>; the root disk
+        was 93% full and each task image is 2.7 GB. A stale 23 GB copy remains at
+        <code>~/.local/share/docker/overlay2</code> and is safe to delete.</li>
+      <li><strong>Pier egress proxy</strong> — patched <code>agent_setup.py</code> so squid's
+        <code>Safe_ports</code> includes 8000; it allowed only 80 and 443.</li>
+      <li><strong>Cgroups</strong> — no CPU delegation on this host, so Pier needs
+        <code>--cpus ignore --memory ignore</code> or containers never start.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Sources: bench/deepswe/STATUS.md · server_*.log (one per failed boot) · watchdog.log<br>
+    Reference data: deepswe.datacurve.ai/artifacts/v1.1/trials.json — glm-5-2::effort=high,
+    113 tasks × 4 rollouts, 66 fractional
+  </footer>
+
+</div>

